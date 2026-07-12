@@ -2,19 +2,42 @@
 
 Work is divided into gated tranches. Each tranche answers one major risk before the project invests in the next.
 
+## 0. Development runway
+
+**Goal:** Establish a reproducible Unity-to-Board development loop before implementing gameplay.
+
+**Deliverables**
+
+- Board Developer Portal and SDK access.
+- A selected and pinned Unity editor version.
+- Unity Android Build Support with the required SDK, NDK, and OpenJDK tooling.
+- A committed Unity project with baseline project and package configuration.
+- The Board Unity SDK imported and the project setup wizard completed.
+- The Board Arcade Piece Set Model downloaded and configured.
+- The Board input sample running in the Unity simulator.
+- `board-connect` installed and its local prerequisites documented.
+- A successful Android APK build from a fresh checkout.
+- When hardware is available, a paired Board that can install, launch, and stream logs from the sample APK.
+
+**Required exit criterion:** A fresh checkout opens with the documented Unity version, the Board sample responds in the simulator, and the project produces a valid Android APK by following the repository instructions.
+
+**Hardware validation:** When a physical Board is available, the APK installs, launches, and produces readable logs through Board Connect. If hardware is unavailable during this tranche, record that validation as the first blocking check in Tranche 1 rather than holding up simulator-based work.
+
 ## 1. Physical-control proof
 
 **Goal:** Determine whether two-Piece control feels reliable and natural.
 
 **Deliverables**
 
-- Board SDK integration and Piece association.
-- Car Piece throttle experiment.
-- Crew Piece placement and rotation experiment.
-- Lost-contact and reacquisition behavior.
-- Mouse/keyboard controls for off-device testing.
+- A Board Racing input-provider boundary supporting Board contacts and mouse/keyboard fallback.
+- Reliable player association for distinct Car and Pit Crew Pieces.
+- Car Piece throttle-mapping experiments.
+- Crew Piece placement and rotation experiments.
+- Safe lost-contact, removal, and reacquisition behavior.
+- Two-player simultaneous interaction testing.
+- Simulator-to-hardware behavior comparison when hardware is available.
 
-**Exit criterion:** Two players can reliably control cars and complete a basic pit action without frequent tracking failures or developer explanation.
+**Exit criterion:** On physical hardware, two players can reliably control cars and complete a basic pit action without frequent tracking failures or developer explanation. Simulator work may begin earlier, but the tranche cannot pass without hardware evidence.
 
 ## 2. Racing proof
 
@@ -87,4 +110,3 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 ## Investment rule
 
 Do not invest heavily in final art, multiple tracks, championship content, or marketing production until Tranches 1–3 pass real playtests.
-
