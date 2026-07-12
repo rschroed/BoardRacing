@@ -23,6 +23,8 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 
 **Hardware validation:** When a physical Board is available, the APK installs, launches, and produces readable logs through Board Connect. If hardware is unavailable during this tranche, record that validation as the first blocking check in Tranche 1 rather than holding up simulator-based work.
 
+**Initial sign-off:** The [Tranche 0 clean-checkout rehearsal](testing/tranche-0-rehearsal.md) passed on July 12, 2026. Physical deployment remains the documented hardware-only exception in Issue [#13](https://github.com/rschroed/BoardRacing/issues/13).
+
 ## 1. Physical-control proof
 
 **Goal:** Determine whether two-Piece control feels reliable and natural.

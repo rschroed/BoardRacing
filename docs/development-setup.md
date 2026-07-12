@@ -49,7 +49,25 @@ Install the editor with **Android Build Support** and its child modules:
 
 Use Unity-managed SDK, NDK, and JDK paths. The Board project setup wizard remains responsible for selecting the application target settings required by the SDK, including API level, ARM64, IL2CPP, orientation, and Input System configuration.
 
-On another machine, install the same editor patch and Android modules through Unity Hub before opening the project. `ProjectSettings/ProjectVersion.txt` will become the source of truth after the Unity baseline is created in Issue #9.
+Unity Hub's Android module does not currently include Android SDK Platform 33, which the Board configuration targets. After installing the Hub modules, use Unity's bundled OpenJDK and SDK manager to review the Android SDK licenses and install Platform 33:
+
+```bash
+UNITY_ANDROID="/Applications/Unity/Hub/Editor/2022.3.62f3/PlaybackEngines/AndroidPlayer"
+
+JAVA_HOME="$UNITY_ANDROID/OpenJDK" \
+  "$UNITY_ANDROID/SDK/cmdline-tools/6.0/bin/sdkmanager" \
+  --sdk_root="$UNITY_ANDROID/SDK" \
+  --licenses
+
+JAVA_HOME="$UNITY_ANDROID/OpenJDK" \
+  "$UNITY_ANDROID/SDK/cmdline-tools/6.0/bin/sdkmanager" \
+  --sdk_root="$UNITY_ANDROID/SDK" \
+  "platforms;android-33"
+```
+
+Review and accept the licenses interactively; do not pipe automatic confirmation into the license command. On non-macOS systems, use the equivalent Unity editor installation path.
+
+On another machine, install the same editor patch and Android modules through Unity Hub before opening the project. `ProjectSettings/ProjectVersion.txt` is the source of truth for the required editor.
 
 ## Open the Unity project
 
@@ -79,7 +97,7 @@ The Board SDK uses Unity UI and EventSystem types but v3.3.0 does not declare `c
 
 The committed Board settings select the Arcade model by filename and use the SDK defaults of translation smoothing `0.5`, rotation smoothing `0.5`, and persistence `4`. The model binary and its Unity metadata remain ignored.
 
-The Board configuration wizard has been applied. Its committed project settings are Android API 33 minimum and target, IL2CPP, an architecture set that includes ARM64, the new Input System, and landscape-left orientation. Rerun **Board > Configure Unity Project...** after a Board SDK upgrade or when Unity reports a configuration warning.
+The Board configuration wizard has been applied. Its committed project settings are Android API 33 minimum and target, IL2CPP, ARM64 only, the new Input System, and landscape-left orientation. Rerun **Board > Configure Unity Project...** after a Board SDK upgrade or when Unity reports a configuration warning, then restore ARM64-only targeting if the wizard adds another architecture.
 
 ### Local command verification
 
