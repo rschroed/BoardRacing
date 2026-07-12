@@ -19,6 +19,11 @@ Status is inferred from native GitHub state:
 
 Create an issue as soon as a bug, feature, or meaningful chore needs to persist beyond the current conversation. Use the Feature / Task or Bug form when applicable. Blank issues are available for early ideas and discussion.
 
+For issues created from the command line, write the Markdown body to a file and
+use `gh issue create --body-file <path>`. Never encode line breaks as `\\n` in a
+`--body` argument: GitHub stores them literally. After creation, verify the saved
+body with `gh issue view <number> --json body --jq .body`.
+
 Tiny typo-only documentation corrections may go directly to a pull request without a separate issue.
 
 ### 2. Clarify
@@ -111,4 +116,3 @@ Board-specific behavior should say how it was verified:
 - Physical Board hardware.
 
 If hardware testing remains necessary after merge, create a follow-up issue rather than implying the behavior was fully validated.
-
