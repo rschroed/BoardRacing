@@ -43,6 +43,9 @@ crashlytics-build.properties
 
 # Restricted Board development artifacts
 *.tflite
+*.tflite.meta
 *.tgz
 *.tar
-
+/Assets/Samples.meta
+/Assets/Samples/Board SDK.meta
+/Assets/Samples/Board SDK/

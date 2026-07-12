@@ -8,4 +8,6 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Main.unity
     guid: d06a11df5106942b2aeb9d4ae7779d7f
-  m_configObjects: {}
+  m_configObjects:
+    fun.board.input.settings: {fileID: 11400000, guid: 4931cd1ca8b6e4880bf06169729e2a20, type: 2}
+    fun.board.settings: {fileID: 11400000, guid: c2eb1ea66c9d54aa691d6c0bec35a2e0, type: 2}
