@@ -44,6 +44,19 @@ Use Unity-managed SDK, NDK, and JDK paths. The Board project setup wizard remain
 
 On another machine, install the same editor patch and Android modules through Unity Hub before opening the project. `ProjectSettings/ProjectVersion.txt` will become the source of truth after the Unity baseline is created in Issue #9.
 
+## Open the Unity project
+
+The repository root is the Unity project. Add that directory in Unity Hub and open it with Unity `2022.3.62f3`; do not create a second Unity project inside the repository.
+
+The committed baseline contains:
+
+- An empty startup scene at `Assets/Scenes/Main.unity`.
+- A fixed 1920×1080 landscape-left presentation.
+- Android as the development build target expectation.
+- Unity package and project metadata, including the editor version and package lock file.
+
+After a fresh clone, switch **File > Build Settings > Platform** to **Android** before Board SDK configuration or deployment work. The selected platform is local editor state and is not relied upon as committed configuration. Issue #10 will import the restricted SDK and run **Board > Configure Unity Project...**, which owns the final Board-required Android API, ARM64, IL2CPP, and Input System settings.
+
 ### Local command verification
 
 Run:
@@ -94,6 +107,5 @@ Issue [#13](https://github.com/rschroed/BoardRacing/issues/13) owns pairing, dep
 
 ## Next setup steps
 
-- Pin and install the Unity/Android toolchain in [#8](https://github.com/rschroed/BoardRacing/issues/8).
-- Create the clean Unity baseline in [#9](https://github.com/rschroed/BoardRacing/issues/9).
 - Import and configure the restricted dependencies in [#10](https://github.com/rschroed/BoardRacing/issues/10).
+- Establish editor and simulator smoke tests in [#11](https://github.com/rschroed/BoardRacing/issues/11).

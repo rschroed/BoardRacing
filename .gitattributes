@@ -6,10 +6,10 @@
 *.hlsl text
 *.json text
 *.md text
-*.meta text
-*.unity text merge=unityyamlmerge eol=lf
+*.meta text whitespace=-blank-at-eol
+*.unity text merge=unityyamlmerge eol=lf whitespace=-blank-at-eol
 *.prefab text merge=unityyamlmerge eol=lf
-*.asset text merge=unityyamlmerge eol=lf
+*.asset text merge=unityyamlmerge eol=lf whitespace=-blank-at-eol
 *.mat text merge=unityyamlmerge eol=lf
 *.anim text merge=unityyamlmerge eol=lf
 *.controller text merge=unityyamlmerge eol=lf
