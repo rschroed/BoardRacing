@@ -1,0 +1,48 @@
+# Unity generated directories
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Unity-generated IDE projects
+*.csproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity crash and profiling artifacts
+sysinfo.txt
+crashlytics-build.properties
+
+# IDE and operating-system state
+.idea/
+.vscode/
+.vs/
+.DS_Store
+*.swp
+
+# Local builds and signing material
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Restricted Board development artifacts
+*.tflite
+*.tgz
+*.tar
+
