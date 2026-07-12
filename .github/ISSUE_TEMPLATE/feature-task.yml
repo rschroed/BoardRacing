@@ -1,0 +1,65 @@
+name: Feature / Task
+description: Propose a bounded, independently verifiable outcome.
+title: ""
+labels:
+  - "type: feature"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the outcome rather than prescribing implementation details. A maintainer will assign priority and tranche labels during triage.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Problem or outcome
+      description: What problem should be solved, or what should become possible?
+      placeholder: Players need to...
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope
+      description: What is included? Mention important exclusions when they prevent scope ambiguity.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that will show this work is complete.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: dropdown
+    id: tranche
+    attributes:
+      label: Roadmap tranche
+      description: Select the best current fit. Maintainers may change it during triage.
+      options:
+        - "Not assigned / needs triage"
+        - "1 — Physical-control proof"
+        - "2 — Racing proof"
+        - "3 — Pit-crew proof"
+        - "4 — Complete social game"
+        - "5 — Presentation and content"
+        - "6 — Hardening and submission"
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link dependencies or state that there are none. Include hardware or external decisions when relevant.
+      placeholder: None.
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation notes
+      description: Optional constraints, references, or possible approaches.
+    validations:
+      required: false

@@ -1,0 +1,60 @@
+name: Bug
+description: Report reproducible behavior that differs from expectations.
+title: ""
+labels:
+  - "type: bug"
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include build or commit, BoardOS version, input method, and whether this occurred on hardware or in simulation.
+      placeholder: |
+        Build/commit:
+        BoardOS:
+        Input: physical Board / Board simulator / mouse-keyboard
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocks play or causes data loss
+        - Breaks an important interaction
+        - Causes degraded behavior with a workaround
+        - Cosmetic or minor
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting evidence
+      description: Optional logs, screenshots, videos, frequency, or related issues.
+    validations:
+      required: false
