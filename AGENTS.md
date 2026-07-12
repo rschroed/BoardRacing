@@ -224,6 +224,16 @@ Before handing off a change:
 - Check simultaneous input when the change touches Piece behavior.
 - Record simulator and hardware coverage in the pull request.
 
+## GitHub issue formatting
+
+When creating or editing an issue with GitHub CLI, pass Markdown through a real
+file with `--body-file`. Do not put escaped newlines such as `\\n` in a `--body`
+argument; GitHub stores those characters literally and renders the issue as one
+line.
+
+Before finishing, read the saved body back with `gh issue view <number> --json
+body --jq .body` and confirm headings and lists contain real line breaks.
+
 ## Additional references
 
 - Unity API: <https://docs.dev.board.fun/unity/api/>
