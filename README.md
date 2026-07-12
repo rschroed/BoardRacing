@@ -25,6 +25,7 @@ The first prototype will use Unity and the Board Unity SDK. Unity currently prov
 - [Car and Pit Crew interaction](docs/gameplay/car-and-pit-crew.md)
 - [Roadmap](docs/roadmap.md)
 - [Technical direction](docs/technical-direction.md)
+- [Development setup](docs/development-setup.md)
 - [GitHub workflow](docs/workflow.md)
 
 ## Immediate milestone
