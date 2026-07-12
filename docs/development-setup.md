@@ -132,4 +132,5 @@ Issue [#13](https://github.com/rschroed/BoardRacing/issues/13) owns pairing, dep
 ## Next setup steps
 
 - Use the [Board input simulator smoke test](testing/board-input-simulator.md) after dependency or input-setting changes.
-- Define the initial project architecture in [#12](https://github.com/rschroed/BoardRacing/issues/12).
+- Use the [Android development build procedure](testing/android-development-build.md) to produce and inspect local APKs.
+- Validate deployment and physical Piece input in [#13](https://github.com/rschroed/BoardRacing/issues/13).
