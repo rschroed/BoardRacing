@@ -25,8 +25,8 @@ The first prototype will use Unity and the Board Unity SDK. Unity currently prov
 - [Car and Pit Crew interaction](docs/gameplay/car-and-pit-crew.md)
 - [Roadmap](docs/roadmap.md)
 - [Technical direction](docs/technical-direction.md)
+- [GitHub workflow](docs/workflow.md)
 
 ## Immediate milestone
 
 Prove that two players can reliably control their cars and complete a basic pit action using two Pieces each. Art, additional tracks, championships, and content production wait until that interaction survives playtesting.
-
