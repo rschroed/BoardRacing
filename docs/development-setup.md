@@ -21,11 +21,13 @@ The initial development environment is Apple Silicon macOS and uses:
 | Tool | Pinned version | Notes |
 | --- | --- | --- |
 | Unity Hub | 3.19.5 | Installation and editor management only |
-| Unity Editor | 2022.3.74f1 Apple Silicon | Changeset `f81e190e19ca`; 3-year LTS release dated March 11, 2026 |
+| Unity Editor | 2022.3.62f3 Apple Silicon | Changeset `96770f904ca7`; standard LTS security-patched release dated October 28, 2025 |
 | Git LFS | 3.7.1 | Installed and initialized in the user Git configuration |
 | Board Connect | 1.0.0-beta.5 | Installed by Board's official macOS/Linux installer |
 
-Unity 2022.3.74f1 was selected because Board recommends Unity 2022.3 LTS for the current SDK and this is the newest published 2022.3 LTS patch at the time of pinning. Do not silently upgrade the project editor. Upgrade through a dedicated issue that confirms Board SDK compatibility and records the new `ProjectVersion.txt` value.
+Unity 2022.3.62f3 was selected because Board recommends Unity 2022.3 LTS for the current SDK and this is the latest security-patched standard LTS build available to Unity Personal licenses. Later 2022.3 releases are Extended LTS builds that require Unity Industry or Enterprise licensing; Unity 2022.3.74f1 was tested and correctly rejected the project's Personal license.
+
+Do not silently upgrade the project editor. Upgrade through a dedicated issue that confirms Board SDK and license compatibility and records the new `ProjectVersion.txt` value.
 
 ### Unity Android modules
 
