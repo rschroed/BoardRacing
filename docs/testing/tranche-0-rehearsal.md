@@ -28,8 +28,8 @@ Passed on July 12, 2026 from commit `93390be` in a separate temporary clone:
 
 No undocumented setup knowledge was required after adding the explicit Android Platform 33 installation and bundled-Java instructions to development setup.
 
-## Hardware exception
+## Hardware follow-up
 
-Physical Board validation is tracked in Issue [#13](https://github.com/rschroed/BoardRacing/issues/13). At initial Tranche 0 sign-off, Board Connect could not discover hardware on the LAN, so #13 is assigned and marked `blocked` with its owner and unblock condition documented.
+At initial Tranche 0 sign-off, Board Connect could not discover hardware on the LAN, so Issue [#13](https://github.com/rschroed/BoardRacing/issues/13) temporarily carried the roadmap's hardware-only exception.
 
-This exception satisfies the Tranche 0 roadmap rule but does not satisfy Tranche 1. Physical Board evidence is a blocking Tranche 1 exit requirement.
+The exception was subsequently cleared when [physical Board validation](physical-board-validation.md) passed on BoardOS 2.0.3. The platform loop and raw Piece input are verified; Tranche 1 must still prove the specific two-player Car and Pit Crew interaction on hardware.

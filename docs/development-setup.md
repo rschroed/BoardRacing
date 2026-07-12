@@ -143,12 +143,12 @@ Do not record portal credentials, download tokens, signed URLs, or personal down
 
 ## Hardware status
 
-At the start of Tranche 0, Board Connect discovery returned no reachable Board on the local network. Physical hardware availability and BoardOS compatibility therefore remain unverified.
+Initial [physical Board validation](testing/physical-board-validation.md) passed on BoardOS 2.0.3. Pairing, application install/launch, logs, screenshot, stop/relaunch, and physical Arcade Piece placement, touch, movement, rotation, release, and removal were verified.
 
-Issue [#13](https://github.com/rschroed/BoardRacing/issues/13) owns pairing, deployment, logs, screenshots, and physical Piece-input validation. Tranche 0 may otherwise complete under the roadmap's conditional hardware exception, but Tranche 1 cannot pass without physical-hardware evidence.
+Board addressing and pairing state remain local. Never add device addresses, credentials, tokens, or Board Connect user state to repository documentation or configuration.
 
 ## Next setup steps
 
 - Use the [Board input simulator smoke test](testing/board-input-simulator.md) after dependency or input-setting changes.
 - Use the [Android development build procedure](testing/android-development-build.md) to produce and inspect local APKs.
-- Validate deployment and physical Piece input in [#13](https://github.com/rschroed/BoardRacing/issues/13).
+- Repeat the [physical Board validation](testing/physical-board-validation.md) after platform or physical-input changes.
