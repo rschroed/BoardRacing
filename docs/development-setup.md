@@ -12,7 +12,14 @@ Verified through the Board Developer Portal on July 12, 2026:
 | Board Arcade Piece Set Model | 1.3.7 | Authenticated Board Developer Portal or Unity SDK settings UI | Download manually; do not commit |
 | Board Connect | 1.0.0-beta.5 | Board installer at `https://dev.board.fun/connect/install` | Install locally; do not commit the binary |
 
-The SDK package and Arcade model have been downloaded on the initial development machine. Their local locations are machine-specific and must not be referenced by committed Unity configuration using absolute paths.
+The SDK package and Arcade model have been downloaded on the initial development machine. The Unity project references their ignored, project-relative installation paths; no committed configuration contains a machine-specific absolute path.
+
+Verified SHA-256 checksums:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `fun.board-3.3.0.tar` | `865f53c4cbb2011896348d8277ca1223176090c91608ef75352970526340307d` |
+| `arcade_v1.3.7.tflite` | `32fb80482b974e09e142985cf0210c712726f1ad289a532b21d2edcd84fbc8a5` |
 
 ## Pinned development toolchain
 
@@ -55,7 +62,24 @@ The committed baseline contains:
 - Android as the development build target expectation.
 - Unity package and project metadata, including the editor version and package lock file.
 
-After a fresh clone, switch **File > Build Settings > Platform** to **Android** before Board SDK configuration or deployment work. The selected platform is local editor state and is not relied upon as committed configuration. Issue #10 will import the restricted SDK and run **Board > Configure Unity Project...**, which owns the final Board-required Android API, ARM64, IL2CPP, and Input System settings.
+After a fresh clone, switch **File > Build Settings > Platform** to **Android** before Board SDK configuration or deployment work. The selected platform is local editor state and is not relied upon as committed configuration. The Board configuration wizard owns the committed Android API, ARM64, IL2CPP, and Input System settings.
+
+### Install the restricted Unity dependencies
+
+Before opening a fresh clone in Unity:
+
+1. Download **Board Unity SDK v3.3.0** and verify its checksum above.
+2. Copy it to `Packages/fun.board-3.3.0.tar` without extracting it. The committed package manifest resolves `fun.board` from this relative, ignored path.
+3. Create `Assets/StreamingAssets` if necessary.
+4. Download **Board Arcade v1.3.7**, verify its checksum, and copy it to `Assets/StreamingAssets/arcade_v1.3.7.tflite`.
+5. Open the repository root with Unity `2022.3.62f3`. Confirm that **Board SDK 3.3.0**, **Input System**, and **Unity UI** resolve without compiler errors.
+6. In **Window > Package Manager**, select **Board SDK**, open the **Samples** tab, and import the **Input** sample. The authorized local copy under `Assets/Samples/Board SDK/3.3.0/Input` is ignored and must not be committed.
+
+The Board SDK uses Unity UI and EventSystem types but v3.3.0 does not declare `com.unity.ugui` in its own package dependencies. This project therefore declares Unity UI `1.0.0` directly in `Packages/manifest.json`.
+
+The committed Board settings select the Arcade model by filename and use the SDK defaults of translation smoothing `0.5`, rotation smoothing `0.5`, and persistence `4`. The model binary and its Unity metadata remain ignored.
+
+The Board configuration wizard has been applied. Its committed project settings are Android API 33 minimum and target, IL2CPP, an architecture set that includes ARM64, the new Input System, and landscape-left orientation. Rerun **Board > Configure Unity Project...** after a Board SDK upgrade or when Unity reports a configuration warning.
 
 ### Local command verification
 
@@ -95,7 +119,7 @@ This is a repository-handling decision, not legal advice.
 2. Sign in to the [Board Developer Portal](https://dev.board.fun/) with the Board account authorized for development.
 3. Download **Board Unity SDK v3.3.0**.
 4. Download **Board Arcade v1.3.7** under Piece Set Models. The Unity SDK may also retrieve available models through **Edit > Project Settings > Board > Input Settings** after the SDK is installed.
-5. Keep the downloaded files outside the repository.
+5. Keep the original downloads in secure local storage. Install copies only at the ignored project-relative paths documented above.
 
 Do not record portal credentials, download tokens, signed URLs, or personal download locations in tracked files.
 
@@ -107,5 +131,5 @@ Issue [#13](https://github.com/rschroed/BoardRacing/issues/13) owns pairing, dep
 
 ## Next setup steps
 
-- Import and configure the restricted dependencies in [#10](https://github.com/rschroed/BoardRacing/issues/10).
 - Establish editor and simulator smoke tests in [#11](https://github.com/rschroed/BoardRacing/issues/11).
+- Define the initial project architecture in [#12](https://github.com/rschroed/BoardRacing/issues/12).

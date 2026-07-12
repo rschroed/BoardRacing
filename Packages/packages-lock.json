@@ -1,5 +1,31 @@
 {
   "dependencies": {
+    "com.unity.inputsystem": {
+      "version": "1.14.0",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.modules.uielements": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.ugui": {
+      "version": "1.0.0",
+      "depth": 0,
+      "source": "builtin",
+      "dependencies": {
+        "com.unity.modules.ui": "1.0.0",
+        "com.unity.modules.imgui": "1.0.0"
+      }
+    },
+    "fun.board": {
+      "version": "file:fun.board-3.3.0.tar",
+      "depth": 0,
+      "source": "local-tarball",
+      "dependencies": {
+        "com.unity.inputsystem": "1.7.0"
+      }
+    },
     "com.unity.modules.ai": {
       "version": "1.0.0",
       "depth": 0,
