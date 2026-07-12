@@ -131,5 +131,5 @@ Issue [#13](https://github.com/rschroed/BoardRacing/issues/13) owns pairing, dep
 
 ## Next setup steps
 
-- Establish editor and simulator smoke tests in [#11](https://github.com/rschroed/BoardRacing/issues/11).
+- Use the [Board input simulator smoke test](testing/board-input-simulator.md) after dependency or input-setting changes.
 - Define the initial project architecture in [#12](https://github.com/rschroed/BoardRacing/issues/12).
