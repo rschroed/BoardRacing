@@ -14,6 +14,52 @@ Verified through the Board Developer Portal on July 12, 2026:
 
 The SDK package and Arcade model have been downloaded on the initial development machine. Their local locations are machine-specific and must not be referenced by committed Unity configuration using absolute paths.
 
+## Pinned development toolchain
+
+The initial development environment is Apple Silicon macOS and uses:
+
+| Tool | Pinned version | Notes |
+| --- | --- | --- |
+| Unity Hub | 3.19.5 | Installation and editor management only |
+| Unity Editor | 2022.3.74f1 Apple Silicon | Changeset `f81e190e19ca`; 3-year LTS release dated March 11, 2026 |
+| Git LFS | 3.7.1 | Installed and initialized in the user Git configuration |
+| Board Connect | 1.0.0-beta.5 | Installed by Board's official macOS/Linux installer |
+
+Unity 2022.3.74f1 was selected because Board recommends Unity 2022.3 LTS for the current SDK and this is the newest published 2022.3 LTS patch at the time of pinning. Do not silently upgrade the project editor. Upgrade through a dedicated issue that confirms Board SDK compatibility and records the new `ProjectVersion.txt` value.
+
+### Unity Android modules
+
+Install the editor with **Android Build Support** and its child modules:
+
+- OpenJDK `11.0.14.1+1` supplied by Unity.
+- Android NDK r23b supplied by Unity.
+- Android SDK Build Tools 34.0.0.
+- Android SDK Platform Tools 32.0.0.
+- Android SDK Platforms 34, 35, and 36 installed by the current Unity Hub module definition.
+- Android SDK Command Line Tools 6.0.
+
+Use Unity-managed SDK, NDK, and JDK paths. The Board project setup wizard remains responsible for selecting the application target settings required by the SDK, including API level, ARM64, IL2CPP, orientation, and Input System configuration.
+
+On another machine, install the same editor patch and Android modules through Unity Hub before opening the project. `ProjectSettings/ProjectVersion.txt` will become the source of truth after the Unity baseline is created in Issue #9.
+
+### Local command verification
+
+Run:
+
+```bash
+git lfs version
+board-connect --version
+```
+
+Expected versions for the initial environment:
+
+```text
+git-lfs/3.7.1
+board-connect version v1.0.0-beta.5
+```
+
+Board's installer places `board-connect` in `~/.local/bin`. Add that directory to `PATH` locally when it is not already available. Do not commit shell-specific absolute paths or modify repository scripts to depend on one developer's home directory.
+
 ## Why restricted artifacts are not committed
 
 The [Board Developer Terms of Use](https://docs.dev.board.fun/more/license) grant a non-exclusive, non-sublicensable, non-transferable, revocable license to download, install, and use the SDK for Board development. Section 3 prohibits distributing, publishing, transferring, or otherwise making the SDK available to third parties without prior written consent, except for permitted distributable elements incorporated into developed programs or tools.
