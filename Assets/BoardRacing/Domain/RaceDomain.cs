@@ -98,7 +98,8 @@ namespace BoardRacing.Domain
     {
         public RaceRules(int laps, float countdownSeconds, float maxSpeed, float acceleration, float drag,
             float braking, float cornerSpeedScrub, float cornerRecoverySeconds, float recoveryAccelerationScale,
-            float passingDistance, float passingOffset, float rematchHoldSeconds, int requiredServiceCount = 0)
+            float passingDistance, float passingOffset, float rematchHoldSeconds, int requiredServiceCount = 0,
+            ConditionRules conditionRules = default)
         {
             var scalarValues = new[] { countdownSeconds, maxSpeed, acceleration, drag, braking, cornerSpeedScrub,
                 cornerRecoverySeconds, recoveryAccelerationScale, passingDistance, passingOffset, rematchHoldSeconds };
@@ -114,7 +115,7 @@ namespace BoardRacing.Domain
             Drag = drag; Braking = braking; CornerSpeedScrub = cornerSpeedScrub;
             CornerRecoverySeconds = cornerRecoverySeconds; RecoveryAccelerationScale = recoveryAccelerationScale;
             PassingDistance = passingDistance; PassingOffset = passingOffset; RematchHoldSeconds = rematchHoldSeconds;
-            RequiredServiceCount = requiredServiceCount;
+            RequiredServiceCount = requiredServiceCount; Conditions = conditionRules;
         }
         public int Laps { get; }
         public float CountdownSeconds { get; }
@@ -129,9 +130,48 @@ namespace BoardRacing.Domain
         public float PassingOffset { get; }
         public float RematchHoldSeconds { get; }
         public int RequiredServiceCount { get; }
+        public ConditionRules Conditions { get; }
         public static RaceRules Defaults => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f);
         public static RaceRules TrancheThreeDefaults =>
-            new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f, 1);
+            new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f, 1,
+                ConditionRules.Defaults);
+    }
+
+    public readonly struct ConditionRules
+    {
+        public ConditionRules(float heatGainPerSecondAtFullThrottle, float heatCoolingPerSecond,
+            float heatPenaltyThreshold, float heatedMaximumSpeedScale, float heatedAccelerationScale,
+            float tireWearPerCorner, float tireWearPerUnsafeSpeed, float tirePenaltyThreshold,
+            float fullyWornSafeSpeedScale)
+        {
+            var values = new[] { heatGainPerSecondAtFullThrottle, heatCoolingPerSecond, heatPenaltyThreshold,
+                heatedMaximumSpeedScale, heatedAccelerationScale, tireWearPerCorner, tireWearPerUnsafeSpeed,
+                tirePenaltyThreshold, fullyWornSafeSpeedScale };
+            if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x)) || heatGainPerSecondAtFullThrottle <= 0f ||
+                heatCoolingPerSecond <= 0f || heatPenaltyThreshold <= 0f || heatPenaltyThreshold >= 1f ||
+                heatedMaximumSpeedScale <= 0f || heatedMaximumSpeedScale > 1f || heatedAccelerationScale <= 0f ||
+                heatedAccelerationScale > 1f || tireWearPerCorner < 0f || tireWearPerUnsafeSpeed < 0f ||
+                tirePenaltyThreshold <= 0f || tirePenaltyThreshold >= 1f || fullyWornSafeSpeedScale <= 0f ||
+                fullyWornSafeSpeedScale > 1f)
+                throw new ArgumentException("Condition rules contain invalid values.");
+            Enabled = true; HeatGainPerSecondAtFullThrottle = heatGainPerSecondAtFullThrottle;
+            HeatCoolingPerSecond = heatCoolingPerSecond; HeatPenaltyThreshold = heatPenaltyThreshold;
+            HeatedMaximumSpeedScale = heatedMaximumSpeedScale; HeatedAccelerationScale = heatedAccelerationScale;
+            TireWearPerCorner = tireWearPerCorner; TireWearPerUnsafeSpeed = tireWearPerUnsafeSpeed;
+            TirePenaltyThreshold = tirePenaltyThreshold; FullyWornSafeSpeedScale = fullyWornSafeSpeedScale;
+        }
+        public bool Enabled { get; }
+        public float HeatGainPerSecondAtFullThrottle { get; }
+        public float HeatCoolingPerSecond { get; }
+        public float HeatPenaltyThreshold { get; }
+        public float HeatedMaximumSpeedScale { get; }
+        public float HeatedAccelerationScale { get; }
+        public float TireWearPerCorner { get; }
+        public float TireWearPerUnsafeSpeed { get; }
+        public float TirePenaltyThreshold { get; }
+        public float FullyWornSafeSpeedScale { get; }
+        public static ConditionRules Disabled => default;
+        public static ConditionRules Defaults => new ConditionRules(.045f, .08f, .7f, .6f, .5f, .015f, .08f, .6f, .75f);
     }
 
     public readonly struct RacerCommand

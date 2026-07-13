@@ -88,23 +88,33 @@ namespace BoardRacing.Domain
         private void AdvanceRacer(RacerState racer, RacerCommand command, float delta)
         {
             if (racer.Finished) return;
-            float target = rules.MaxSpeed * (int)command.Throttle / 100f;
-            if (!command.CarPresent || !command.CarTouched) target = 0f;
+            float throttleFraction = command.CarPresent && command.CarTouched ? (int)command.Throttle / 100f : 0f;
+            UpdateHeat(racer, throttleFraction, delta);
+            bool heatPenalty = HeatPenaltyActive(racer);
+            float maximumSpeed = rules.MaxSpeed * (heatPenalty ? rules.Conditions.HeatedMaximumSpeedScale : 1f);
+            float target = maximumSpeed * throttleFraction;
             float rate;
-            if (target > racer.Speed) rate = rules.Acceleration * (racer.Recovery > 0f ? rules.RecoveryAccelerationScale : 1f);
+            if (target > racer.Speed)
+                rate = rules.Acceleration * (racer.Recovery > 0f ? rules.RecoveryAccelerationScale : 1f) *
+                    (heatPenalty ? rules.Conditions.HeatedAccelerationScale : 1f);
             else rate = target <= 0f ? rules.Braking : rules.Drag;
             racer.Speed = MoveTowards(racer.Speed, target, rate * delta);
             racer.Recovery = Math.Max(0f, racer.Recovery - delta);
 
             var before = track.Sample(racer.Distance);
             bool enteringCorner = before.Kind == TrackSectionKind.Corner && racer.PriorSection != before.SectionIndex;
-            if (enteringCorner && racer.Speed > before.SafeSpeed)
+            float cornerEntrySpeed = racer.Speed;
+            float effectiveSafeSpeed = before.SafeSpeed;
+            if (before.Kind == TrackSectionKind.Corner && rules.Conditions.Enabled)
+                effectiveSafeSpeed *= 1f - racer.TireWear * (1f - rules.Conditions.FullyWornSafeSpeedScale);
+            if (enteringCorner && racer.Speed > effectiveSafeSpeed)
             {
                 racer.Speed *= rules.CornerSpeedScrub;
                 racer.Recovery = rules.CornerRecoverySeconds;
                 racer.IncidentThisStep = true;
                 racer.Incidents++;
             }
+            if (enteringCorner) AddCornerWear(racer, before.SafeSpeed, cornerEntrySpeed);
             racer.PriorSection = before.SectionIndex;
 
             float prior = racer.Distance;
@@ -120,6 +130,28 @@ namespace BoardRacing.Domain
                 racer.Speed = 0f;
             }
         }
+
+        private void UpdateHeat(RacerState racer, float throttleFraction, float delta)
+        {
+            if (!rules.Conditions.Enabled) return;
+            float change = throttleFraction * rules.Conditions.HeatGainPerSecondAtFullThrottle -
+                (1f - throttleFraction) * rules.Conditions.HeatCoolingPerSecond;
+            racer.Heat = Clamp01(racer.Heat + change * delta);
+        }
+
+        private void AddCornerWear(RacerState racer, float baseSafeSpeed, float entrySpeed)
+        {
+            if (!rules.Conditions.Enabled) return;
+            float unsafeRatio = baseSafeSpeed <= 0f ? 0f : Math.Max(0f, entrySpeed / baseSafeSpeed - 1f);
+            racer.TireWear = Clamp01(racer.TireWear + rules.Conditions.TireWearPerCorner +
+                unsafeRatio * rules.Conditions.TireWearPerUnsafeSpeed);
+        }
+
+        private bool HeatPenaltyActive(RacerState racer) =>
+            rules.Conditions.Enabled && racer.Heat >= rules.Conditions.HeatPenaltyThreshold;
+
+        private bool TirePenaltyActive(RacerState racer) =>
+            rules.Conditions.Enabled && racer.TireWear >= rules.Conditions.TirePenaltyThreshold;
 
         private void HandleRematch(IReadOnlyList<RacerCommand> commands, float delta)
         {
@@ -156,7 +188,8 @@ namespace BoardRacing.Domain
             {
                 int place = Array.IndexOf(ordered, racer) + 1;
                 float offset = close ? (racer.Id == PlayerId.Player1 ? -rules.PassingOffset : rules.PassingOffset) : 0f;
-                var condition = new RacerConditionSnapshot(racer.Heat, racer.TireWear, false, false);
+                var condition = new RacerConditionSnapshot(racer.Heat, racer.TireWear,
+                    HeatPenaltyActive(racer), TirePenaltyActive(racer));
                 var pit = new RacerPitSnapshot(racer.SelectedService, racer.PitPhase, racer.ServiceProgress,
                     racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount);
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
@@ -170,6 +203,8 @@ namespace BoardRacing.Domain
 
         private static float MoveTowards(float current, float target, float maximumDelta)
         { return Math.Abs(target - current) <= maximumDelta ? target : current + Math.Sign(target - current) * maximumDelta; }
+
+        private static float Clamp01(float value) => Math.Max(0f, Math.Min(1f, value));
 
         private static float CircularDistance(float a, float b, float length)
         {
