@@ -213,6 +213,107 @@ namespace BoardRacing.Tests
                 .35f, 180f, 38f, 1f, -1));
             Assert.Throws<ArgumentException>(() => new RaceRules(5, float.NaN, 360f, 220f, 120f, 300f, .55f, 1f,
                 .35f, 180f, 38f, 1f));
+            Assert.Throws<ArgumentException>(() => new ConditionRules(.1f, .1f, .7f, 0f, .5f, .01f, .1f, .6f, .75f));
+        }
+
+        [Test]
+        public void HeatRisesWithThrottleAndCoolsWhenReleasedOrMissing()
+        {
+            var simulation = StartedSimulation(RaceRules.TrancheThreeDefaults);
+            for (int i = 0; i < 300; i++)
+                simulation.Step(1f / 60f, Commands(ThrottleStep.Full, true));
+            float hot = Player(simulation, PlayerId.Player1).Condition.Heat;
+            Assert.That(hot, Is.GreaterThan(.2f));
+
+            for (int i = 0; i < 60; i++)
+                simulation.Step(1f / 60f, Commands(ThrottleStep.Off, false));
+            float cooled = Player(simulation, PlayerId.Player1).Condition.Heat;
+            Assert.That(cooled, Is.LessThan(hot));
+
+            for (int i = 0; i < 60; i++) simulation.Step(1f / 60f, Array.Empty<RacerCommand>());
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.Heat, Is.LessThan(cooled));
+        }
+
+        [Test]
+        public void HeatPenaltyLimitsPerformanceWithoutRequestingPit()
+        {
+            var simulation = StartedSimulation(LongConditionRules());
+            int guard = 0;
+            while (!Player(simulation, PlayerId.Player1).Condition.HeatPenaltyActive && guard++ < 5000)
+                simulation.Step(1f / 60f, Commands(ThrottleStep.Full, true));
+            Assert.That(guard, Is.LessThan(5000));
+            for (int i = 0; i < 240; i++) simulation.Step(1f / 60f, Commands(ThrottleStep.Full, true));
+
+            var racer = Player(simulation, PlayerId.Player1);
+            Assert.That(racer.Speed, Is.LessThanOrEqualTo(
+                LongConditionRules().MaxSpeed * LongConditionRules().Conditions.HeatedMaximumSpeedScale + .01f));
+            Assert.That(racer.Pit.Phase, Is.EqualTo(PitPhase.OnTrack));
+            Assert.That(racer.Pit.SelectedService, Is.EqualTo(PitService.None));
+        }
+
+        [Test]
+        public void TireWearAccumulatesOnlyAtCornerEntryAndRemainsClamped()
+        {
+            var simulation = StartedSimulation(LongConditionRules());
+            for (int i = 0; i < 60; i++) simulation.Step(1f / 60f, Commands(ThrottleStep.Full, true));
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.TireWear, Is.Zero);
+
+            int guard = 0;
+            while (Player(simulation, PlayerId.Player1).CompletedLaps < 20 && guard++ < 80000)
+                simulation.Step(1f / 60f, Commands(ThrottleStep.Full, true));
+            var condition = Player(simulation, PlayerId.Player1).Condition;
+            Assert.That(condition.TireWear, Is.GreaterThan(0f));
+            Assert.That(condition.TireWear, Is.LessThanOrEqualTo(1f));
+            Assert.That(condition.TirePenaltyActive, Is.True);
+        }
+
+        [Test]
+        public void WornTiresTurnAPreviouslySafeCornerSpeedIntoAnIncident()
+        {
+            var conditions = new ConditionRules(.001f, .1f, .99f, 1f, 1f, .25f, 0f, .2f, .5f);
+            var rules = new RaceRules(5, 0f, 360f, 220f, 120f, 300f, .55f, 1f, .35f,
+                180f, 38f, 1f, 0, conditions);
+            var simulation = StartedSimulation(rules);
+            int guard = 0;
+            while (Player(simulation, PlayerId.Player1).Condition.TireWear == 0f && guard++ < 10000)
+                simulation.Step(1f / 60f, Commands(ThrottleStep.Half, true));
+            Assert.That(Player(simulation, PlayerId.Player1).IncidentCount, Is.Zero);
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.TirePenaltyActive, Is.True);
+
+            while (Player(simulation, PlayerId.Player1).IncidentCount == 0 && guard++ < 20000)
+                simulation.Step(1f / 60f, Commands(ThrottleStep.Half, true));
+            Assert.That(Player(simulation, PlayerId.Player1).IncidentCount, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void UnsafeCornerEntryAddsMoreWearThanSafeEntry()
+        {
+            var conditions = new ConditionRules(.001f, .1f, .99f, 1f, 1f, .01f, .5f, .99f, .9f);
+            var rules = new RaceRules(5, 0f, 360f, 220f, 120f, 300f, .55f, 1f, .35f,
+                180f, 38f, 1f, 0, conditions);
+            var safe = StartedSimulation(rules); var unsafeEntry = StartedSimulation(rules);
+            int safeGuard = 0, unsafeGuard = 0;
+            while (Player(safe, PlayerId.Player1).Condition.TireWear == 0f && safeGuard++ < 10000)
+                safe.Step(1f / 60f, Commands(ThrottleStep.Half, true));
+            while (Player(unsafeEntry, PlayerId.Player1).Condition.TireWear == 0f && unsafeGuard++ < 10000)
+                unsafeEntry.Step(1f / 60f, Commands(ThrottleStep.Full, true));
+            Assert.That(Player(unsafeEntry, PlayerId.Player1).Condition.TireWear,
+                Is.GreaterThan(Player(safe, PlayerId.Player1).Condition.TireWear));
+        }
+
+        [Test]
+        public void ConditionsRemainIndependentAcrossSimultaneousRacers()
+        {
+            var simulation = StartedSimulation(LongConditionRules());
+            var p1FullP2Off = new[]
+            {
+                new RacerCommand(PlayerId.Player1, ThrottleStep.Full, true, true),
+                new RacerCommand(PlayerId.Player2, ThrottleStep.Off, true, false)
+            };
+            for (int i = 0; i < 300; i++) simulation.Step(1f / 60f, p1FullP2Off);
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.Heat, Is.GreaterThan(0f));
+            Assert.That(Player(simulation, PlayerId.Player2).Condition.Heat, Is.Zero);
+            Assert.That(Player(simulation, PlayerId.Player2).Condition.TireWear, Is.Zero);
         }
 
         private static RaceSimulation StartedSimulation()
@@ -224,7 +325,7 @@ namespace BoardRacing.Tests
         {
             var result = new RaceSimulation(TrackDefinition.Placeholder(), rules);
             result.Step(1f / 60f, Commands(ThrottleStep.Off, false));
-            result.Step(rules.CountdownSeconds, Commands(ThrottleStep.Off, false));
+            result.Step(Math.Max(1f / 60f, rules.CountdownSeconds), Commands(ThrottleStep.Off, false));
             Assert.That(result.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
             return result;
         }
@@ -254,6 +355,9 @@ namespace BoardRacing.Tests
                 simulation.Step(.1f, Commands(ThrottleStep.Full, true));
             return simulation;
         }
+
+        private static RaceRules LongConditionRules() => new RaceRules(100, 0f, 360f, 220f, 120f, 300f,
+            .55f, 1f, .35f, 180f, 38f, 1f, 1, ConditionRules.Defaults);
 
         private static RacerSnapshot Player(RaceSimulation simulation, PlayerId id) =>
             simulation.Snapshot.Racers.Single(x => x.PlayerId == id);

@@ -16,6 +16,14 @@ Tranche 3 is **in progress**. This record defines the provisional strategy hypot
 
 The race simulation consumes only player-scoped throttle, service-selection, pit-request, and service-action intent. Raw Board contacts, screen-space Crew positions, and visual effects remain outside the simulation. Immutable racer snapshots expose normalized condition values and pit state for presentation.
 
+## Provisional condition model
+
+- Heat changes continuously from requested throttle: full throttle adds `0.045` normalized heat per second and released throttle removes `0.08` per second. Intermediate throttle blends those rates.
+- At `0.70` heat, maximum speed is limited to `60%` and acceleration to `50%` until the motor cools below the threshold. This penalty never requests or forces a pit stop.
+- Every corner entry adds `0.015` tire wear plus `0.08` times the fraction of entry speed above the base safe speed.
+- Tire wear progressively lowers the safe corner-speed margin to `75%` of its base value at fully worn. The warning state begins at `0.60` wear.
+- Both conditions are normalized and clamped to `0–1`. These values are first-pass deterministic defaults, not final balance.
+
 ## Questions the gate must answer
 
 1. Do heat and wear change how players drive without requiring constant HUD reading?
