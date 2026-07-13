@@ -6,6 +6,8 @@ namespace BoardRacing.Domain
 {
     public enum RacePhase { Grid, Countdown, Racing, Finished }
     public enum TrackSectionKind { Straight, Corner }
+    public enum PitService { None, Tires, Cooling }
+    public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting }
 
     public readonly struct TrackSegment
     {
@@ -96,14 +98,23 @@ namespace BoardRacing.Domain
     {
         public RaceRules(int laps, float countdownSeconds, float maxSpeed, float acceleration, float drag,
             float braking, float cornerSpeedScrub, float cornerRecoverySeconds, float recoveryAccelerationScale,
-            float passingDistance, float passingOffset, float rematchHoldSeconds)
+            float passingDistance, float passingOffset, float rematchHoldSeconds, int requiredServiceCount = 0)
         {
+            var scalarValues = new[] { countdownSeconds, maxSpeed, acceleration, drag, braking, cornerSpeedScrub,
+                cornerRecoverySeconds, recoveryAccelerationScale, passingDistance, passingOffset, rematchHoldSeconds };
+            if (scalarValues.Any(x => float.IsNaN(x) || float.IsInfinity(x)))
+                throw new ArgumentException("Race rules must contain finite values.");
             if (laps < 1 || countdownSeconds < 0f || maxSpeed <= 0f || acceleration <= 0f || drag <= 0f || braking <= 0f)
                 throw new ArgumentException("Race rules contain invalid non-positive values.");
+            if (cornerSpeedScrub <= 0f || cornerSpeedScrub > 1f || cornerRecoverySeconds < 0f ||
+                recoveryAccelerationScale <= 0f || recoveryAccelerationScale > 1f || passingDistance < 0f ||
+                passingOffset < 0f || rematchHoldSeconds <= 0f || requiredServiceCount < 0)
+                throw new ArgumentException("Race rules contain invalid strategy or presentation values.");
             Laps = laps; CountdownSeconds = countdownSeconds; MaxSpeed = maxSpeed; Acceleration = acceleration;
             Drag = drag; Braking = braking; CornerSpeedScrub = cornerSpeedScrub;
             CornerRecoverySeconds = cornerRecoverySeconds; RecoveryAccelerationScale = recoveryAccelerationScale;
             PassingDistance = passingDistance; PassingOffset = passingOffset; RematchHoldSeconds = rematchHoldSeconds;
+            RequiredServiceCount = requiredServiceCount;
         }
         public int Laps { get; }
         public float CountdownSeconds { get; }
@@ -117,28 +128,81 @@ namespace BoardRacing.Domain
         public float PassingDistance { get; }
         public float PassingOffset { get; }
         public float RematchHoldSeconds { get; }
+        public int RequiredServiceCount { get; }
         public static RaceRules Defaults => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f);
+        public static RaceRules TrancheThreeDefaults =>
+            new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f, 1);
     }
 
     public readonly struct RacerCommand
     {
         public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool carPresent, bool carTouched)
-        { PlayerId = playerId; Throttle = throttle; CarPresent = carPresent; CarTouched = carTouched; }
+            : this(playerId, throttle, carPresent, carTouched, PitService.None, false, 0f, false) { }
+
+        public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool carPresent, bool carTouched,
+            PitService selectedService, bool requestPit, float serviceActionProgress, bool completeService)
+        {
+            if (!Enum.IsDefined(typeof(PitService), selectedService) || serviceActionProgress < 0f ||
+                serviceActionProgress > 1f || float.IsNaN(serviceActionProgress))
+                throw new ArgumentException("Racer strategy command contains invalid values.");
+            PlayerId = playerId; Throttle = throttle; CarPresent = carPresent; CarTouched = carTouched;
+            SelectedService = selectedService; RequestPit = requestPit;
+            ServiceActionProgress = serviceActionProgress; CompleteService = completeService;
+        }
         public PlayerId PlayerId { get; }
         public ThrottleStep Throttle { get; }
         public bool CarPresent { get; }
         public bool CarTouched { get; }
+        public PitService SelectedService { get; }
+        public bool RequestPit { get; }
+        public float ServiceActionProgress { get; }
+        public bool CompleteService { get; }
+    }
+
+    public readonly struct RacerConditionSnapshot
+    {
+        public RacerConditionSnapshot(float heat, float tireWear, bool heatPenaltyActive, bool tirePenaltyActive)
+        {
+            if (heat < 0f || heat > 1f || tireWear < 0f || tireWear > 1f ||
+                float.IsNaN(heat) || float.IsNaN(tireWear))
+                throw new ArgumentException("Condition values must be normalized.");
+            Heat = heat; TireWear = tireWear;
+            HeatPenaltyActive = heatPenaltyActive; TirePenaltyActive = tirePenaltyActive;
+        }
+        public float Heat { get; }
+        public float TireWear { get; }
+        public bool HeatPenaltyActive { get; }
+        public bool TirePenaltyActive { get; }
+    }
+
+    public readonly struct RacerPitSnapshot
+    {
+        public RacerPitSnapshot(PitService selectedService, PitPhase phase, float serviceProgress,
+            int completedServices, bool finishEligible)
+        {
+            if (!Enum.IsDefined(typeof(PitService), selectedService) || !Enum.IsDefined(typeof(PitPhase), phase) ||
+                serviceProgress < 0f || serviceProgress > 1f || float.IsNaN(serviceProgress) || completedServices < 0)
+                throw new ArgumentException("Pit snapshot contains invalid values.");
+            SelectedService = selectedService; Phase = phase; ServiceProgress = serviceProgress;
+            CompletedServices = completedServices; FinishEligible = finishEligible;
+        }
+        public PitService SelectedService { get; }
+        public PitPhase Phase { get; }
+        public float ServiceProgress { get; }
+        public int CompletedServices { get; }
+        public bool FinishEligible { get; }
     }
 
     public readonly struct RacerSnapshot
     {
         public RacerSnapshot(PlayerId playerId, float speed, float totalDistance, int completedLaps, int place,
             bool finished, float finishTime, TrackSample track, float lateralOffset, bool incidentThisStep,
-            float recoveryRemaining, int incidentCount)
+            float recoveryRemaining, int incidentCount, RacerConditionSnapshot condition, RacerPitSnapshot pit)
         {
             PlayerId = playerId; Speed = speed; TotalDistance = totalDistance; CompletedLaps = completedLaps;
             Place = place; Finished = finished; FinishTime = finishTime; Track = track; LateralOffset = lateralOffset;
             IncidentThisStep = incidentThisStep; RecoveryRemaining = recoveryRemaining; IncidentCount = incidentCount;
+            Condition = condition; Pit = pit;
         }
         public PlayerId PlayerId { get; }
         public float Speed { get; }
@@ -152,6 +216,8 @@ namespace BoardRacing.Domain
         public bool IncidentThisStep { get; }
         public float RecoveryRemaining { get; }
         public int IncidentCount { get; }
+        public RacerConditionSnapshot Condition { get; }
+        public RacerPitSnapshot Pit { get; }
     }
 
     public readonly struct RaceSnapshot

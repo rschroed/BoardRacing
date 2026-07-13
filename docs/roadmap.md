@@ -63,7 +63,7 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 
 ## 3. Pit-crew proof
 
-**Status:** Next.
+**Status:** In progress as of July 13, 2026. The deterministic strategy-contract work began in [Issue #42](https://github.com/rschroed/BoardRacing/issues/42); the physical gate remains open.
 
 **Goal:** Determine whether the second Piece deepens the race.
 

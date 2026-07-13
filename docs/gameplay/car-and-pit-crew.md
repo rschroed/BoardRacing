@@ -51,6 +51,19 @@ During a stop, the player moves the Crew Piece into the relevant service region.
 - One mandatory pit stop.
 - Tires, cooling, and repair represented initially by only the smallest set needed to test decisions.
 
+## Tranche 3 provisional strategy rules
+
+The first pit-strategy playtest deliberately uses only two condition axes and two mutually exclusive services:
+
+- Sustained throttle builds motor heat; coasting, braking, and pit time cool it. High heat limits performance but never automatically requests or forces a pit stop.
+- Fast corner traversal builds tire wear. Worn tires reduce the safe corner-speed margin.
+- **Tires** restores tire condition without cooling the motor.
+- **Cooling** restores motor condition without changing tire wear.
+- Each racer must complete at least one service during the five-lap race. A racer that reaches the nominal finish without service remains unclassified, continues under player control, and must complete service before it can be classified at a later start/finish crossing.
+- Players may make additional stops, but every stop has a meaningful time cost.
+
+The Crew Piece will select one of the two services, deliberately request pit entry, and perform the proven align-and-hold action during service. Overheating should create a strong reason to choose Cooling, not remove the player's decision. Repair, forced pit stops, additional services, and final tuning are deferred until this smallest loop is physically tested.
+
 ## Feedback requirements
 
 - Every recognized Piece receives an immediate matching highlight.
@@ -77,4 +90,3 @@ The prototype must deliberately test:
 - Pit actions feel deliberate but not fiddly.
 - Players make different pit decisions based on race state.
 - The Crew Piece feels necessary rather than ornamental.
-
