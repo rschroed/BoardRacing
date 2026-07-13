@@ -45,7 +45,7 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 
 ## 2. Racing proof
 
-**Status:** In progress. Issues #34–#40 implement and validate the deterministic two-player racing proof.
+**Status:** Passed July 13, 2026. The deterministic simulation, five-lap lifecycle, automatic overtaking, mirrored presentation, automated suites, Android deployment, and two-person physical playtest passed. See the [Tranche 2 racing-proof record](testing/tranche-2-racing-proof.md).
 
 **Goal:** Determine whether the core slot-car race is fun before adding strategy.
 
@@ -62,6 +62,8 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 **Exit criterion:** A five-lap race is understandable and competitive using the Car Piece alone.
 
 ## 3. Pit-crew proof
+
+**Status:** Next.
 
 **Goal:** Determine whether the second Piece deepens the race.
 

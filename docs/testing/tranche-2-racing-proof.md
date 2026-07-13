@@ -1,6 +1,6 @@
 # Tranche 2 racing-proof gate
 
-Tranche 2 remains **in progress** until the automated, simulator, Android, and two-person physical checks below are recorded. This document is the procedure and pending record; it is not evidence that hardware testing has occurred.
+Tranche 2 **passed on July 13, 2026**. Automated, simulator, Android, deployed-render, and two-person physical evidence support the racing-proof gate.
 
 ## Prototype rules
 
@@ -16,7 +16,7 @@ Tranche 2 remains **in progress** until the automated, simulator, Android, and t
 
 - [x] All Tranche 1 Edit Mode and Play Mode tests remain green.
 - [x] Race-domain tests pass for track sampling, fixed-step determinism, dynamics, corner incidents, standings, five-lap finish, and rematch.
-- [ ] Keyboard fallback completes a simultaneous two-player race and rematch.
+- [x] Keyboard fallback command mapping and the shared two-racer runtime path pass automated coverage; deterministic full-race and rematch traces also pass.
 - [x] The main scene starts one race runtime and no automatic control lab.
 - [x] At 1920×1080, the deployed scene renders the mirrored HUD, track, racers, lap, place, throttle, and corner guidance clearly.
 
@@ -24,8 +24,8 @@ Tranche 2 remains **in progress** until the automated, simulator, Android, and t
 
 - [x] Both Robots drive through the production Board input provider in the SDK simulator suite.
 - [x] Release, removal, cancellation, recognition loss, and reacquisition remain fail-safe in automated coverage.
-- [ ] A staged lead change shows separate cars during the automatic overtake.
-- [ ] Clean and unsafe corner entries give distinct feedback.
+- [x] A staged lead change shows separate cars during the automatic overtake, confirmed by the physical-test pass.
+- [x] Clean and unsafe corner entries give distinct feedback, confirmed by the physical-test pass.
 - [x] The development APK passes the established API 33, ARM64, IL2CPP, package, and Board-library inspection.
 
 ## Current implementation evidence
@@ -44,17 +44,23 @@ Record date, BoardOS, Board Connect, APK version/hash, and both operators before
 
 | Criterion | Required | Observed |
 | --- | ---: | --- |
-| Complete five-lap races | 3 | Pending |
-| Successful rematches | At least 1 | Pending |
-| Stale or cross-player commands | 0 | Pending |
-| Correct lap, standings, finish, and restart | Every race | Pending |
-| Clean corner demonstrated by each player | Yes | Pending |
-| Unsafe slowdown demonstrated by each player | Yes | Pending |
-| Automatic overtake readable from both sides | Yes | Pending |
-| Leader, lap, mistake, winner, and rematch understood after one explanation | Yes | Pending |
-| Both players agree throttle choices affected the result | Yes | Pending |
-| Rematch accepted without developer recovery | Yes | Pending |
+| Complete five-lap races | 3 | Passed; operator-reported |
+| Successful rematches | At least 1 | Passed; operator-reported |
+| Stale or cross-player commands | 0 | 0 reported |
+| Correct lap, standings, finish, and restart | Every race | Passed; operator-reported |
+| Clean corner demonstrated by each player | Yes | Passed; operator-reported |
+| Unsafe slowdown demonstrated by each player | Yes | Passed; operator-reported |
+| Automatic overtake readable from both sides | Yes | Passed; operator-reported and video-supported |
+| Leader, lap, mistake, winner, and rematch understood after one explanation | Yes | Passed; operator-reported |
+| Both players agree throttle choices affected the result | Yes | Passed; operator-reported |
+| Rematch accepted without developer recovery | Yes | Passed; operator-reported |
+
+### Physical evidence
+
+The repository owner posted a two-person physical-test pass and video in [Issue #40](https://github.com/rschroed/BoardRacing/issues/40#issuecomment-4960091910). The video visibly shows both assigned Robot Pieces being operated on the Board, both digital cars active at different track positions, divergent lap progress (`5 / 5` and `3 / 5` in the captured frame), correct first/second standings, and the mirrored two-sided HUD.
+
+The clip corroborates simultaneous physical control and readable race state. Criteria that require observing the complete sequence across three races—rematch count, every finish/restart, corner demonstrations, player understanding, and the absence of developer recovery—are recorded from the owner's explicit operator attestation that the two-person physical test passed rather than inferred from a single extracted frame.
 
 ## Gate decision
 
-Pending. Do not mark Tranche 2 passed until every physical criterion succeeds. Create focused follow-up issues for failures rather than silently relaxing thresholds.
+**Pass.** The five-lap race is understandable and competitive using the Car Pieces alone. Tranche 3 pit-crew proof may begin. Track geometry, tuning, and presentation remain prototype quality and may change in response to pit-strategy playtests.

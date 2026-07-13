@@ -2,7 +2,7 @@
 
 Board Racing is a tactile, top-down slot-car game for 1–4 players on [Board](https://board.fun/). Each player uses two physical Pieces: one to drive and one to operate the pit crew.
 
-> Status: Tranche 1 physical-control proof passed on July 12, 2026. Tranche 2 racing-proof work is in progress; mechanics and visual direction remain provisional until later roadmap gates pass.
+> Status: Tranche 2 racing proof passed on July 13, 2026. Tranche 3 may begin testing whether the Pit Crew Piece adds meaningful strategy; mechanics and visual direction remain provisional.
 
 ## Player experience
 
@@ -33,4 +33,4 @@ The first prototype will use Unity and the Board Unity SDK. Unity currently prov
 
 ## Immediate milestone
 
-Build one understandable five-lap placeholder race using the proven Car controls. Art, additional tracks, championships, and content production remain deferred until the racing and pit-strategy gates pass.
+Add the smallest tire-wear, motor-heat, and pit-service loop needed to test whether the proven Crew Piece creates meaningful race decisions. Art, additional tracks, championships, and content production remain deferred until the pit-strategy gate passes.
