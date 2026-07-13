@@ -4,6 +4,7 @@ using BoardRacing.Domain;
 using BoardRacing.Runtime;
 using NUnit.Framework;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 using UnityEngine.TestTools;
 using UnityEngine;
 
@@ -102,6 +103,70 @@ namespace BoardRacing.PlayModeTests
         }
 
         [UnityTest]
+        [Timeout(15000)]
+        public IEnumerator KeyboardFallbackCompletesStrategyRaceAndRematchThroughRuntime()
+        {
+            yield return null;
+            var race = Object.FindObjectOfType<RacePrototype>();
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            var provider = new KeyboardInputProvider();
+            race.SetInputProvider(provider);
+            var update = typeof(RacePrototype).GetMethod("Update",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(update, Is.Not.Null);
+
+            Press(keyboard.fKey);
+            yield return new WaitForSecondsRealtime(.7f);
+            Release(keyboard.fKey, queueEventOnly: true);
+            InputSystem.Update();
+            yield return null;
+            Press(keyboard.hKey);
+            yield return new WaitForSecondsRealtime(.7f);
+            Release(keyboard.hKey, queueEventOnly: true);
+            InputSystem.Update();
+            yield return null;
+            Assert.That(PumpUntil(race, update, 5f, x => x.Phase == RacePhase.Racing), Is.True);
+            PumpRace(race, update, .05f);
+            var positioned = provider.ReadSnapshots();
+            Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player1).Crew.Position.X,
+                Is.InRange(995f, 1275f));
+            Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player2).Crew.Position.X,
+                Is.InRange(265f, 545f));
+            Assert.That(race.GetCrewStrategy(PlayerId.Player1).SelectedService, Is.EqualTo(PitService.Tires));
+            Assert.That(race.GetCrewStrategy(PlayerId.Player2).SelectedService, Is.EqualTo(PitService.Cooling));
+
+            TapRaceKeys(race, update, keyboard.wKey);
+            TapRaceKeys(race, update, keyboard.wKey);
+            TapRaceKeys(race, update, keyboard.iKey);
+            TapRaceKeys(race, update, keyboard.iKey);
+            Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.Phase == PitPhase.Requested), Is.True);
+
+            TapRaceKeys(race, update, keyboard.vKey);
+            TapRaceKeys(race, update, keyboard.digit0Key);
+            TapRaceKeys(race, update, keyboard.qKey);
+            TapRaceKeys(race, update, keyboard.uKey);
+            Assert.That(PumpUntil(race, update, 140f,
+                x => x.Racers.All(r => r.Pit.Phase == PitPhase.InService)), Is.True);
+
+            TapRaceKeys(race, update, keyboard.wKey);
+            TapRaceKeys(race, update, keyboard.iKey);
+            Assert.That(PumpUntil(race, update, 5f,
+                x => x.Racers.All(r => r.Pit.Phase == PitPhase.Exiting)), Is.True);
+            Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.FinishEligible), Is.True);
+
+            Assert.That(PumpUntil(race, update, 180f, x => x.Phase == RacePhase.Finished), Is.True);
+            Assert.That(PumpUntil(race, update, 2f, x => x.AwaitingRematchRelease), Is.True);
+            TapRaceKeys(race, update, keyboard.qKey);
+            TapRaceKeys(race, update, keyboard.uKey);
+            PumpRace(race, update, .05f);
+
+            var rematch = race.GetRaceSnapshot();
+            Assert.That(rematch.Phase == RacePhase.Grid || rematch.Phase == RacePhase.Countdown, Is.True);
+            Assert.That(rematch.Racers.All(x => x.Condition.Heat == 0f && x.Condition.TireWear == 0f &&
+                x.Pit.CompletedServices == 0 && x.Pit.Phase == PitPhase.OnTrack), Is.True);
+        }
+
+        [UnityTest]
         public IEnumerator ControlLabCompletesAndRearmsTwoPlayersSimultaneously()
         {
             var labObject = new GameObject("Tranche 1 Control Lab Test");
@@ -141,6 +206,37 @@ namespace BoardRacing.PlayModeTests
             Release(button, queueEventOnly: true);
             InputSystem.Update();
             return result;
+        }
+
+        private void TapRaceKeys(RacePrototype race, System.Reflection.MethodInfo update,
+            params ButtonControl[] buttons)
+        {
+            foreach (var button in buttons) Press(button, queueEventOnly: true);
+            InputSystem.Update();
+            update.Invoke(race, null);
+            foreach (var button in buttons) Release(button, queueEventOnly: true);
+            InputSystem.Update();
+            PumpRace(race, update, .05f);
+        }
+
+        private static bool PumpUntil(RacePrototype race, System.Reflection.MethodInfo update, float timeout,
+            System.Func<RaceSnapshot, bool> predicate)
+        {
+            float step = Mathf.Max(.00001f, Time.unscaledDeltaTime);
+            int updates = Mathf.CeilToInt(timeout / step);
+            for (int i = 0; i < updates; i++)
+            {
+                update.Invoke(race, null);
+                if (predicate(race.GetRaceSnapshot())) return true;
+            }
+            return false;
+        }
+
+        private static void PumpRace(RacePrototype race, System.Reflection.MethodInfo update, float seconds)
+        {
+            float step = Mathf.Max(.00001f, Time.unscaledDeltaTime);
+            int updates = Mathf.CeilToInt(seconds / step);
+            for (int i = 0; i < updates; i++) update.Invoke(race, null);
         }
 
         private sealed class ScriptedProvider : IPlayerInputProvider
