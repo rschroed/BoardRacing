@@ -173,52 +173,85 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void CrewServicePlacementAndTouchReleaseEmitOneRequest()
+        public void CrewCallPitRequiresOutsidePlacementAndReleaseAndEmitsOnce()
         {
             var adapter = StrategyAdapter();
             var pit = Pit(PitService.None, PitPhase.OnTrack);
-            var released = StrategyControls(Crew(true, false, 100f, 100f, 0f));
-            var selected = adapter.Update(released, RacePhase.Racing, pit, .1f);
-            Assert.That(selected.SelectedService, Is.EqualTo(PitService.Tires));
-            Assert.That(selected.RequestPit, Is.False);
+            var initiallyInside = adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f);
+            Assert.That(initiallyInside.CallState, Is.EqualTo(PitCallState.NeedsOutside));
+            Assert.That(initiallyInside.RequestPit, Is.False);
 
-            Assert.That(adapter.Update(StrategyControls(Crew(true, true, 100f, 100f, 0f)),
+            var armed = adapter.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f);
+            Assert.That(armed.CallState, Is.EqualTo(PitCallState.Ready));
+            var positioned = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f);
+            Assert.That(positioned.CallState, Is.EqualTo(PitCallState.ReleaseToRequest));
+            Assert.That(positioned.RequestPit, Is.False);
+
+            var requested = adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f);
+            Assert.That(requested.SelectedService, Is.EqualTo(PitService.None));
+            Assert.That(requested.RequestPit, Is.True);
+            Assert.That(requested.CallState, Is.EqualTo(PitCallState.Requested));
+            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
                 RacePhase.Racing, pit, .1f).RequestPit, Is.False);
-            Assert.That(adapter.Update(released, RacePhase.Racing, pit, .1f).RequestPit, Is.True);
-            Assert.That(adapter.Update(released, RacePhase.Racing, pit, .1f).RequestPit, Is.False);
         }
 
         [Test]
-        public void CrewRequestRequiresSameReleasedRegionAndResetsForUnsafeInput()
+        public void CrewCallPitFailsSafeAndRequiresFreshOutsideRearming()
         {
             var adapter = StrategyAdapter();
             var pit = Pit(PitService.None, PitPhase.OnTrack);
-            adapter.Update(StrategyControls(Crew(true, false, 100f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            adapter.Update(StrategyControls(Crew(true, true, 100f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            var movedRelease = adapter.Update(StrategyControls(Crew(true, false, 300f, 100f, 0f)),
-                RacePhase.Racing, pit, .1f);
-            Assert.That(movedRelease.SelectedService, Is.EqualTo(PitService.Cooling));
-            Assert.That(movedRelease.RequestPit, Is.False);
-
-            adapter.Update(StrategyControls(Crew(true, true, 300f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            var wrongRegion = adapter.Update(StrategyControls(Crew(true, false, 300f, 100f, 0f), InputWarning.WrongRegion),
-                RacePhase.Racing, pit, .1f);
+            adapter.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            var wrongRegion = adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f),
+                InputWarning.WrongRegion), RacePhase.Racing, pit, .1f);
             Assert.That(wrongRegion.RequestPit, Is.False);
-            Assert.That(wrongRegion.SelectedService, Is.EqualTo(PitService.None));
+            Assert.That(wrongRegion.CallState, Is.EqualTo(PitCallState.Unavailable));
 
-            var requiresRelease = new PieceState(true, false, 1, new Vec2(300f, 100f), 0f, true);
+            var requiresRelease = new PieceState(true, false, 2, new Vec2(200f, 100f), 0f, true);
             Assert.That(adapter.Update(StrategyControls(requiresRelease), RacePhase.Racing, pit, .1f).RequestPit, Is.False);
             Assert.That(adapter.Update(StrategyControls(PieceState.Missing), RacePhase.Racing, pit, .1f).RequestPit, Is.False);
+
+            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f).RequestPit, Is.False);
+            adapter.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f).RequestPit, Is.True);
+
+            var requestedPit = Pit(PitService.None, PitPhase.Requested);
+            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)),
+                RacePhase.Racing, requestedPit, .1f).RequestPit, Is.False);
+            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f).RequestPit, Is.False);
+            adapter.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f).RequestPit, Is.True);
         }
 
         [Test]
-        public void CrewAlignAndHoldCompletesOnlyTheSelectedServiceAndResetsOnLoss()
+        public void CrewChoosesServiceOnlyWhenParkedAndSwitchingResetsProgress()
         {
             var adapter = StrategyAdapter();
-            var tiresPit = Pit(PitService.Tires, PitPhase.InService);
+            var tiresPit = Pit(PitService.None, PitPhase.InService);
+            var positioned = adapter.Update(StrategyControls(Crew(true, false, 100f, 100f, 0f)),
+                RacePhase.Racing, tiresPit, .1f);
+            Assert.That(positioned.SelectedService, Is.EqualTo(PitService.Tires));
+            Assert.That(positioned.ServiceAction.State, Is.EqualTo(PitActionState.Positioned));
+
             var valid = StrategyControls(Crew(true, true, 100f, 100f, 0f));
-            Assert.That(adapter.Update(valid, RacePhase.Racing, tiresPit, .4f).ServiceAction.State,
-                Is.EqualTo(PitActionState.Holding));
+            var tireHold = adapter.Update(valid, RacePhase.Racing, tiresPit, .4f);
+            Assert.That(tireHold.SelectedService, Is.EqualTo(PitService.Tires));
+            Assert.That(tireHold.ServiceAction.Progress, Is.EqualTo(.4f).Within(.001f));
+
+            var coolingHold = adapter.Update(StrategyControls(Crew(true, true, 300f, 100f, 0f)),
+                RacePhase.Racing, tiresPit, .4f);
+            Assert.That(coolingHold.SelectedService, Is.EqualTo(PitService.Cooling));
+            Assert.That(coolingHold.ServiceAction.Progress, Is.EqualTo(.4f).Within(.001f));
+            Assert.That(coolingHold.ServiceAction.CompletedThisUpdate, Is.False);
+
             var lost = adapter.Update(StrategyControls(PieceState.Missing), RacePhase.Racing, tiresPit, .2f);
             Assert.That(lost.ServiceAction.State, Is.EqualTo(PitActionState.Idle));
 
@@ -228,9 +261,10 @@ namespace BoardRacing.Tests
             Assert.That(adapter.Update(valid, RacePhase.Racing, tiresPit, 1f).ServiceAction.CompletedThisUpdate, Is.False);
 
             adapter.Reset();
-            var wrongZone = adapter.Update(StrategyControls(Crew(true, true, 300f, 100f, 0f)),
+            var noRepairZone = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
                 RacePhase.Racing, tiresPit, 1f);
-            Assert.That(wrongZone.ServiceAction.CompletedThisUpdate, Is.False);
+            Assert.That(noRepairZone.SelectedService, Is.EqualTo(PitService.None));
+            Assert.That(noRepairZone.ServiceAction.CompletedThisUpdate, Is.False);
         }
 
         [Test]
@@ -238,14 +272,14 @@ namespace BoardRacing.Tests
         {
             var p1 = StrategyAdapter(); var p2 = StrategyAdapter();
             var pit = Pit(PitService.None, PitPhase.OnTrack);
-            p1.Update(StrategyControls(Crew(true, false, 100f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            p2.Update(StrategyControls(Crew(true, false, 300f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            p1.Update(StrategyControls(Crew(true, true, 100f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            p2.Update(StrategyControls(Crew(true, true, 300f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            var p1Request = p1.Update(StrategyControls(Crew(true, false, 100f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            var p2Request = p2.Update(StrategyControls(Crew(true, false, 300f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            Assert.That(p1Request.SelectedService, Is.EqualTo(PitService.Tires));
-            Assert.That(p2Request.SelectedService, Is.EqualTo(PitService.Cooling));
+            p1.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            p2.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            p1.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            p2.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            var p1Request = p1.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            var p2Request = p2.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            Assert.That(p1Request.SelectedService, Is.EqualTo(PitService.None));
+            Assert.That(p2Request.SelectedService, Is.EqualTo(PitService.None));
             Assert.That(p1Request.RequestPit, Is.True);
             Assert.That(p2Request.RequestPit, Is.True);
         }
@@ -253,7 +287,8 @@ namespace BoardRacing.Tests
         private static PitActionMachine Machine() => new PitActionMachine(
             new Vec2(100f, 100f), new Vec2(20f, 20f), 0f, 0.2f, 1f);
         private static CrewStrategyAdapter StrategyAdapter() => new CrewStrategyAdapter(
-            new Vec2(100f, 100f), new Vec2(300f, 100f), new Vec2(20f, 20f), 0f, .2f, 1f);
+            new Vec2(200f, 100f), new Vec2(100f, 100f), new Vec2(300f, 100f),
+            new Vec2(20f, 20f), 0f, .2f, 1f);
         private static PieceState Crew(bool present, bool touched, float x, float y, float angle) =>
             new PieceState(present, touched, 1, new Vec2(x, y), angle);
         private static RacerPitSnapshot Pit(PitService service, PitPhase phase) =>
