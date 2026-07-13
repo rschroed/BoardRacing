@@ -27,6 +27,8 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 
 ## 1. Physical-control proof
 
+**Status:** Passed July 12, 2026. The deterministic input boundary, keyboard fallback, Board SDK simulator, Android deployment, and two-person physical hardware gate all passed. Both players completed ten simultaneous Car cycles and ten simultaneous Ship pit cycles with zero stale commands, false completions, role swaps, cross-player commands, or assisted recoveries. One brief unassigned-Glyph warning self-recovered safely; see the [Tranche 1 validation record](testing/tranche-1-validation.md).
+
 **Goal:** Determine whether two-Piece control feels reliable and natural.
 
 **Deliverables**
@@ -42,6 +44,8 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 **Exit criterion:** On physical hardware, two players can reliably control cars and complete a basic pit action without frequent tracking failures or developer explanation. Simulator work may begin earlier, but the tranche cannot pass without hardware evidence.
 
 ## 2. Racing proof
+
+**Status:** Next.
 
 **Goal:** Determine whether the core slot-car race is fun before adding strategy.
 

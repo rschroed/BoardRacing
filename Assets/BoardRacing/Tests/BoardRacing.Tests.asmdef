@@ -1,0 +1,14 @@
+{
+  "name": "BoardRacing.Tests",
+  "rootNamespace": "BoardRacing.Tests",
+  "references": [
+    "BoardRacing.Domain",
+    "BoardRacing.Runtime",
+    "Board",
+    "Unity.InputSystem",
+    "Unity.InputSystem.TestFramework"
+  ],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c1b4765e463b4de8bd3452b7d1f5a012, type: 3}
+  m_Name: TrancheOneSettings
+  m_EditorClassIdentifier: 
+  throttleHysteresisDegrees: 8
+  preferBoardInputOnDevice: 1
+  playerRegionBoundaryY: 540
+  playerOneServiceCenter: {x: 1325, y: 270}
+  playerTwoServiceCenter: {x: 595, y: 810}
+  serviceHalfSize: {x: 180, y: 150}
+  targetAngleDegrees: 0
+  alignmentToleranceDegrees: 15
+  holdDurationSeconds: 1.5
