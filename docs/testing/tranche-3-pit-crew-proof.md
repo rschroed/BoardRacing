@@ -49,6 +49,52 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 - The Tires and Cooling panels use the exact Crew-adapter hit-region settings, converted from bottom-left screen coordinates to top-left IMGUI coordinates. They are mirrored for the two table sides and use different shapes and labels in addition to color.
 - Critical heat messaging says that power is limited and leaves cooling-on-track versus a voluntary Cooling stop to the player. Nothing in the presentation requests or forces a stop.
 
+## First-pass balance evidence
+
+The committed deterministic matrix uses the real five-lap placeholder track, a `1/60`-second step, the production condition and pit defaults, and a `1.5`-second service hold. Entry and exit are `0.75` seconds each, so a completed stop owns at least three seconds before acceleration back to race speed. Absolute times are regression baselines, not target player times.
+
+| Trace | Plan | Finish | Pit entry | Incidents | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| Managed half throttle | Tires after lap 1, entering after lap 2 | 101.31s | 39.38s | 0 | Wins by 1.19s |
+| Managed half throttle | Cooling after lap 2, entering after lap 3 | 102.50s | 58.87s | 5 | Heat service has no value when heat is managed |
+| Sustained full throttle | Tires after lap 1 | 85.88s | 27.85s | 20 | Loses by 9.13s |
+| Sustained full throttle | Cooling after lap 2 | 76.75s | 45.85s | 20 | Heat reset changes the result |
+| Optional sustained control | Timed Cooling | 76.75s | 45.85s | 20 | Beats no stop by 5.11s despite stop cost |
+| Optional sustained control | No stop | 81.86s | — | 20 | Heat penalty persists |
+| Optional managed control | Unneeded Cooling | 102.51s | 39.38s | 5 | Loses to no stop by 3.46s |
+| Optional managed control | No stop | 99.05s | — | 5 | Avoids an irrelevant service |
+| Managed tire timing | Earlier Tires | 101.31s | 39.38s | 0 | Beats the late stop |
+| Managed tire timing | Late Tires | 101.55s | 78.60s | 1 | Mistiming costs 0.24s |
+
+The initial values are retained because the matrix already answers the balance question with the smallest rule set:
+
+- Full throttle adds `0.045` heat per second, released throttle removes `0.08`, and the `0.70` threshold limits maximum speed to `60%` and acceleration to `50%`. Half throttle manages heat while full throttle creates a strong but recoverable reason to choose Cooling.
+- Each corner adds `0.015` wear plus unsafe-speed wear at `0.08`; worn tires reduce the safe margin toward `75%` at full wear. This makes Tires beat Cooling in the managed profile without making Tires universally dominant.
+- The three-second stop floor is large enough that an irrelevant service loses, while a relevant Cooling service can repay the cost. No production constant was changed merely to widen deterministic margins.
+- With one service required, a no-service full-throttle control remains unclassified after traveling more than six laps; it cannot turn ignoring the Crew Piece into a winning shortcut.
+
+## Tranche 3 playtest protocol
+
+### Simulator and keyboard
+
+1. Run the complete two-player keyboard trace through selection, request, entry, service, exit, five-lap finish, and rematch; then repeat the production provider flow with two simultaneous SDK simulator Crew contacts.
+2. Exercise Tires and Cooling independently, one lost-contact reset during service, a wrong-region placement, reacquisition, and a rematch. Record any invalid transition, duplicate completion, stale progress, or cross-player command as a failure.
+3. Review captures from both table orientations at normal, warning, critical, requested, in-service, service-complete/exit, finished, and rematch states. Heat/tire and player/service identity must remain readable without color alone.
+
+### Android smoke test
+
+1. Build the exact candidate commit, install and launch it with Board Connect, and record app ID, BoardOS, resolution, build hash, screenshot, and warning-or-higher logs.
+2. Confirm a 1920×1080 frame exposes both mirrored HUDs, all four exact Crew regions, both on-car cues, the lane and boxes, and no editor-only provider hint.
+3. On-device, complete one service of each type and force one contact-loss recovery. Any Unity exception, stuck pit phase, forced stop, or throttle ownership during entry/service/exit fails the smoke test.
+
+### Two-person physical gate
+
+1. Two players complete three five-lap races, swapping table sides after the first. Explain the controls and mandatory-stop rule once; after `GO`, do not name a preferred service or pit lap.
+2. For every racer record service type, request lap, pit-entry lap, finish order, peak condition cues noticed, assistance, false/lost contacts, and the player's stated reason for the decision.
+3. In the second race, deliberately remove one Crew Piece during service and require the player to recover from the visible prompt. In the third, allow both players to revise strategy based only on prior results and live feedback.
+
+“Voluntary different decisions” passes when at least one race contains a different service choice or pit timing chosen without a post-start prompt, and at least one player changes a later plan for a stated heat, tire, opponent, or time-loss reason. “Crew Piece is essential” passes when both players independently select, request, and complete every required stop, recover the deliberate loss without the developer operating a Piece, and can identify a race consequence caused by their Crew decision. Any automatic/forced stop, skipped physical Crew action, or unclassified no-stop win fails the gate.
+
 ## Questions the gate must answer
 
 1. Do heat and wear change how players drive without requiring constant HUD reading?
@@ -60,7 +106,7 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 
 ## Evidence status
 
-- [x] Race-domain, Crew-adapter, and semantic presentation tests: 56 of 56 Edit Mode tests passed during the Issue #46 integration pass.
+- [x] Race-domain, Crew-adapter, semantic presentation, and balance-trace tests: 59 of 59 Edit Mode tests passed during the Issue #47 balance pass.
 - [x] Runtime and Board SDK integration suite: 11 of 11 Play Mode tests passed during the Issue #46 integration pass. The keyboard provider now has a complete accelerated race trace covering mirrored service selection, deliberate pit requests, entry, service, exit, finish, and rematch reset through `RacePrototype`.
 - [x] A development APK built, installed, and launched on a 1920×1080 Board during the Issue #46 presentation pass. The first capture exposed track/control-region overlap; the layout was tightened so the final geometry reserves separate track and Crew bands.
 - [ ] Mouse/keyboard full-race traces.
