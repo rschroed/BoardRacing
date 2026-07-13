@@ -238,19 +238,21 @@ namespace BoardRacing.Domain
     public readonly struct RacerPitSnapshot
     {
         public RacerPitSnapshot(PitService selectedService, PitPhase phase, float serviceProgress,
-            int completedServices, bool finishEligible)
+            int completedServices, bool finishEligible, float phaseProgress = 0f)
         {
             if (!Enum.IsDefined(typeof(PitService), selectedService) || !Enum.IsDefined(typeof(PitPhase), phase) ||
-                serviceProgress < 0f || serviceProgress > 1f || float.IsNaN(serviceProgress) || completedServices < 0)
+                serviceProgress < 0f || serviceProgress > 1f || float.IsNaN(serviceProgress) ||
+                phaseProgress < 0f || phaseProgress > 1f || float.IsNaN(phaseProgress) || completedServices < 0)
                 throw new ArgumentException("Pit snapshot contains invalid values.");
             SelectedService = selectedService; Phase = phase; ServiceProgress = serviceProgress;
-            CompletedServices = completedServices; FinishEligible = finishEligible;
+            CompletedServices = completedServices; FinishEligible = finishEligible; PhaseProgress = phaseProgress;
         }
         public PitService SelectedService { get; }
         public PitPhase Phase { get; }
         public float ServiceProgress { get; }
         public int CompletedServices { get; }
         public bool FinishEligible { get; }
+        public float PhaseProgress { get; }
     }
 
     public readonly struct RacerSnapshot

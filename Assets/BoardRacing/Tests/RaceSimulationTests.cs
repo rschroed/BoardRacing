@@ -141,6 +141,7 @@ namespace BoardRacing.Tests
                 Assert.That(racer.Pit.SelectedService, Is.EqualTo(PitService.None));
                 Assert.That(racer.Pit.Phase, Is.EqualTo(PitPhase.OnTrack));
                 Assert.That(racer.Pit.ServiceProgress, Is.Zero);
+                Assert.That(racer.Pit.PhaseProgress, Is.Zero);
                 Assert.That(racer.Pit.CompletedServices, Is.Zero);
                 Assert.That(racer.Pit.FinishEligible, Is.False);
             }
@@ -209,6 +210,8 @@ namespace BoardRacing.Tests
                 PitService.Tires, false, 1.1f, false));
             Assert.Throws<ArgumentException>(() => new RacerConditionSnapshot(-.01f, 0f, false, false));
             Assert.Throws<ArgumentException>(() => new RacerPitSnapshot(PitService.None, PitPhase.OnTrack, 0f, -1, false));
+            Assert.Throws<ArgumentException>(() => new RacerPitSnapshot(
+                PitService.None, PitPhase.Entering, 0f, 0, false, 1.01f));
             Assert.Throws<ArgumentException>(() => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f,
                 .35f, 180f, 38f, 1f, -1));
             Assert.Throws<ArgumentException>(() => new RaceRules(5, float.NaN, 360f, 220f, 120f, 300f, .55f, 1f,
@@ -338,6 +341,35 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void EntryAndExitExposeNormalizedDeterministicPhaseProgress()
+        {
+            var first = StartedPitSimulation(3);
+            var second = StartedPitSimulation(3);
+            foreach (var simulation in new[] { first, second })
+            {
+                simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Full,
+                    PitService.None, true) });
+                AdvanceUntilPitPhase(simulation, PlayerId.Player1, PitPhase.Entering);
+                Assert.That(Player(simulation, PlayerId.Player1).Pit.PhaseProgress, Is.Zero);
+                simulation.Step(.05f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Full) });
+                Assert.That(Player(simulation, PlayerId.Player1).Pit.PhaseProgress, Is.EqualTo(.25f).Within(.001f));
+                AdvanceUntilPitPhase(simulation, PlayerId.Player1, PitPhase.InService);
+                Assert.That(Player(simulation, PlayerId.Player1).Pit.PhaseProgress, Is.Zero);
+                simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Full,
+                    PitService.Tires, false, 1f, true) });
+                Assert.That(Player(simulation, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.Exiting));
+                Assert.That(Player(simulation, PlayerId.Player1).Pit.PhaseProgress, Is.Zero);
+                simulation.Step(.1f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Full) });
+                Assert.That(Player(simulation, PlayerId.Player1).Pit.PhaseProgress, Is.EqualTo(.5f).Within(.001f));
+            }
+
+            Assert.That(Player(first, PlayerId.Player1).Pit.PhaseProgress,
+                Is.EqualTo(Player(second, PlayerId.Player1).Pit.PhaseProgress));
+            Assert.That(Player(first, PlayerId.Player1).TotalDistance,
+                Is.EqualTo(Player(second, PlayerId.Player1).TotalDistance));
+        }
+
+        [Test]
         public void TiresAndCoolingAffectOnlyTheirConditionAndCannotDoubleComplete()
         {
             var tires = StartedPitSimulation(3);
@@ -396,6 +428,8 @@ namespace BoardRacing.Tests
             AdvanceUntilFinished(simulation, PlayerId.Player1);
             Assert.That(Player(simulation, PlayerId.Player1).Finished, Is.True);
             Assert.That(Player(simulation, PlayerId.Player1).Pit.CompletedServices, Is.EqualTo(1));
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+            Assert.That(Player(simulation, PlayerId.Player2).Finished, Is.False);
         }
 
         [Test]
