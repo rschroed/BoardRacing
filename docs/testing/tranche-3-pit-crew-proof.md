@@ -112,9 +112,10 @@ The initial values are retained because the matrix already answers the balance q
 
 ## Evidence status
 
-- [x] Race-domain, Crew-adapter, semantic presentation, pit-pose, and balance-trace coverage: 64 of 64 Edit Mode tests passed at the refreshed Issue #49 candidate commit.
-- [x] Runtime and Board SDK integration coverage: 12 of 12 Play Mode tests passed. The keyboard provider has a complete accelerated strategy race through Call Pit, parked service choice, entry, service, continuous exit, finish, and rematch.
+- [x] Race-domain, Crew-adapter, semantic presentation, pit-pose, and balance-trace coverage: 65 of 65 Edit Mode tests passed at the Issue #62 retest candidate commit.
+- [x] Runtime and Board SDK integration coverage: 13 of 13 Play Mode tests passed. The keyboard provider has a complete accelerated strategy race through Call Pit, parked service choice, entry, service, continuous exit, finish, and rematch; the production Board provider also covers same-contact sliding and physical lift/place → safe release → touch/release.
 - [x] Complete Board SDK simulator recovery matrix through the production provider: independent simultaneous service, concurrent Car control, wrong-region reset, contact cancellation, new-ID release gating, settings reset, reacquisition, and exactly-once recovery all passed without cross-player commands.
 - [x] Final Android inspection and paired-Board smoke test: the exact 24 MB candidate is API 33, ARM64, IL2CPP, contains one copy of every expected Board/runtime library, installs, launches, and renders the complete mirrored 1920×1080 presentation without a Unity exception or Board Racing failure.
 - [x] Exact candidate commit, test counts, APK hash, package inspection, Board environment, screenshot review, logs, and hardware-only carryover are recorded in the [Tranche 3 simulator and Android validation](tranche-3-simulator-android-validation.md).
+- [ ] Physical retest of the Issue #62 candidate: both players must reach the parked repair UI and complete service without developer explanation. The earlier attempt did not pass this criterion.
 - [ ] Two-person physical Board gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49).
