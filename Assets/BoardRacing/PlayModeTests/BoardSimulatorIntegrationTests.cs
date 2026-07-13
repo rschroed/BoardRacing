@@ -94,7 +94,8 @@ namespace BoardRacing.PlayModeTests
                 var p2Crew = CreateContact("BoardArcadeShipPurple", new Vector2(595f, 810f), false);
                 yield return null;
 
-                var lab = UnityEngine.Object.FindObjectOfType<ControlLab>();
+                var labObject = new GameObject("Tranche 1 Control Lab Simulator Test");
+                var lab = labObject.AddComponent<ControlLab>();
                 lab.SetInputProvider(provider);
                 yield return new WaitForSecondsRealtime(0.05f);
 
@@ -130,6 +131,8 @@ namespace BoardRacing.PlayModeTests
                 Assert.That(p2.Warnings, Is.EqualTo(InputWarning.None));
                 Assert.That(p1.Car.ContactId, Is.Not.EqualTo(p2.Car.ContactId));
                 Assert.That(p1.Crew.ContactId, Is.Not.EqualTo(p2.Crew.ContactId));
+                UnityEngine.Object.Destroy(labObject);
+                yield return null;
             }
         }
 
