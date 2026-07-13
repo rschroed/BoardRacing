@@ -144,6 +144,45 @@ namespace BoardRacing.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator CrewCallPitSupportsPhysicalLiftPlaceAfterSafeRelease()
+        {
+            using (var provider = new BoardContactInputProvider(8f * Mathf.Deg2Rad, 540f))
+            {
+                var crew = CreateContact("BoardArcadeShipOrange", new Vector2(1325f, 270f), true);
+                yield return null;
+                var adapter = new CrewStrategyAdapter(new Vec2(1325f, 270f),
+                    new Vec2(1135f, 270f), new Vec2(1515f, 270f),
+                    new Vec2(140f, 120f), 0f, 15f * Mathf.Deg2Rad, 1.5f);
+                var onTrack = new RacerPitSnapshot(PitService.None, PitPhase.OnTrack, 0f, 0, false);
+
+                var acquired = Player(provider.ReadSnapshots(), PlayerId.Player1);
+                Assert.That(acquired.Crew.RequiresRelease, Is.True);
+                var gated = adapter.Update(acquired, RacePhase.Racing, onTrack, .1f);
+                Assert.That(gated.CallState, Is.EqualTo(PitCallState.NeedsRelease));
+                Assert.That(gated.RequestPit, Is.False);
+
+                Call(crew, "Untouch");
+                yield return null;
+                var safelyReleased = Player(provider.ReadSnapshots(), PlayerId.Player1);
+                Assert.That(safelyReleased.Crew.RequiresRelease, Is.False);
+                Assert.That(adapter.Update(safelyReleased, RacePhase.Racing, onTrack, .1f).RequestPit, Is.False);
+
+                Call(crew, "Touch");
+                yield return null;
+                var touched = adapter.Update(Player(provider.ReadSnapshots(), PlayerId.Player1),
+                    RacePhase.Racing, onTrack, .1f);
+                Assert.That(touched.CallState, Is.EqualTo(PitCallState.ReleaseToRequest));
+                Call(crew, "Untouch");
+                yield return null;
+                var requested = adapter.Update(Player(provider.ReadSnapshots(), PlayerId.Player1),
+                    RacePhase.Racing, onTrack, .1f);
+                Assert.That(requested.RequestPit, Is.True);
+                Assert.That(adapter.Update(Player(provider.ReadSnapshots(), PlayerId.Player1),
+                    RacePhase.Racing, onTrack, .1f).RequestPit, Is.False);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator CrewStrategyAdapterMapsTwoSimulatorPiecesAndFailsSafeOnLoss()
         {
             using (var provider = new BoardContactInputProvider(8f * Mathf.Deg2Rad, 540f))

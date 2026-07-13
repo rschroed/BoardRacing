@@ -8,7 +8,7 @@ namespace BoardRacing.Domain
     public enum TrackSectionKind { Straight, Corner }
     public enum PitService { None, Tires, Cooling }
     public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting }
-    public enum PitCallState { Unavailable, NeedsOutside, Ready, ReleaseToRequest, Requested }
+    public enum PitCallState { Unavailable, NeedsRelease, Ready, ReleaseToRequest, Requested }
 
     public readonly struct TrackSegment
     {
