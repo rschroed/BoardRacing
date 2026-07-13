@@ -38,11 +38,12 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 ## Crew interaction
 
 - Each player has one mirrored Call Pit region centered on the proven Tranche 1 service center with the same half-size as a repair region. The repair regions replace that central target within the same player area once the car is parked, so three competing targets are never active together.
-- A request requires a safely armed Crew Piece to be observed outside Call Pit, move inside, and release there. A Piece initially or newly recognized inside the region, a held contact, wrong-region placement, removal, or settings reset cannot emit a request.
+- A safely released Ship may remain in Call Pit without requesting a stop. Touching it there arms the request and releasing it there emits exactly once. A same-contact slide into Call Pit and release follows the same touch/release transition.
+- A newly recognized or settings-reset Ship is release-gated first. That safe release cannot request a stop; a subsequent touch/release cycle in Call Pit is required. Wrong-region placement, duplicate glyphs, removal, cancellation, or contact loss clears the armed request.
 - Requested and entering racers carry no selected service. Once the car is in service, mirrored Tires and Cooling regions centered `190` pixels to either side of the service center activate with `140 × 120`-pixel half-size.
 - Moving into Tires or Cooling selects that repair only while parked. The selected region uses the proven `0° ±15°` align-and-hold action for `1.5` seconds; changing regions before completion resets progress and changes the choice.
 - Contact loss, cancellation, bad alignment, release, provider changes, and Board input settings changes clear in-progress service before any completion can be emitted and leave the car parked.
-- After exit, Call Pit requires a fresh outside-to-inside released placement; a Ship left over a former repair region cannot automatically request another stop when the UI changes.
+- After exit, Call Pit requires a fresh touch/release cycle. A released Ship left over a former repair region or inside the newly active Call Pit cannot automatically request another stop when the UI changes.
 - The keyboard fallback moves, touches, and rotates the Crew Piece with the existing player-specific keys, so it exercises the same Call Pit and repair adapter as Board input.
 
 ## Presentation scaffold
@@ -50,7 +51,7 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 - The HUD exposes normalized heat and tire wear with different meter shapes, numeric values, and normal/warning/critical text states. Required-stop, selected-service, pit-phase, service-progress, lap, place, throttle, incident, winner, and rematch feedback share the same mirrored player panel.
 - Each car has two stable presentation attachment regions: a rounded `H` heat badge and a square `T` tire badge. Warning adds `!`; critical adds `!!`, so the cues do not depend on color. A stateless mapper derives both levels only from immutable racer snapshots and condition rules.
 - The rendered track is compressed toward the center without altering deterministic track coordinates. A presentation-only lane places cars at distinct entry, player box, and exit positions while the simulation continues to own only the pit phase.
-- While racing, one Call Pit panel per player uses the exact adapter hit region. Once parked, it is replaced by the exact Tires and Cooling repair regions. All targets are converted from bottom-left screen coordinates to top-left IMGUI coordinates, mirrored for the two table sides, and reinforced with different shapes and labels in addition to color.
+- While racing, one Call Pit panel per player uses the exact adapter hit region and says to place, touch, and release the Ship. Once parked, it is replaced by the exact Tires and Cooling repair regions, and both the car and HUD explicitly say `CAR PARKED · CHOOSE REPAIR`. All targets are converted from bottom-left screen coordinates to top-left IMGUI coordinates, mirrored for the two table sides, and reinforced with different shapes and labels in addition to color.
 - Critical heat messaging says that power is limited and leaves cooling-on-track versus a voluntary Cooling stop to the player. Nothing in the presentation requests or forces a stop.
 
 ## First-pass balance evidence
