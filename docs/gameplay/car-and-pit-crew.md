@@ -24,21 +24,16 @@ Throttle input should be smoothed and tolerant of minor orientation noise. The g
 
 ## Pit Crew Piece
 
-Between stops, the Crew Piece prepares the next service. Candidate responsibilities include:
+Between stops, the Crew Piece answers the tactical question of when to stop. Each player has one mirrored **Call Pit** region. Moving the Ship from outside that region into it and releasing deliberately requests a stop at the next start/finish crossing. Heat can make Cooling attractive, but neither the conditions nor the UI can force that request.
 
-- Inspecting detailed telemetry while touched.
-- Selecting tires, cooling, or repair.
-- Charging or preparing one service at a time.
-- Confirming pit entry or the next pit plan.
-
-During a stop, the player moves the Crew Piece into the relevant service region. The first prototype should test one short tactile action, such as rotating through a target arc or aligning and holding the Piece.
+Once the car is parked, the interaction changes to the question of what to service. The Call Pit target deactivates and distinct Tires and Cooling repair regions activate in the same player area. Moving the Ship into a repair region selects that service; touching, aligning to the target orientation, and holding performs it. The choice may change before completion, but changing regions or losing valid input resets progress and leaves the car parked.
 
 ## Race-state flow
 
 1. **Grid:** associate Pieces and confirm players.
-2. **Racing:** Car Piece controls throttle; Crew Piece may prepare service.
-3. **Pit requested:** the car commits to pit entry at the next valid opportunity.
-4. **In pit:** driving input is suspended or limited while Crew interaction determines service time.
+2. **Racing:** Car Piece controls throttle; moving and releasing the Crew Piece in Call Pit requests a stop.
+3. **Pit requested:** the car commits to pit entry at the next start/finish crossing; repair choices remain inactive.
+4. **In pit:** driving input is suspended while the player chooses Tires or Cooling and completes the aligned hold.
 5. **Pit exit:** control returns cleanly to the Car Piece.
 6. **Finished:** Pieces remain associated for results and rematch.
 
@@ -62,7 +57,7 @@ The first pit-strategy playtest deliberately uses only two condition axes and tw
 - Each racer must complete at least one service during the five-lap race. A racer that reaches the nominal finish without service remains unclassified, continues under player control, and must complete service before it can be classified at a later start/finish crossing.
 - Players may make additional stops, but every stop has a meaningful time cost.
 
-The Crew Piece will select one of the two services, deliberately request pit entry, and perform the proven align-and-hold action during service. Overheating should create a strong reason to choose Cooling, not remove the player's decision. Repair, forced pit stops, additional services, and final tuning are deferred until this smallest loop is physically tested.
+The Crew Piece deliberately requests pit entry first, then selects one of the two services after the car is parked and performs the proven align-and-hold action. Overheating should create a strong reason to call the pit and choose Cooling, not remove either player decision. Repair, forced pit stops, additional services, and final tuning are deferred until this smallest loop is physically tested.
 
 ## Feedback requirements
 
