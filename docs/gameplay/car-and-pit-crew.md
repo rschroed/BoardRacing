@@ -37,6 +37,8 @@ Once the car is parked, the interaction changes to the question of what to servi
 5. **Pit exit:** control returns cleanly to the Car Piece.
 6. **Finished:** Pieces remain associated for results and rematch.
 
+Pit entry and exit are presented as continuous motion, not phase teleports. The deterministic pit snapshot exposes normalized entry/exit progress while the renderer maps that progress through the start/finish pit line, lane entry, the racer's own box, lane exit, and back to the same start/finish merge. The car remains fixed in its box for the entire service decision and repair interval. This presentation path does not advance race distance or change pit timing.
+
 ## First prototype systems
 
 - One oval or rounded-rectangle track.
@@ -55,6 +57,7 @@ The first pit-strategy playtest deliberately uses only two condition axes and tw
 - **Tires** restores tire condition without cooling the motor.
 - **Cooling** restores motor condition without changing tire wear.
 - Each racer must complete at least one service during the five-lap race. A racer that reaches the nominal finish without service remains unclassified, continues under player control, and must complete service before it can be classified at a later start/finish crossing.
+- When that later service makes a racer eligible at or beyond the nominal finish, its car completes the visible exit path to start/finish and receives an explicit per-racer `FINISHED` state. The other racer may continue normally.
 - Players may make additional stops, but every stop has a meaningful time cost.
 
 The Crew Piece deliberately requests pit entry first, then selects one of the two services after the car is parked and performs the proven align-and-hold action. Overheating should create a strong reason to call the pit and choose Cooling, not remove either player decision. Repair, forced pit stops, additional services, and final tuning are deferred until this smallest loop is physically tested.
