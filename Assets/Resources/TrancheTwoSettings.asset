@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ad1dc82f78a45a99ad4f29045dcbf6d, type: 3}
+  m_Name: TrancheTwoSettings
+  m_EditorClassIdentifier:
+  preferBoardInputOnDevice: 1
+  fixedStepSeconds: 0.016666668
+  laps: 5
+  countdownSeconds: 3
+  maximumSpeed: 360
+  acceleration: 220
+  drag: 120
+  braking: 300
+  cornerSafeSpeed: 190
+  cornerSpeedScrub: 0.55
+  cornerRecoverySeconds: 1
+  recoveryAccelerationScale: 0.35
+  passingDistance: 180
+  passingOffset: 38
+  rematchHoldSeconds: 1

@@ -45,7 +45,7 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 
 ## 2. Racing proof
 
-**Status:** Next.
+**Status:** In progress. Issues #34–#40 implement and validate the deterministic two-player racing proof.
 
 **Goal:** Determine whether the core slot-car race is fun before adding strategy.
 
@@ -53,9 +53,11 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 
 - One placeholder track and spline-based car movement.
 - Acceleration, coasting, braking, and corner-speed consequences.
-- Passing or lane behavior.
+- Automatic collision-free overtaking with presentation-only lateral separation; player-controlled lane changes remain deferred.
 - Starting grid, laps, finish order, and restart.
-- Basic AI for solo and repeatable testing.
+- Deterministic scripted throttle traces for repeatable testing.
+
+Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate remains focused on the proven two-human Car Piece interaction.
 
 **Exit criterion:** A five-lap race is understandable and competitive using the Car Piece alone.
 

@@ -30,17 +30,33 @@ namespace BoardRacing.PlayModeTests
         }
 
         [UnityTest]
-        public IEnumerator ControlLabStartsWithFallbackWithoutErrorsInEditorPlayMode()
+        public IEnumerator RacePrototypeStartsWithoutControlLabInEditorPlayMode()
         {
             yield return null;
-            Assert.That(UnityEngine.Object.FindObjectOfType<ControlLab>(), Is.Not.Null);
+            Assert.That(UnityEngine.Object.FindObjectOfType<RacePrototype>(), Is.Not.Null);
+            Assert.That(UnityEngine.Object.FindObjectOfType<ControlLab>(), Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator RacePrototypeMovesBothPlayersThroughSharedProviderPath()
+        {
+            yield return null;
+            var race = Object.FindObjectOfType<RacePrototype>();
+            var provider = new RaceScriptedProvider(false);
+            race.SetInputProvider(provider);
+            yield return new WaitForSecondsRealtime(3.2f);
+            provider.Touched = true;
+            yield return new WaitForSecondsRealtime(.5f);
+            var snapshot = race.GetRaceSnapshot();
+            Assert.That(snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+            Assert.That(snapshot.Racers.All(x => x.TotalDistance > 0f), Is.True);
         }
 
         [UnityTest]
         public IEnumerator ControlLabCompletesAndRearmsTwoPlayersSimultaneously()
         {
-            yield return null;
-            var lab = Object.FindObjectOfType<ControlLab>();
+            var labObject = new GameObject("Tranche 1 Control Lab Test");
+            var lab = labObject.AddComponent<ControlLab>();
             var scripted = new ScriptedProvider();
             lab.SetInputProvider(scripted);
             int p1Baseline = lab.GetCompletionCount(PlayerId.Player1);
@@ -64,6 +80,8 @@ namespace BoardRacing.PlayModeTests
             yield return new WaitForSecondsRealtime(1.7f);
             Assert.That(lab.GetCompletionCount(PlayerId.Player1), Is.EqualTo(p1Baseline + 2));
             Assert.That(lab.GetCompletionCount(PlayerId.Player2), Is.EqualTo(p2Baseline + 2));
+            Object.Destroy(labObject);
+            yield return null;
         }
 
         private System.Collections.Generic.IReadOnlyList<PlayerControlSnapshot> Tap(
@@ -96,6 +114,23 @@ namespace BoardRacing.PlayModeTests
             }
 
             public System.Collections.Generic.IReadOnlyList<PlayerControlSnapshot> ReadSnapshots() => snapshots;
+        }
+
+        private sealed class RaceScriptedProvider : IPlayerInputProvider
+        {
+            public RaceScriptedProvider(bool touched) { Touched = touched; }
+            public bool Touched { get; set; }
+            public System.Collections.Generic.IReadOnlyList<PlayerControlSnapshot> ReadSnapshots()
+            {
+                var throttle = Touched ? ThrottleStep.Full : ThrottleStep.Off;
+                return new[]
+                {
+                    new PlayerControlSnapshot(PlayerId.Player1, throttle,
+                        new PieceState(true, Touched, 101, new Vec2(), 0f), PieceState.Missing, InputWarning.None),
+                    new PlayerControlSnapshot(PlayerId.Player2, throttle,
+                        new PieceState(true, Touched, 201, new Vec2(), 0f), PieceState.Missing, InputWarning.None)
+                };
+            }
         }
     }
 }
