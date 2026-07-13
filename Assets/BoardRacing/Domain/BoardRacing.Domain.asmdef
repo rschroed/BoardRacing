@@ -1,0 +1,5 @@
+{
+  "name": "BoardRacing.Domain",
+  "rootNamespace": "BoardRacing.Domain",
+  "autoReferenced": true
+}
