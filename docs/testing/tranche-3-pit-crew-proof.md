@@ -33,6 +33,14 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 - An unserved racer may continue beyond the nominal finish but remains unclassified. Completing the required service at a later pit-line crossing makes the racer finish-eligible and classifies it after pit exit.
 - Rematch clears heat, wear, selection, pit phase, progress, and completed-service count for both racers.
 
+## Crew interaction
+
+- Each player has mirrored Tires and Cooling regions centered `190` pixels to either side of the proven Tranche 1 service center. Region half-size is `140 × 120` pixels.
+- A released Crew Piece establishes the selected service. Touching and then releasing the same contact in the same region emits one pit request; dragging to another region, removal, wrong-region placement, or reacquisition cannot emit a request.
+- Once the car is in service, the selected region uses the proven `0° ±15°` align-and-hold action for `1.5` seconds.
+- Contact loss, cancellation, bad alignment, release, provider changes, and Board input settings changes clear in-progress service before any completion can be emitted.
+- The keyboard fallback moves and rotates the Crew Piece with the existing player-specific keys, so it exercises the same region and align-and-hold adapter as Board input.
+
 ## Questions the gate must answer
 
 1. Do heat and wear change how players drive without requiring constant HUD reading?
@@ -44,8 +52,8 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 
 ## Evidence status
 
-- [ ] Race-domain condition and pit-lifecycle tests.
+- [x] Race-domain condition, pit-lifecycle, and Crew-adapter tests: 52 of 52 Edit Mode tests passed during the Issue #45 integration pass.
 - [ ] Mouse/keyboard full-race traces.
-- [ ] Board Unity SDK simulator coverage.
+- [ ] Complete Board Unity SDK simulator coverage. The Issue #45 pass proves simultaneous Crew selection/request, align-and-hold completion, and contact-loss safety through the production provider; full-race coverage remains for Issue #48.
 - [ ] Android build, deployment, screenshot, and log smoke test.
 - [ ] Two-person physical Board gate.

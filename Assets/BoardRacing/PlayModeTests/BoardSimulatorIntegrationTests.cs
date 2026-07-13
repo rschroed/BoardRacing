@@ -137,6 +137,58 @@ namespace BoardRacing.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator CrewStrategyAdapterMapsTwoSimulatorPiecesAndFailsSafeOnLoss()
+        {
+            using (var provider = new BoardContactInputProvider(8f * Mathf.Deg2Rad, 540f))
+            {
+                var p1Crew = CreateContact("BoardArcadeShipOrange", new Vector2(1135f, 270f), false);
+                var p2Crew = CreateContact("BoardArcadeShipPurple", new Vector2(405f, 810f), false);
+                yield return null;
+                var p1Adapter = new CrewStrategyAdapter(new Vec2(1135f, 270f), new Vec2(1515f, 270f),
+                    new Vec2(140f, 120f), 0f, 15f * Mathf.Deg2Rad, 1.5f);
+                var p2Adapter = new CrewStrategyAdapter(new Vec2(785f, 810f), new Vec2(405f, 810f),
+                    new Vec2(140f, 120f), 0f, 15f * Mathf.Deg2Rad, 1.5f);
+                var onTrack = new RacerPitSnapshot(PitService.None, PitPhase.OnTrack, 0f, 0, false);
+
+                var released = provider.ReadSnapshots();
+                Assert.That(p1Adapter.Update(Player(released, PlayerId.Player1), RacePhase.Racing, onTrack, .1f)
+                    .SelectedService, Is.EqualTo(PitService.Tires));
+                Assert.That(p2Adapter.Update(Player(released, PlayerId.Player2), RacePhase.Racing, onTrack, .1f)
+                    .SelectedService, Is.EqualTo(PitService.Cooling));
+
+                Call(p1Crew, "Touch"); Call(p2Crew, "Touch");
+                yield return null;
+                var touched = provider.ReadSnapshots();
+                p1Adapter.Update(Player(touched, PlayerId.Player1), RacePhase.Racing, onTrack, .1f);
+                p2Adapter.Update(Player(touched, PlayerId.Player2), RacePhase.Racing, onTrack, .1f);
+                Call(p1Crew, "Untouch"); Call(p2Crew, "Untouch");
+                yield return null;
+                released = provider.ReadSnapshots();
+                Assert.That(p1Adapter.Update(Player(released, PlayerId.Player1), RacePhase.Racing, onTrack, .1f)
+                    .RequestPit, Is.True);
+                Assert.That(p2Adapter.Update(Player(released, PlayerId.Player2), RacePhase.Racing, onTrack, .1f)
+                    .RequestPit, Is.True);
+
+                var p1Service = new RacerPitSnapshot(PitService.Tires, PitPhase.InService, 0f, 0, false);
+                var p2Service = new RacerPitSnapshot(PitService.Cooling, PitPhase.InService, 0f, 0, false);
+                Call(p1Crew, "Touch"); Call(p2Crew, "Touch");
+                yield return null;
+                touched = provider.ReadSnapshots();
+                Assert.That(p1Adapter.Update(Player(touched, PlayerId.Player1), RacePhase.Racing, p1Service, 1.6f)
+                    .ServiceAction.CompletedThisUpdate, Is.True);
+                Assert.That(p2Adapter.Update(Player(touched, PlayerId.Player2), RacePhase.Racing, p2Service, .5f)
+                    .ServiceAction.State, Is.EqualTo(PitActionState.Holding));
+
+                Call(p2Crew, "Cancel");
+                yield return null;
+                var lost = p2Adapter.Update(Player(provider.ReadSnapshots(), PlayerId.Player2),
+                    RacePhase.Racing, p2Service, 1.5f);
+                Assert.That(lost.ServiceAction.CompletedThisUpdate, Is.False);
+                Assert.That(lost.ServiceAction.Progress, Is.Zero);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator SimulatorCrossingUnassignedAndDuplicatePiecesFailSafe()
         {
             using (var provider = new BoardContactInputProvider(8f * Mathf.Deg2Rad, 540f))

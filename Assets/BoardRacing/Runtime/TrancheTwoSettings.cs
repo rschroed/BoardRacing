@@ -22,9 +22,10 @@ namespace BoardRacing.Runtime
         public float passingOffset = 38f;
         public float rematchHoldSeconds = 1f;
 
-        public RaceRules ToRules() => new RaceRules(laps, countdownSeconds, maximumSpeed, acceleration, drag,
+        public RaceRules ToRules(int requiredServiceCount = 0, ConditionRules conditions = default,
+            PitRules pit = default) => new RaceRules(laps, countdownSeconds, maximumSpeed, acceleration, drag,
             braking, cornerSpeedScrub, cornerRecoverySeconds, recoveryAccelerationScale,
-            passingDistance, passingOffset, rematchHoldSeconds);
+            passingDistance, passingOffset, rematchHoldSeconds, requiredServiceCount, conditions, pit);
 
         public static TrancheTwoSettings Defaults() => CreateInstance<TrancheTwoSettings>();
     }
