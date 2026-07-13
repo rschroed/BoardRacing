@@ -56,11 +56,95 @@ namespace BoardRacing.Tests
             Assert.That(playerTwo.TireLevel, Is.EqualTo(ConditionVisualLevel.Warning));
         }
 
+        [Test]
+        public void PitLanePoseIsContinuousAcrossEveryPhaseBoundary()
+        {
+            var layout = Layout();
+            var onTrack = Pose(Racer(PlayerId.Player1, PitPhase.OnTrack), layout);
+            var entryStart = Pose(Racer(PlayerId.Player1, PitPhase.Entering, 0f), layout);
+            var entryEnd = Pose(Racer(PlayerId.Player1, PitPhase.Entering, 1f), layout);
+            var parked = Pose(Racer(PlayerId.Player1, PitPhase.InService), layout);
+            var exitStart = Pose(Racer(PlayerId.Player1, PitPhase.Exiting, 0f), layout);
+            var exitEnd = Pose(Racer(PlayerId.Player1, PitPhase.Exiting, 1f), layout);
+
+            AssertPosition(onTrack, entryStart.Position);
+            AssertPosition(entryEnd, parked.Position);
+            AssertPosition(parked, exitStart.Position);
+            AssertPosition(exitEnd, onTrack.Position);
+        }
+
+        [Test]
+        public void PitLanePoseMovesContinuouslyAndUsesEachPlayersOwnBox()
+        {
+            var layout = Layout();
+            var p1MidEntry = Pose(Racer(PlayerId.Player1, PitPhase.Entering, .5f), layout);
+            var p1Box = Pose(Racer(PlayerId.Player1, PitPhase.InService), layout);
+            var p2Box = Pose(Racer(PlayerId.Player2, PitPhase.InService), layout);
+            var p2MidExit = Pose(Racer(PlayerId.Player2, PitPhase.Exiting, .5f), layout);
+
+            Assert.That(p1MidEntry.Position.X, Is.InRange(layout.PitLine.X, layout.PlayerOneBox.X));
+            AssertPosition(p1Box, layout.PlayerOneBox);
+            AssertPosition(p2Box, layout.PlayerTwoBox);
+            Assert.That(p2MidExit.Position.X, Is.Not.EqualTo(p2Box.Position.X).Within(.001f));
+        }
+
+        [Test]
+        public void InServicePoseStaysParkedAcrossUndecidedSwitchAndResetStates()
+        {
+            var layout = Layout();
+            var undecided = Pose(Racer(PlayerId.Player1, PitPhase.InService, 0f,
+                PitService.None, 0f), layout);
+            var holdingTires = Pose(Racer(PlayerId.Player1, PitPhase.InService, 0f,
+                PitService.Tires, .7f), layout);
+            var switchedCooling = Pose(Racer(PlayerId.Player1, PitPhase.InService, 0f,
+                PitService.Cooling, 0f), layout);
+
+            AssertPosition(undecided, layout.PlayerOneBox);
+            AssertPosition(holdingTires, layout.PlayerOneBox);
+            AssertPosition(switchedCooling, layout.PlayerOneBox);
+        }
+
+        [Test]
+        public void NormalRejoinAndLateFinishBothEndAtPitLineWithoutChangingTrackPose()
+        {
+            var layout = Layout();
+            var exitEnd = Pose(Racer(PlayerId.Player2, PitPhase.Exiting, 1f), layout);
+            var rejoined = Pose(Racer(PlayerId.Player2, PitPhase.OnTrack), layout);
+            var finished = Pose(Racer(PlayerId.Player2, PitPhase.OnTrack, 0f,
+                PitService.None, 0f, true), layout);
+
+            AssertPosition(exitEnd, layout.PitLine);
+            AssertPosition(rejoined, layout.PitLine);
+            AssertPosition(finished, layout.PitLine);
+            Assert.That(finished.Finished, Is.True);
+        }
+
         private static RacerConditionSnapshot Condition(float heat, float wear) =>
             new RacerConditionSnapshot(heat, wear, false, false);
 
         private static RacerSnapshot Racer(PlayerId id, float heat, float wear) =>
             new RacerSnapshot(id, 0f, 0f, 0, 1, false, -1f, default, 0f, false, 0f, 0,
                 Condition(heat, wear), default);
+
+        private static RacerSnapshot Racer(PlayerId id, PitPhase phase, float phaseProgress = 0f,
+            PitService service = PitService.None, float serviceProgress = 0f, bool finished = false) =>
+            new RacerSnapshot(id, 0f, 100f, 1, 1, finished, finished ? 12f : -1f,
+                new TrackSample(new Vec2(5f, 5f), new Vec2(1f, 0f), 0,
+                    TrackSectionKind.Straight, float.PositiveInfinity), 0f, false, 0f, 0,
+                Condition(0f, 0f), new RacerPitSnapshot(service, phase, serviceProgress,
+                    finished ? 1 : 0, finished, phaseProgress));
+
+        private static PitLanePresentationLayout Layout() => new PitLanePresentationLayout(
+            new Vec2(5f, 5f), new Vec2(10f, 10f), new Vec2(20f, 10f),
+            new Vec2(30f, 10f), new Vec2(40f, 10f));
+
+        private static CarPresentationPose Pose(RacerSnapshot racer, PitLanePresentationLayout layout) =>
+            PitLanePresentationMapper.From(racer, new Vec2(5f, 5f), new Vec2(1f, 0f), layout);
+
+        private static void AssertPosition(CarPresentationPose pose, Vec2 expected)
+        {
+            Assert.That(pose.Position.X, Is.EqualTo(expected.X).Within(.001f));
+            Assert.That(pose.Position.Y, Is.EqualTo(expected.Y).Within(.001f));
+        }
     }
 }

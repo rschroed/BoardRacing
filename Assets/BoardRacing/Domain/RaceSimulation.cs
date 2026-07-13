@@ -246,8 +246,12 @@ namespace BoardRacing.Domain
                 float offset = close ? (racer.Id == PlayerId.Player1 ? -rules.PassingOffset : rules.PassingOffset) : 0f;
                 var condition = new RacerConditionSnapshot(racer.Heat, racer.TireWear,
                     HeatPenaltyActive(racer), TirePenaltyActive(racer));
+                float phaseProgress = racer.PitPhase == PitPhase.Entering
+                    ? Clamp01(racer.PitTimer / rules.Pit.EntrySeconds)
+                    : racer.PitPhase == PitPhase.Exiting
+                        ? Clamp01(racer.PitTimer / rules.Pit.ExitSeconds) : 0f;
                 var pit = new RacerPitSnapshot(racer.SelectedService, racer.PitPhase, racer.ServiceProgress,
-                    racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount);
+                    racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount, phaseProgress);
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
                     Math.Min(rules.Laps, (int)(racer.Distance / track.Length)), place, racer.Finished, racer.FinishTime,
                     track.Sample(racer.Distance), offset, racer.IncidentThisStep, racer.Recovery, racer.Incidents,

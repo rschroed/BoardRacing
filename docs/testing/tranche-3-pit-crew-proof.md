@@ -31,6 +31,8 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 - In-service progress comes from an abstract Crew action. Lost or canceled input resets progress to zero without applying service or releasing the car.
 - Tires resets only tire wear. Cooling resets only motor heat. Each completion increments exactly once, and later stops remain available.
 - An unserved racer may continue beyond the nominal finish but remains unclassified. Completing the required service at a later pit-line crossing makes the racer finish-eligible and classifies it after pit exit.
+- Immutable pit snapshots expose normalized entry and exit progress. Presentation maps that progress continuously through the pit-line connection, the correct player box, and back to the same start/finish merge without changing simulation distance or pit timing.
+- The car remains stationary in its own box while no repair is selected, while the Ship switches repair zones, and whenever service progress resets. A racer classified after a late required stop receives a readable per-racer `FINISHED` state while its opponent can continue.
 - Rematch clears heat, wear, selection, pit phase, progress, and completed-service count for both racers.
 
 ## Crew interaction
@@ -82,6 +84,7 @@ The initial values are retained because the matrix already answers the balance q
 1. Run the complete two-player keyboard trace through Call Pit placement/release, request, entry, parked service selection, aligned hold, exit, five-lap finish, and rematch; then repeat the production provider flow with two simultaneous SDK simulator Crew contacts.
 2. Exercise different in-box Tires and Cooling choices, switching before completion, one lost-contact reset during service, a wrong-region placement, Call Pit rearming, reacquisition, and a rematch. Record any invalid transition, duplicate request/completion, stale progress, or cross-player command as a failure.
 3. Review captures from both table orientations at normal, warning, critical, requested, in-service, service-complete/exit, finished, and rematch states. Heat/tire and player/service identity must remain readable without color alone.
+4. Observe both a mid-race stop and a required stop after the nominal finish. Entry, each player box, exit, the start/finish merge, and the late per-racer finish handoff must remain continuous and legible while the opponent continues.
 
 ### Android smoke test
 

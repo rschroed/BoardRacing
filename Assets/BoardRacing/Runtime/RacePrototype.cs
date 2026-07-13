@@ -162,13 +162,12 @@ namespace BoardRacing.Runtime
         private void DrawPitLane()
         {
             Vec2 start = ProjectTrack(simulation.Track.Sample(0f).Position);
-            Vec2 merge = ProjectTrack(simulation.Track.Sample(simulation.Track.Segments[0].Length).Position);
             DrawLine(start, PitEntry, 30f, new Color(.08f, .11f, .15f));
             DrawLine(PitEntry, PitExit, 30f, new Color(.08f, .11f, .15f));
-            DrawLine(PitExit, merge, 30f, new Color(.08f, .11f, .15f));
+            DrawLine(PitExit, start, 30f, new Color(.08f, .11f, .15f));
             DrawLine(start, PitEntry, 2f, new Color(.62f, .68f, .74f, .55f));
             DrawLine(PitEntry, PitExit, 2f, new Color(.62f, .68f, .74f, .55f));
-            DrawLine(PitExit, merge, 2f, new Color(.62f, .68f, .74f, .55f));
+            DrawLine(PitExit, start, 2f, new Color(.62f, .68f, .74f, .55f));
             DrawPitBox(PlayerOnePitBox, "▲ P1 BOX", new Color(.92f, .39f, .12f));
             DrawPitBox(PlayerTwoPitBox, "● P2 BOX", new Color(.48f, .28f, .72f));
             GUI.Label(new Rect(865, 421, 190, 28), "PIT LANE", small);
@@ -334,28 +333,21 @@ namespace BoardRacing.Runtime
             GUI.Label(rect, racer.PlayerId == PlayerId.Player1 ? "▲" : "●", carLabel);
             DrawConditionCues(racer, x, y);
             if (racer.RecoveryRemaining > 0f) GUI.Label(new Rect(x - 100f, y - 72f, 200f, 36f), "SLOWDOWN!", warning);
-            if (racer.Pit.Phase != PitPhase.OnTrack)
+            if (racer.Finished)
+                GUI.Label(new Rect(x - 110f, y + 32f, 220f, 30f), "FINISHED · " + Ordinal(racer.Place), warning);
+            else if (racer.Pit.Phase != PitPhase.OnTrack)
                 GUI.Label(new Rect(x - 100f, y + 32f, 200f, 28f), CarPitLabel(racer.Pit), small);
         }
 
-        private static void CarPose(RacerSnapshot racer, out Vector2 position, out Vector2 tangent)
+        private void CarPose(RacerSnapshot racer, out Vector2 position, out Vector2 tangent)
         {
-            if (racer.Pit.Phase == PitPhase.Entering)
-            {
-                position = new Vector2(PitEntry.X, PitEntry.Y); tangent = Vector2.right; return;
-            }
-            if (racer.Pit.Phase == PitPhase.InService)
-            {
-                Vec2 box = racer.PlayerId == PlayerId.Player1 ? PlayerOnePitBox : PlayerTwoPitBox;
-                position = new Vector2(box.X, box.Y); tangent = Vector2.right; return;
-            }
-            if (racer.Pit.Phase == PitPhase.Exiting)
-            {
-                position = new Vector2(PitExit.X, PitExit.Y); tangent = Vector2.right; return;
-            }
-            Vec2 p = ProjectTrack(racer.Track.Position);
-            position = new Vector2(p.X, p.Y);
-            tangent = new Vector2(racer.Track.Tangent.X, racer.Track.Tangent.Y * TrackVerticalScale).normalized;
+            Vec2 trackPosition = ProjectTrack(racer.Track.Position);
+            var trackTangent = new Vec2(racer.Track.Tangent.X, racer.Track.Tangent.Y * TrackVerticalScale);
+            var layout = new PitLanePresentationLayout(ProjectTrack(simulation.Track.Sample(0f).Position),
+                PitEntry, PlayerOnePitBox, PlayerTwoPitBox, PitExit);
+            CarPresentationPose pose = PitLanePresentationMapper.From(racer, trackPosition, trackTangent, layout);
+            position = new Vector2(pose.Position.X, pose.Position.Y);
+            tangent = new Vector2(pose.Tangent.X, pose.Tangent.Y);
         }
 
         private void DrawConditionCues(RacerSnapshot racer, float x, float y)
@@ -436,6 +428,7 @@ namespace BoardRacing.Runtime
         private string PitStatus(RacerSnapshot racer)
         {
             var pit = racer.Pit;
+            if (racer.Finished) return "FINISHED · " + Ordinal(racer.Place);
             if (pit.Phase == PitPhase.Requested) return "PIT CALLED · ENTRY AT LINE";
             if (pit.Phase == PitPhase.Entering) return "PIT ENTRY · THROTTLE LOCKED";
             if (pit.Phase == PitPhase.InService)
@@ -451,6 +444,7 @@ namespace BoardRacing.Runtime
         private string HudGuidance(RacerSnapshot racer, PlayerControlSnapshot control)
         {
             var race = simulation.Snapshot;
+            if (racer.Finished) return "FINISHED · " + Ordinal(racer.Place) + " · waiting for the other racer";
             if (!control.Car.Present) return "PLACE YOUR ROBOT · throttle is safely off";
             if (control.Car.RequiresRelease) return "RELEASE ROBOT TO REARM";
             if (race.Phase == RacePhase.Grid) return "READY · leave Robot released for the countdown";
