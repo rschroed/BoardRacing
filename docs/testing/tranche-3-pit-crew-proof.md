@@ -41,6 +41,14 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 - Contact loss, cancellation, bad alignment, release, provider changes, and Board input settings changes clear in-progress service before any completion can be emitted.
 - The keyboard fallback moves and rotates the Crew Piece with the existing player-specific keys, so it exercises the same region and align-and-hold adapter as Board input.
 
+## Presentation scaffold
+
+- The HUD exposes normalized heat and tire wear with different meter shapes, numeric values, and normal/warning/critical text states. Required-stop, selected-service, pit-phase, service-progress, lap, place, throttle, incident, winner, and rematch feedback share the same mirrored player panel.
+- Each car has two stable presentation attachment regions: a rounded `H` heat badge and a square `T` tire badge. Warning adds `!`; critical adds `!!`, so the cues do not depend on color. A stateless mapper derives both levels only from immutable racer snapshots and condition rules.
+- The rendered track is compressed toward the center without altering deterministic track coordinates. A presentation-only lane places cars at distinct entry, player box, and exit positions while the simulation continues to own only the pit phase.
+- The Tires and Cooling panels use the exact Crew-adapter hit-region settings, converted from bottom-left screen coordinates to top-left IMGUI coordinates. They are mirrored for the two table sides and use different shapes and labels in addition to color.
+- Critical heat messaging says that power is limited and leaves cooling-on-track versus a voluntary Cooling stop to the player. Nothing in the presentation requests or forces a stop.
+
 ## Questions the gate must answer
 
 1. Do heat and wear change how players drive without requiring constant HUD reading?
@@ -52,8 +60,10 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 
 ## Evidence status
 
-- [x] Race-domain condition, pit-lifecycle, and Crew-adapter tests: 52 of 52 Edit Mode tests passed during the Issue #45 integration pass.
+- [x] Race-domain, Crew-adapter, and semantic presentation tests: 56 of 56 Edit Mode tests passed during the Issue #46 integration pass.
+- [x] Runtime and Board SDK integration suite: 11 of 11 Play Mode tests passed during the Issue #46 integration pass. The keyboard provider now has a complete accelerated race trace covering mirrored service selection, deliberate pit requests, entry, service, exit, finish, and rematch reset through `RacePrototype`.
+- [x] A development APK built, installed, and launched on a 1920×1080 Board during the Issue #46 presentation pass. The first capture exposed track/control-region overlap; the layout was tightened so the final geometry reserves separate track and Crew bands.
 - [ ] Mouse/keyboard full-race traces.
 - [ ] Complete Board Unity SDK simulator coverage. The Issue #45 pass proves simultaneous Crew selection/request, align-and-hold completion, and contact-loss safety through the production provider; full-race coverage remains for Issue #48.
-- [ ] Android build, deployment, screenshot, and log smoke test.
+- [ ] Final Android screenshot and log smoke-test record for the release-candidate tranche build.
 - [ ] Two-person physical Board gate.
