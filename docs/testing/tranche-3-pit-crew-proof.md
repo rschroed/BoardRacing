@@ -89,7 +89,7 @@ The initial values are retained because the matrix already answers the balance q
 ### Android smoke test
 
 1. Build the exact candidate commit, install and launch it with Board Connect, and record app ID, BoardOS, resolution, build hash, screenshot, and warning-or-higher logs.
-2. Confirm a 1920×1080 frame exposes both mirrored HUDs, all four exact Crew regions, both on-car cues, the lane and boxes, and no editor-only provider hint.
+2. Confirm a 1920×1080 frame exposes both mirrored HUDs, one exact Call Pit region per racing player, both exact repair regions per parked player, both on-car cues, the lane and boxes, and no editor-only provider hint.
 3. On-device, complete one service of each type and force one contact-loss recovery. Any Unity exception, stuck pit phase, forced stop, or throttle ownership during entry/service/exit fails the smoke test.
 
 ### Two-person physical gate
@@ -111,8 +111,8 @@ The initial values are retained because the matrix already answers the balance q
 
 ## Evidence status
 
-- [x] Race-domain, Crew-adapter, semantic presentation, and balance-trace coverage: 59 of 59 Edit Mode tests passed at the Issue #48 candidate commit.
-- [x] Runtime and Board SDK integration coverage: 12 of 12 Play Mode tests passed. The keyboard provider has a complete accelerated strategy race through mirrored selection, deliberate request, entry, service, exit, finish, and rematch.
+- [x] Race-domain, Crew-adapter, semantic presentation, pit-pose, and balance-trace coverage: 64 of 64 Edit Mode tests passed at the refreshed Issue #49 candidate commit.
+- [x] Runtime and Board SDK integration coverage: 12 of 12 Play Mode tests passed. The keyboard provider has a complete accelerated strategy race through Call Pit, parked service choice, entry, service, continuous exit, finish, and rematch.
 - [x] Complete Board SDK simulator recovery matrix through the production provider: independent simultaneous service, concurrent Car control, wrong-region reset, contact cancellation, new-ID release gating, settings reset, reacquisition, and exactly-once recovery all passed without cross-player commands.
 - [x] Final Android inspection and paired-Board smoke test: the exact 24 MB candidate is API 33, ARM64, IL2CPP, contains one copy of every expected Board/runtime library, installs, launches, and renders the complete mirrored 1920×1080 presentation without a Unity exception or Board Racing failure.
 - [x] Exact candidate commit, test counts, APK hash, package inspection, Board environment, screenshot review, logs, and hardware-only carryover are recorded in the [Tranche 3 simulator and Android validation](tranche-3-simulator-android-validation.md).

@@ -6,12 +6,12 @@ The Tranche 3 software-readiness gate **passed on July 13, 2026**. The complete 
 
 | Item | Recorded value |
 | --- | --- |
-| Runtime source commit | `7a3e4138c9749a274f51b34dc4462a92f207e6ea` |
+| Runtime source commit | `1804af80fdff445a7509d92008122a417c27cddf` |
 | Unity | `2022.3.62f3` |
 | Board Unity SDK | `3.3.0` |
 | APK | `Builds/Android/BoardRacing-development.apk` |
-| APK size | `25,260,621` bytes |
-| APK SHA-256 | `14efa769fa56a4edd5b63d32f8e0e94667468f66085f11b08ae6051d3ab17683` |
+| APK size | `25,263,649` bytes |
+| APK SHA-256 | `95044a75cbd05f63ee2babbfaf721c13016f89692a23f9c4bf32a91b4aa65b20` |
 | Package | `com.wholestudios.boardracing` |
 | Version | code `1`, name `1.0` |
 
@@ -21,11 +21,11 @@ The APK was rebuilt after the runtime source commit was created, then that exact
 
 | Suite | Passed | Failed | Duration |
 | --- | ---: | ---: | ---: |
-| Edit Mode | 59 | 0 | 0.56s |
-| Play Mode | 12 | 0 | 32.77s |
-| Total | 71 | 0 | 33.33s |
+| Edit Mode | 64 | 0 | 0.49s |
+| Play Mode | 12 | 0 | 33.62s |
+| Total | 76 | 0 | 34.11s |
 
-The final suites ran at the candidate source commit. Edit Mode covers the deterministic race, condition, pit, Crew-adapter, presentation-mapping, and strategy-balance contracts. Play Mode covers runtime startup, the shared two-player provider path, Crew selection and requests, a complete accelerated keyboard race through service/finish/rematch, and the production Board provider through the Board SDK simulator.
+The final suites ran at the candidate source commit after the Call Pit/in-box interaction and continuous pit-motion refinements. Edit Mode covers the deterministic race, condition, pit, Crew-adapter, normalized phase progress, presentation-pose boundaries, and strategy-balance contracts. Play Mode covers runtime startup, the shared two-player provider path, Call Pit and parked repair choices, a complete accelerated keyboard race through service/finish/rematch, and the production Board provider through the Board SDK simulator.
 
 ## Board SDK simulator matrix
 
@@ -52,7 +52,7 @@ lib/arm64-v8a/libtensorflowlite.so
 lib/arm64-v8a/libunity.so
 ```
 
-The first inspection during Issue #48 exposed stale numbered IL2CPP copies from prior Bee outputs and a 160 MB APK. The build entry point now uses `BuildOptions.CleanBuildCache`; a clean rebuild produced the recorded 25,260,621-byte candidate with no numbered duplicate libraries. The Unity batch build exited successfully. Its only error-level build diagnostic was an early license-token refresh message; compilation, IL2CPP, Gradle packaging, and the final build result succeeded.
+The first inspection during Issue #48 exposed stale numbered IL2CPP copies from prior Bee outputs and a 160 MB APK. The build entry point now uses `BuildOptions.CleanBuildCache`; a clean rebuild produced the recorded 25,263,649-byte candidate with no numbered duplicate libraries. The Unity batch build exited successfully. Its only error-level build diagnostic was an early license-token refresh message; compilation, IL2CPP, Gradle packaging, and the final build result succeeded.
 
 ## Paired-Board smoke test
 
@@ -65,7 +65,7 @@ The first inspection during Issue #48 exposed stale numbered IL2CPP copies from 
 | Install and launch | Passed |
 | Render size | `1920 × 1080` |
 
-After the startup frame settled, a direct Board screenshot showed the complete five-lap race presentation: two mirrored player HUDs, all four exact Tires/Cooling regions, distinct pit lane and player boxes, heat and tire meters, and both on-car `H`/`T` attachment cues. Both already-placed Crew Pieces were independently recognized in their mirrored Cooling regions. No editor-only provider hint was present.
+After the startup frame settled, a direct Board screenshot showed the refreshed five-lap race presentation: two mirrored player HUDs, one exact Call Pit region per player, distinct pit lane and player boxes, heat and tire meters, and both on-car `H`/`T` attachment cues. No editor-only provider hint was present. Automated pose coverage proves continuous phase endpoints; the remaining physical gate explicitly observes the complete motion and the dynamic replacement of Call Pit with Tires/Cooling repair regions after parking.
 
 Warning-or-higher logs for the candidate process contained the Board platform's recurring hidden-method/property-access warnings and four `Invalid base format` graphics-layer messages during startup. They contained no managed exception, Unity stack trace, Board Racing error, crash, or stuck process. The same graphics messages recur in earlier launches, and the settled 1920×1080 capture rendered correctly.
 
