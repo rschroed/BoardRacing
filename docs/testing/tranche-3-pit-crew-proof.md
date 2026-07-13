@@ -106,10 +106,9 @@ The initial values are retained because the matrix already answers the balance q
 
 ## Evidence status
 
-- [x] Race-domain, Crew-adapter, semantic presentation, and balance-trace tests: 59 of 59 Edit Mode tests passed during the Issue #47 balance pass.
-- [x] Runtime and Board SDK integration suite: 11 of 11 Play Mode tests passed during the Issue #46 integration pass. The keyboard provider now has a complete accelerated race trace covering mirrored service selection, deliberate pit requests, entry, service, exit, finish, and rematch reset through `RacePrototype`.
-- [x] A development APK built, installed, and launched on a 1920×1080 Board during the Issue #46 presentation pass. The first capture exposed track/control-region overlap; the layout was tightened so the final geometry reserves separate track and Crew bands.
-- [ ] Mouse/keyboard full-race traces.
-- [ ] Complete Board Unity SDK simulator coverage. The Issue #45 pass proves simultaneous Crew selection/request, align-and-hold completion, and contact-loss safety through the production provider; full-race coverage remains for Issue #48.
-- [ ] Final Android screenshot and log smoke-test record for the release-candidate tranche build.
-- [ ] Two-person physical Board gate.
+- [x] Race-domain, Crew-adapter, semantic presentation, and balance-trace coverage: 59 of 59 Edit Mode tests passed at the Issue #48 candidate commit.
+- [x] Runtime and Board SDK integration coverage: 12 of 12 Play Mode tests passed. The keyboard provider has a complete accelerated strategy race through mirrored selection, deliberate request, entry, service, exit, finish, and rematch.
+- [x] Complete Board SDK simulator recovery matrix through the production provider: independent simultaneous service, concurrent Car control, wrong-region reset, contact cancellation, new-ID release gating, settings reset, reacquisition, and exactly-once recovery all passed without cross-player commands.
+- [x] Final Android inspection and paired-Board smoke test: the exact 24 MB candidate is API 33, ARM64, IL2CPP, contains one copy of every expected Board/runtime library, installs, launches, and renders the complete mirrored 1920×1080 presentation without a Unity exception or Board Racing failure.
+- [x] Exact candidate commit, test counts, APK hash, package inspection, Board environment, screenshot review, logs, and hardware-only carryover are recorded in the [Tranche 3 simulator and Android validation](tranche-3-simulator-android-validation.md).
+- [ ] Two-person physical Board gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49).
