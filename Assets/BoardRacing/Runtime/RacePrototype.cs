@@ -11,9 +11,14 @@ namespace BoardRacing.Runtime
     {
         private TrancheOneSettings inputSettings;
         private TrancheTwoSettings raceSettings;
+        private TrancheThreeSettings strategySettings;
         private IPlayerInputProvider boardProvider, fallbackProvider, activeProvider;
         private RaceSimulation simulation;
         private IReadOnlyList<PlayerControlSnapshot> controls = Array.Empty<PlayerControlSnapshot>();
+        private readonly Dictionary<PlayerId, CrewStrategyAdapter> crewAdapters =
+            new Dictionary<PlayerId, CrewStrategyAdapter>();
+        private readonly Dictionary<PlayerId, CrewStrategyOutput> crewOutputs =
+            new Dictionary<PlayerId, CrewStrategyOutput>();
         private float accumulator;
         private GUIStyle title, heading, body, carLabel, warning;
 
@@ -28,6 +33,7 @@ namespace BoardRacing.Runtime
         {
             inputSettings = Resources.Load<TrancheOneSettings>("TrancheOneSettings") ?? TrancheOneSettings.Defaults();
             raceSettings = Resources.Load<TrancheTwoSettings>("TrancheTwoSettings") ?? TrancheTwoSettings.Defaults();
+            strategySettings = Resources.Load<TrancheThreeSettings>("TrancheThreeSettings") ?? TrancheThreeSettings.Defaults();
             boardProvider = new BoardContactInputProvider(inputSettings.throttleHysteresisDegrees * Mathf.Deg2Rad,
                 inputSettings.playerRegionBoundaryY);
             fallbackProvider = new KeyboardInputProvider();
@@ -36,7 +42,23 @@ namespace BoardRacing.Runtime
 #else
             activeProvider = fallbackProvider;
 #endif
-            simulation = new RaceSimulation(TrackDefinition.Placeholder(raceSettings.cornerSafeSpeed), raceSettings.ToRules());
+            foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) CreateCrewAdapter(id);
+            simulation = new RaceSimulation(TrackDefinition.Placeholder(raceSettings.cornerSafeSpeed),
+                raceSettings.ToRules(strategySettings.requiredServiceCount, strategySettings.ToConditionRules(),
+                    strategySettings.ToPitRules()));
+        }
+
+        private void CreateCrewAdapter(PlayerId id)
+        {
+            Vector2 center = id == PlayerId.Player1 ? inputSettings.playerOneServiceCenter : inputSettings.playerTwoServiceCenter;
+            float direction = id == PlayerId.Player1 ? 1f : -1f;
+            var tires = new Vec2(center.x - strategySettings.serviceOffsetX * direction, center.y);
+            var cooling = new Vec2(center.x + strategySettings.serviceOffsetX * direction, center.y);
+            crewAdapters[id] = new CrewStrategyAdapter(tires, cooling,
+                new Vec2(strategySettings.serviceHalfSize.x, strategySettings.serviceHalfSize.y),
+                inputSettings.targetAngleDegrees * Mathf.Deg2Rad,
+                inputSettings.alignmentToleranceDegrees * Mathf.Deg2Rad, inputSettings.holdDurationSeconds);
+            crewOutputs[id] = default;
         }
 
         private void OnDestroy()
@@ -48,17 +70,34 @@ namespace BoardRacing.Runtime
         {
 #if UNITY_EDITOR
             if (Keyboard.current != null && Keyboard.current.f1Key.wasPressedThisFrame)
-                activeProvider = activeProvider == boardProvider ? fallbackProvider : boardProvider;
+                SetInputProvider(activeProvider == boardProvider ? fallbackProvider : boardProvider);
 #endif
             controls = activeProvider.ReadSnapshots();
             accumulator += Mathf.Min(Time.unscaledDeltaTime, .25f);
             float step = Mathf.Max(.001f, raceSettings.fixedStepSeconds);
-            var commands = controls.Select(x => new RacerCommand(x.PlayerId, x.Throttle, x.Car.Present, x.Car.Touched)).ToArray();
-            while (accumulator >= step) { simulation.Step(step, commands); accumulator -= step; }
+            while (accumulator >= step)
+            {
+                var commands = controls.Select(control =>
+                {
+                    var racer = simulation.Snapshot.Racers.Single(x => x.PlayerId == control.PlayerId);
+                    var crew = crewAdapters[control.PlayerId].Update(control, simulation.Snapshot.Phase, racer.Pit, step);
+                    crewOutputs[control.PlayerId] = crew;
+                    return new RacerCommand(control.PlayerId, control.Throttle, control.Car.Present, control.Car.Touched,
+                        crew.SelectedService, crew.RequestPit, crew.ServiceAction.Progress,
+                        crew.ServiceAction.CompletedThisUpdate);
+                }).ToArray();
+                simulation.Step(step, commands); accumulator -= step;
+            }
         }
 
         public RaceSnapshot GetRaceSnapshot() => simulation.Snapshot;
-        public void SetInputProvider(IPlayerInputProvider provider) => activeProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+        public CrewStrategyOutput GetCrewStrategy(PlayerId playerId) =>
+            crewOutputs.TryGetValue(playerId, out var output) ? output : default;
+        public void SetInputProvider(IPlayerInputProvider provider)
+        {
+            activeProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+            foreach (var adapter in crewAdapters.Values) adapter.Reset();
+        }
 
         private void EnsureStyles()
         {

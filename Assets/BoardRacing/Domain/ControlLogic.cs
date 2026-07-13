@@ -76,4 +76,126 @@ namespace BoardRacing.Domain
 
         public void Reset() { held = 0f; latched = false; }
     }
+
+    public readonly struct CrewStrategyOutput
+    {
+        public CrewStrategyOutput(PitService selectedService, bool requestPit, PitActionResult serviceAction)
+        { SelectedService = selectedService; RequestPit = requestPit; ServiceAction = serviceAction; }
+        public PitService SelectedService { get; }
+        public bool RequestPit { get; }
+        public PitActionResult ServiceAction { get; }
+    }
+
+    public sealed class CrewStrategyAdapter
+    {
+        private readonly Vec2 tiresCenter, coolingCenter, halfSize;
+        private readonly PitActionMachine tiresAction, coolingAction;
+        private int contactId = -1, armedContactId = -1;
+        private PitService lastReleasedService, armedService;
+        private bool requestArmed;
+
+        public CrewStrategyAdapter(Vec2 tiresCenter, Vec2 coolingCenter, Vec2 halfSize,
+            float targetAngle, float alignmentTolerance, float holdDuration)
+        {
+            if (halfSize.X <= 0f || halfSize.Y <= 0f) throw new ArgumentException("Crew service zones must be positive.");
+            this.tiresCenter = tiresCenter; this.coolingCenter = coolingCenter; this.halfSize = halfSize;
+            tiresAction = new PitActionMachine(tiresCenter, halfSize, targetAngle, alignmentTolerance, holdDuration);
+            coolingAction = new PitActionMachine(coolingCenter, halfSize, targetAngle, alignmentTolerance, holdDuration);
+        }
+
+        public CrewStrategyOutput Update(PlayerControlSnapshot controls, RacePhase racePhase,
+            RacerPitSnapshot pit, float deltaSeconds)
+        {
+            bool invalid = !controls.Crew.Present || controls.Crew.RequiresRelease ||
+                controls.Warnings.HasFlag(InputWarning.WrongRegion);
+            if (invalid || racePhase != RacePhase.Racing)
+            {
+                Reset();
+                return default;
+            }
+
+            if (controls.Crew.ContactId != contactId)
+            {
+                ResetRequest();
+                lastReleasedService = PitService.None;
+                contactId = controls.Crew.ContactId;
+            }
+
+            if (pit.Phase == PitPhase.InService)
+            {
+                ResetRequest();
+                PitActionResult action;
+                if (pit.SelectedService == PitService.Tires)
+                {
+                    coolingAction.Reset();
+                    action = tiresAction.Update(controls.Crew, deltaSeconds);
+                }
+                else if (pit.SelectedService == PitService.Cooling)
+                {
+                    tiresAction.Reset();
+                    action = coolingAction.Update(controls.Crew, deltaSeconds);
+                }
+                else
+                {
+                    ResetActions();
+                    action = default;
+                }
+                return new CrewStrategyOutput(PitService.None, false, action);
+            }
+
+            ResetActions();
+            if (pit.Phase != PitPhase.OnTrack)
+            {
+                ResetRequest();
+                return default;
+            }
+
+            PitService service = ServiceAt(controls.Crew.Position);
+            bool request = false;
+            if (!controls.Crew.Touched)
+            {
+                if (requestArmed && armedContactId == controls.Crew.ContactId && armedService == service &&
+                    service != PitService.None)
+                    request = true;
+                ResetRequest();
+                lastReleasedService = service;
+            }
+            else if (!requestArmed && service != PitService.None && service == lastReleasedService)
+            {
+                requestArmed = true; armedContactId = controls.Crew.ContactId; armedService = service;
+            }
+            else if (requestArmed && (armedContactId != controls.Crew.ContactId || armedService != service))
+            {
+                ResetRequest();
+            }
+
+            return new CrewStrategyOutput(service, request, default);
+        }
+
+        public void Reset()
+        {
+            contactId = -1; lastReleasedService = PitService.None;
+            ResetRequest(); ResetActions();
+        }
+
+        private PitService ServiceAt(Vec2 position)
+        {
+            if (Inside(position, tiresCenter)) return PitService.Tires;
+            if (Inside(position, coolingCenter)) return PitService.Cooling;
+            return PitService.None;
+        }
+
+        private bool Inside(Vec2 position, Vec2 center) =>
+            Math.Abs(position.X - center.X) <= halfSize.X && Math.Abs(position.Y - center.Y) <= halfSize.Y;
+
+        private void ResetRequest()
+        {
+            requestArmed = false; armedContactId = -1; armedService = PitService.None;
+        }
+
+        private void ResetActions()
+        {
+            tiresAction.Reset(); coolingAction.Reset();
+        }
+    }
 }

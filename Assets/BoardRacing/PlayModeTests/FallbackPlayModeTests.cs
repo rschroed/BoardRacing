@@ -53,6 +53,55 @@ namespace BoardRacing.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator RacePrototypeMapsTwoCrewTouchReleaseRequestsThroughSharedRuntime()
+        {
+            yield return null;
+            var race = Object.FindObjectOfType<RacePrototype>();
+            var provider = new CrewRaceScriptedProvider();
+            race.SetInputProvider(provider);
+            yield return new WaitForSecondsRealtime(3.2f);
+            provider.CrewTouched = true;
+            yield return new WaitForSecondsRealtime(.05f);
+            provider.CrewTouched = false;
+            yield return new WaitForSecondsRealtime(.05f);
+
+            var snapshot = race.GetRaceSnapshot();
+            Assert.That(snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+            Assert.That(snapshot.Racers.Single(x => x.PlayerId == PlayerId.Player1).Pit.SelectedService,
+                Is.EqualTo(PitService.Tires));
+            Assert.That(snapshot.Racers.Single(x => x.PlayerId == PlayerId.Player1).Pit.Phase,
+                Is.EqualTo(PitPhase.Requested));
+            Assert.That(snapshot.Racers.Single(x => x.PlayerId == PlayerId.Player2).Pit.SelectedService,
+                Is.EqualTo(PitService.Cooling));
+            Assert.That(snapshot.Racers.Single(x => x.PlayerId == PlayerId.Player2).Pit.Phase,
+                Is.EqualTo(PitPhase.Requested));
+        }
+
+        [UnityTest]
+        public IEnumerator KeyboardFallbackMovesBothCrewPiecesIntoServiceRegions()
+        {
+            yield return null;
+            var race = Object.FindObjectOfType<RacePrototype>();
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            var provider = new KeyboardInputProvider();
+            race.SetInputProvider(provider);
+
+            Press(keyboard.fKey);
+            yield return new WaitForSecondsRealtime(.7f);
+            Release(keyboard.fKey); yield return null;
+            Press(keyboard.hKey);
+            yield return new WaitForSecondsRealtime(.7f);
+            Release(keyboard.hKey); yield return null;
+
+            var positioned = provider.ReadSnapshots();
+            Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player1).Crew.Position.X,
+                Is.EqualTo(1135f).Within(20f));
+            Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player2).Crew.Position.X,
+                Is.EqualTo(405f).Within(20f));
+            race.SetInputProvider(new RaceScriptedProvider(false));
+        }
+
+        [UnityTest]
         public IEnumerator ControlLabCompletesAndRearmsTwoPlayersSimultaneously()
         {
             var labObject = new GameObject("Tranche 1 Control Lab Test");
@@ -131,6 +180,21 @@ namespace BoardRacing.PlayModeTests
                         new PieceState(true, Touched, 201, new Vec2(), 0f), PieceState.Missing, InputWarning.None)
                 };
             }
+        }
+
+        private sealed class CrewRaceScriptedProvider : IPlayerInputProvider
+        {
+            public bool CrewTouched { get; set; }
+            public System.Collections.Generic.IReadOnlyList<PlayerControlSnapshot> ReadSnapshots() => new[]
+            {
+                Snapshot(PlayerId.Player1, 101, new Vec2(1135f, 270f)),
+                Snapshot(PlayerId.Player2, 201, new Vec2(405f, 810f))
+            };
+
+            private PlayerControlSnapshot Snapshot(PlayerId id, int contactId, Vec2 position) =>
+                new PlayerControlSnapshot(id, ThrottleStep.Off,
+                    new PieceState(true, false, contactId + 1000, new Vec2(), 0f),
+                    new PieceState(true, CrewTouched, contactId, position, 0f), InputWarning.None);
         }
     }
 }
