@@ -24,14 +24,14 @@ Throttle input should be smoothed and tolerant of minor orientation noise. The g
 
 ## Pit Crew Piece
 
-Between stops, the Crew Piece answers the tactical question of when to stop. Each player has one mirrored **Call Pit** region. Moving the Ship from outside that region into it and releasing deliberately requests a stop at the next start/finish crossing. Heat can make Cooling attractive, but neither the conditions nor the UI can force that request.
+Between stops, the Crew Piece answers the tactical question of when to stop. Each player has one mirrored **Call Pit** region. A safely released Ship may sit there without requesting anything; touching and releasing it in Call Pit deliberately requests a stop at the next start/finish crossing. A newly recognized Ship must first be safely released, then touched and released again to call. Heat can make Cooling attractive, but neither the conditions nor the UI can force that request.
 
 Once the car is parked, the interaction changes to the question of what to service. The Call Pit target deactivates and distinct Tires and Cooling repair regions activate in the same player area. Moving the Ship into a repair region selects that service; touching, aligning to the target orientation, and holding performs it. The choice may change before completion, but changing regions or losing valid input resets progress and leaves the car parked.
 
 ## Race-state flow
 
 1. **Grid:** associate Pieces and confirm players.
-2. **Racing:** Car Piece controls throttle; moving and releasing the Crew Piece in Call Pit requests a stop.
+2. **Racing:** Car Piece controls throttle; touching and releasing the Crew Piece in Call Pit requests a stop.
 3. **Pit requested:** the car commits to pit entry at the next start/finish crossing; repair choices remain inactive.
 4. **In pit:** driving input is suspended while the player chooses Tires or Cooling and completes the aligned hold.
 5. **Pit exit:** control returns cleanly to the Car Piece.

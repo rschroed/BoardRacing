@@ -116,34 +116,28 @@ namespace BoardRacing.PlayModeTests
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             Assert.That(update, Is.Not.Null);
 
-            Press(keyboard.fKey);
-            yield return new WaitForSecondsRealtime(.7f);
-            Release(keyboard.fKey, queueEventOnly: true);
-            InputSystem.Update();
-            yield return null;
-            Press(keyboard.hKey);
-            yield return new WaitForSecondsRealtime(.7f);
-            Release(keyboard.hKey, queueEventOnly: true);
-            InputSystem.Update();
-            yield return null;
             Assert.That(PumpUntil(race, update, 5f, x => x.Phase == RacePhase.Racing), Is.True);
             PumpRace(race, update, .05f);
             var positioned = provider.ReadSnapshots();
             Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player1).Crew.Position.X,
-                Is.InRange(995f, 1275f));
+                Is.InRange(1185f, 1465f));
             Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player2).Crew.Position.X,
-                Is.InRange(265f, 545f));
+                Is.InRange(455f, 735f));
             Assert.That(race.GetCrewStrategy(PlayerId.Player1).CallState, Is.EqualTo(PitCallState.Ready));
             Assert.That(race.GetCrewStrategy(PlayerId.Player2).CallState, Is.EqualTo(PitCallState.Ready));
 
-            Press(keyboard.gKey, queueEventOnly: true); InputSystem.Update();
+            TapRaceKeys(race, update, keyboard.wKey);
+            Assert.That(race.GetCrewStrategy(PlayerId.Player1).CallState,
+                Is.EqualTo(PitCallState.ReleaseToRequest));
+            TapRaceKeys(race, update, keyboard.wKey);
             Assert.That(PumpUntil(race, update, 2f, x => x.Racers.Single(r =>
                 r.PlayerId == PlayerId.Player1).Pit.Phase == PitPhase.Requested), Is.True);
-            Release(keyboard.gKey, queueEventOnly: true); InputSystem.Update();
-            Press(keyboard.kKey, queueEventOnly: true); InputSystem.Update();
+            TapRaceKeys(race, update, keyboard.iKey);
+            Assert.That(race.GetCrewStrategy(PlayerId.Player2).CallState,
+                Is.EqualTo(PitCallState.ReleaseToRequest));
+            TapRaceKeys(race, update, keyboard.iKey);
             Assert.That(PumpUntil(race, update, 2f, x => x.Racers.Single(r =>
                 r.PlayerId == PlayerId.Player2).Pit.Phase == PitPhase.Requested), Is.True);
-            Release(keyboard.kKey, queueEventOnly: true); InputSystem.Update(); yield return null;
             Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.SelectedService == PitService.None), Is.True);
 
             TapRaceKeys(race, update, keyboard.vKey);

@@ -239,13 +239,13 @@ namespace BoardRacing.Runtime
             { titleText = "SERVICE COMPLETE ✓"; instruction = "REJOINING"; }
             else if (simulation.Snapshot.Phase != RacePhase.Racing)
                 instruction = "AVAILABLE AFTER GO";
-            else if (state == PitCallState.NeedsOutside)
-                instruction = "MOVE SHIP OUT TO ARM";
+            else if (state == PitCallState.NeedsRelease)
+                instruction = "RELEASE SHIP · THEN TOUCH + RELEASE";
             else if (state == PitCallState.ReleaseToRequest)
                 instruction = "RELEASE SHIP TO CALL";
             else if (state == PitCallState.Requested)
             { titleText = "PIT CALLED ✓"; instruction = "ENTRY AT START / FINISH"; }
-            else instruction = "MOVE SHIP HERE + RELEASE";
+            else instruction = "PLACE SHIP HERE · TOUCH + RELEASE";
             GUI.Label(new Rect(rect.x + 10, rect.y + 62, rect.width - 20, 48), titleText, heading);
             GUI.Label(new Rect(rect.x + 12, rect.y + 112, rect.width - 24, 58),
                 instruction, small);
@@ -276,7 +276,7 @@ namespace BoardRacing.Runtime
             PitActionResult action = crewOutputs.TryGetValue(id, out var output) ? output.ServiceAction : default;
             string instruction;
             if (!selected) instruction = selectedService == PitService.None
-                ? "MOVE SHIP HERE TO CHOOSE" : "MOVE HERE TO SWITCH";
+                ? "CAR PARKED · MOVE HERE TO CHOOSE" : "MOVE HERE TO SWITCH";
             else if (action.State == PitActionState.Positioned) instruction = "TOUCH + ALIGN TO SERVICE";
             else if (action.State == PitActionState.Aligning) instruction = "ROTATE SHIP TO 0°";
             else if (action.State == PitActionState.Holding)
@@ -285,7 +285,7 @@ namespace BoardRacing.Runtime
             else instruction = "ALIGN + HOLD TO SERVICE";
             GUI.Label(new Rect(rect.x + 12, rect.y + 112, rect.width - 24, 58), instruction, small);
             GUI.Label(new Rect(rect.x + 12, rect.y + 18, rect.width - 24, 34),
-                id == PlayerId.Player1 ? "▲ ORANGE REPAIR" : "● PURPLE REPAIR", small);
+                id == PlayerId.Player1 ? "▲ CAR PARKED · ORANGE" : "● CAR PARKED · PURPLE", small);
             GUI.matrix = original;
         }
 
@@ -378,7 +378,7 @@ namespace BoardRacing.Runtime
             if (pit.Phase == PitPhase.Requested) return "PIT @ LINE";
             if (pit.Phase == PitPhase.Entering) return "PIT ENTRY";
             if (pit.Phase == PitPhase.InService) return pit.SelectedService == PitService.None
-                ? "IN BOX · CHOOSE SERVICE" : "IN BOX · " + ServiceName(pit.SelectedService);
+                ? "CAR PARKED · CHOOSE REPAIR" : "IN BOX · " + ServiceName(pit.SelectedService);
             if (pit.Phase == PitPhase.Exiting) return "SERVICE ✓ · PIT EXIT";
             return string.Empty;
         }
@@ -432,13 +432,14 @@ namespace BoardRacing.Runtime
             if (pit.Phase == PitPhase.Requested) return "PIT CALLED · ENTRY AT LINE";
             if (pit.Phase == PitPhase.Entering) return "PIT ENTRY · THROTTLE LOCKED";
             if (pit.Phase == PitPhase.InService)
-                return pit.SelectedService == PitService.None ? "IN BOX · CHOOSE SERVICE" :
+                return pit.SelectedService == PitService.None ? "CAR PARKED · CHOOSE TIRES OR COOLING" :
                     "IN BOX · " + ServiceName(pit.SelectedService) + " · " +
                     Mathf.RoundToInt(pit.ServiceProgress * 100f) + "%";
             if (pit.Phase == PitPhase.Exiting) return "SERVICE COMPLETE ✓ · PIT EXIT";
             PitCallState state = crewOutputs.TryGetValue(racer.PlayerId, out var output)
                 ? output.CallState : PitCallState.Unavailable;
-            return state == PitCallState.NeedsOutside ? "CALL PIT · MOVE SHIP OUT TO ARM" : "CALL PIT · READY";
+            return state == PitCallState.NeedsRelease
+                ? "CALL PIT · RELEASE SHIP TO REARM" : "CALL PIT · TOUCH + RELEASE";
         }
 
         private string HudGuidance(RacerSnapshot racer, PlayerControlSnapshot control)
@@ -463,9 +464,9 @@ namespace BoardRacing.Runtime
                     return "TIRES CRITICAL · CORNER MARGIN REDUCED · choose when to make a Tires stop";
                 PitCallState state = crewOutputs.TryGetValue(racer.PlayerId, out var output)
                     ? output.CallState : PitCallState.Unavailable;
-                if (state == PitCallState.NeedsOutside) return "MOVE SHIP OUTSIDE CALL PIT TO ARM";
+                if (state == PitCallState.NeedsRelease) return "RELEASE SHIP · THEN TOUCH + RELEASE IN CALL PIT";
                 if (state == PitCallState.ReleaseToRequest) return "RELEASE SHIP TO CALL PIT";
-                return "Rotate for speed · brake for dark corners · move Ship to Call Pit + release";
+                return "Rotate for speed · brake for dark corners · place Ship in Call Pit, touch + release";
             }
             if (race.AwaitingRematchRelease) return "RELEASE BOTH ROBOTS TO RESTART";
             return "BOTH PLAYERS TOUCH AND HOLD ROBOTS FOR REMATCH";
@@ -481,7 +482,7 @@ namespace BoardRacing.Runtime
             PitActionResult action = crewOutputs.TryGetValue(racer.PlayerId, out var output)
                 ? output.ServiceAction : default;
             if (racer.Pit.SelectedService == PitService.None)
-                return "CHOOSE SERVICE · MOVE SHIP TO TIRES OR COOLING";
+                return "CAR PARKED · CHOOSE REPAIR · MOVE SHIP TO TIRES OR COOLING";
             if (action.State == PitActionState.Positioned) return "TOUCH SHIP IN " + service + " ZONE TO BEGIN SERVICE";
             if (action.State == PitActionState.Aligning) return "ALIGN SHIP TO 0° · HOLD STARTS WHEN ALIGNED";
             if (action.State == PitActionState.Holding)

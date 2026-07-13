@@ -96,7 +96,7 @@ namespace BoardRacing.Domain
         private readonly Vec2 callCenter, tiresCenter, coolingCenter, halfSize;
         private readonly PitActionMachine tiresAction, coolingAction;
         private int contactId = -1;
-        private bool callArmed, callRequestLatched;
+        private bool callTouchArmed;
 
         public CrewStrategyAdapter(Vec2 callCenter, Vec2 tiresCenter, Vec2 coolingCenter, Vec2 halfSize,
             float targetAngle, float alignmentTolerance, float holdDuration)
@@ -111,12 +111,19 @@ namespace BoardRacing.Domain
         public CrewStrategyOutput Update(PlayerControlSnapshot controls, RacePhase racePhase,
             RacerPitSnapshot pit, float deltaSeconds)
         {
-            bool invalid = !controls.Crew.Present || controls.Crew.RequiresRelease ||
-                controls.Warnings.HasFlag(InputWarning.WrongRegion);
-            if (invalid || racePhase != RacePhase.Racing)
+            if (racePhase != RacePhase.Racing || !controls.Crew.Present ||
+                controls.Warnings.HasFlag(InputWarning.WrongRegion))
             {
                 Reset();
                 return default;
+            }
+
+            if (controls.Crew.RequiresRelease)
+            {
+                contactId = controls.Crew.ContactId;
+                callTouchArmed = false;
+                ResetActions();
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.NeedsRelease, default);
             }
 
             if (controls.Crew.ContactId != contactId)
@@ -127,7 +134,7 @@ namespace BoardRacing.Domain
 
             if (pit.Phase == PitPhase.InService)
             {
-                callArmed = false; callRequestLatched = true;
+                callTouchArmed = false;
                 PitService service = ServiceAt(controls.Crew.Position);
                 PitActionResult action;
                 if (service == PitService.Tires)
@@ -151,38 +158,27 @@ namespace BoardRacing.Domain
             ResetActions();
             if (pit.Phase != PitPhase.OnTrack)
             {
-                callArmed = false; callRequestLatched = true;
+                callTouchArmed = false;
                 return new CrewStrategyOutput(PitService.None, false, PitCallState.Requested, default);
             }
 
             bool insideCall = Inside(controls.Crew.Position, callCenter);
-            if (callRequestLatched)
-            {
-                if (!insideCall && !controls.Crew.Touched)
-                {
-                    callRequestLatched = false;
-                    callArmed = true;
-                    return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
-                }
-                return new CrewStrategyOutput(PitService.None, false, PitCallState.NeedsOutside, default);
-            }
-
-            if (!callArmed)
-            {
-                if (!insideCall && !controls.Crew.Touched)
-                {
-                    callArmed = true;
-                    return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
-                }
-                return new CrewStrategyOutput(PitService.None, false, PitCallState.NeedsOutside, default);
-            }
-
             if (!insideCall)
+            {
+                callTouchArmed = false;
                 return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
-            if (controls.Crew.Touched)
-                return new CrewStrategyOutput(PitService.None, false, PitCallState.ReleaseToRequest, default);
+            }
 
-            callArmed = false; callRequestLatched = true;
+            if (controls.Crew.Touched)
+            {
+                callTouchArmed = true;
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.ReleaseToRequest, default);
+            }
+
+            if (!callTouchArmed)
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
+
+            callTouchArmed = false;
             return new CrewStrategyOutput(PitService.None, true, PitCallState.Requested, default);
         }
 
@@ -204,7 +200,7 @@ namespace BoardRacing.Domain
 
         private void ResetCall()
         {
-            callArmed = false; callRequestLatched = false;
+            callTouchArmed = false;
         }
 
         private void ResetActions()
