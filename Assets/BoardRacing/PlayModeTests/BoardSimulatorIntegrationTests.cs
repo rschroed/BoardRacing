@@ -148,43 +148,55 @@ namespace BoardRacing.PlayModeTests
         {
             using (var provider = new BoardContactInputProvider(8f * Mathf.Deg2Rad, 540f))
             {
-                var p1Crew = CreateContact("BoardArcadeShipOrange", new Vector2(1135f, 270f), false);
-                var p2Crew = CreateContact("BoardArcadeShipPurple", new Vector2(405f, 810f), false);
+                var p1Crew = CreateContact("BoardArcadeShipOrange", new Vector2(1000f, 270f), false);
+                var p2Crew = CreateContact("BoardArcadeShipPurple", new Vector2(1000f, 810f), false);
                 yield return null;
-                var p1Adapter = new CrewStrategyAdapter(new Vec2(1135f, 270f), new Vec2(1515f, 270f),
+                var p1Adapter = new CrewStrategyAdapter(new Vec2(1325f, 270f),
+                    new Vec2(1135f, 270f), new Vec2(1515f, 270f),
                     new Vec2(140f, 120f), 0f, 15f * Mathf.Deg2Rad, 1.5f);
-                var p2Adapter = new CrewStrategyAdapter(new Vec2(785f, 810f), new Vec2(405f, 810f),
+                var p2Adapter = new CrewStrategyAdapter(new Vec2(595f, 810f),
+                    new Vec2(785f, 810f), new Vec2(405f, 810f),
                     new Vec2(140f, 120f), 0f, 15f * Mathf.Deg2Rad, 1.5f);
                 var onTrack = new RacerPitSnapshot(PitService.None, PitPhase.OnTrack, 0f, 0, false);
 
                 var released = provider.ReadSnapshots();
                 Assert.That(p1Adapter.Update(Player(released, PlayerId.Player1), RacePhase.Racing, onTrack, .1f)
-                    .SelectedService, Is.EqualTo(PitService.Tires));
+                    .CallState, Is.EqualTo(PitCallState.Ready));
                 Assert.That(p2Adapter.Update(Player(released, PlayerId.Player2), RacePhase.Racing, onTrack, .1f)
-                    .SelectedService, Is.EqualTo(PitService.Cooling));
+                    .CallState, Is.EqualTo(PitCallState.Ready));
 
+                Call(p1Crew, "MoveTo", new Vector2(1325f, 270f));
+                Call(p2Crew, "MoveTo", new Vector2(595f, 810f));
                 Call(p1Crew, "Touch"); Call(p2Crew, "Touch");
                 yield return null;
                 var touched = provider.ReadSnapshots();
-                p1Adapter.Update(Player(touched, PlayerId.Player1), RacePhase.Racing, onTrack, .1f);
-                p2Adapter.Update(Player(touched, PlayerId.Player2), RacePhase.Racing, onTrack, .1f);
+                Assert.That(p1Adapter.Update(Player(touched, PlayerId.Player1), RacePhase.Racing, onTrack, .1f)
+                    .CallState, Is.EqualTo(PitCallState.ReleaseToRequest));
+                Assert.That(p2Adapter.Update(Player(touched, PlayerId.Player2), RacePhase.Racing, onTrack, .1f)
+                    .CallState, Is.EqualTo(PitCallState.ReleaseToRequest));
                 Call(p1Crew, "Untouch"); Call(p2Crew, "Untouch");
                 yield return null;
                 released = provider.ReadSnapshots();
-                Assert.That(p1Adapter.Update(Player(released, PlayerId.Player1), RacePhase.Racing, onTrack, .1f)
-                    .RequestPit, Is.True);
-                Assert.That(p2Adapter.Update(Player(released, PlayerId.Player2), RacePhase.Racing, onTrack, .1f)
-                    .RequestPit, Is.True);
+                var p1Request = p1Adapter.Update(Player(released, PlayerId.Player1), RacePhase.Racing, onTrack, .1f);
+                var p2Request = p2Adapter.Update(Player(released, PlayerId.Player2), RacePhase.Racing, onTrack, .1f);
+                Assert.That(p1Request.RequestPit, Is.True);
+                Assert.That(p2Request.RequestPit, Is.True);
+                Assert.That(p1Request.SelectedService, Is.EqualTo(PitService.None));
+                Assert.That(p2Request.SelectedService, Is.EqualTo(PitService.None));
 
-                var p1Service = new RacerPitSnapshot(PitService.Tires, PitPhase.InService, 0f, 0, false);
-                var p2Service = new RacerPitSnapshot(PitService.Cooling, PitPhase.InService, 0f, 0, false);
+                var p1Service = new RacerPitSnapshot(PitService.None, PitPhase.InService, 0f, 0, false);
+                var p2Service = new RacerPitSnapshot(PitService.None, PitPhase.InService, 0f, 0, false);
+                Call(p1Crew, "MoveTo", new Vector2(1135f, 270f));
+                Call(p2Crew, "MoveTo", new Vector2(405f, 810f));
                 Call(p1Crew, "Touch"); Call(p2Crew, "Touch");
                 yield return null;
                 touched = provider.ReadSnapshots();
-                Assert.That(p1Adapter.Update(Player(touched, PlayerId.Player1), RacePhase.Racing, p1Service, 1.6f)
-                    .ServiceAction.CompletedThisUpdate, Is.True);
-                Assert.That(p2Adapter.Update(Player(touched, PlayerId.Player2), RacePhase.Racing, p2Service, .5f)
-                    .ServiceAction.State, Is.EqualTo(PitActionState.Holding));
+                var p1Action = p1Adapter.Update(Player(touched, PlayerId.Player1), RacePhase.Racing, p1Service, 1.6f);
+                var p2Action = p2Adapter.Update(Player(touched, PlayerId.Player2), RacePhase.Racing, p2Service, .5f);
+                Assert.That(p1Action.SelectedService, Is.EqualTo(PitService.Tires));
+                Assert.That(p1Action.ServiceAction.CompletedThisUpdate, Is.True);
+                Assert.That(p2Action.SelectedService, Is.EqualTo(PitService.Cooling));
+                Assert.That(p2Action.ServiceAction.State, Is.EqualTo(PitActionState.Holding));
 
                 Call(p2Crew, "Cancel");
                 yield return null;
@@ -230,24 +242,51 @@ namespace BoardRacing.PlayModeTests
             {
                 var p1Car = CreateContact("BoardArcadeRobotOrange", new Vector2(600f, 270f), false);
                 var p2Car = CreateContact("BoardArcadeRobotPurple", new Vector2(600f, 810f), false);
-                var p1Crew = CreateContact("BoardArcadeShipOrange", new Vector2(1135f, 270f), false);
-                var p2Crew = CreateContact("BoardArcadeShipPurple", new Vector2(405f, 810f), false);
+                var p1Crew = CreateContact("BoardArcadeShipOrange", new Vector2(1000f, 270f), false);
+                var p2Crew = CreateContact("BoardArcadeShipPurple", new Vector2(1000f, 810f), false);
                 yield return null;
                 provider.ReadSnapshots();
 
-                var p1Adapter = new CrewStrategyAdapter(new Vec2(1135f, 270f), new Vec2(1515f, 270f),
+                var p1Adapter = new CrewStrategyAdapter(new Vec2(1325f, 270f),
+                    new Vec2(1135f, 270f), new Vec2(1515f, 270f),
                     new Vec2(140f, 120f), 0f, 15f * Mathf.Deg2Rad, 1.5f);
-                var p2Adapter = new CrewStrategyAdapter(new Vec2(785f, 810f), new Vec2(405f, 810f),
+                var p2Adapter = new CrewStrategyAdapter(new Vec2(595f, 810f),
+                    new Vec2(785f, 810f), new Vec2(405f, 810f),
                     new Vec2(140f, 120f), 0f, 15f * Mathf.Deg2Rad, 1.5f);
-                var p1Service = new RacerPitSnapshot(PitService.Tires, PitPhase.InService, 0f, 0, false);
-                var p2Service = new RacerPitSnapshot(PitService.Cooling, PitPhase.InService, 0f, 0, false);
+                var onTrack = new RacerPitSnapshot(PitService.None, PitPhase.OnTrack, 0f, 0, false);
+                var released = provider.ReadSnapshots();
+                Assert.That(p1Adapter.Update(Player(released, PlayerId.Player1), RacePhase.Racing, onTrack, .1f)
+                    .CallState, Is.EqualTo(PitCallState.Ready));
+                Assert.That(p2Adapter.Update(Player(released, PlayerId.Player2), RacePhase.Racing, onTrack, .1f)
+                    .CallState, Is.EqualTo(PitCallState.Ready));
 
                 Call(p1Car, "Touch"); Call(p2Car, "Touch");
                 Call(p1Car, "Rotate", 90f); Call(p2Car, "Rotate", 90f);
+                Call(p1Crew, "MoveTo", new Vector2(1325f, 270f));
+                Call(p2Crew, "MoveTo", new Vector2(595f, 810f));
                 Call(p1Crew, "Touch"); Call(p2Crew, "Touch");
                 yield return null;
                 var active = provider.ReadSnapshots();
                 Assert.That(active.All(x => x.Throttle != ThrottleStep.Off), Is.True);
+                Assert.That(p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, onTrack, .1f)
+                    .CallState, Is.EqualTo(PitCallState.ReleaseToRequest));
+                Assert.That(p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, onTrack, .1f)
+                    .CallState, Is.EqualTo(PitCallState.ReleaseToRequest));
+                Call(p1Crew, "Untouch"); Call(p2Crew, "Untouch");
+                yield return null;
+                released = provider.ReadSnapshots();
+                Assert.That(p1Adapter.Update(Player(released, PlayerId.Player1), RacePhase.Racing, onTrack, .1f)
+                    .RequestPit, Is.True);
+                Assert.That(p2Adapter.Update(Player(released, PlayerId.Player2), RacePhase.Racing, onTrack, .1f)
+                    .RequestPit, Is.True);
+
+                var p1Service = new RacerPitSnapshot(PitService.None, PitPhase.InService, 0f, 0, false);
+                var p2Service = new RacerPitSnapshot(PitService.None, PitPhase.InService, 0f, 0, false);
+                Call(p1Crew, "MoveTo", new Vector2(1135f, 270f));
+                Call(p2Crew, "MoveTo", new Vector2(405f, 810f));
+                Call(p1Crew, "Touch"); Call(p2Crew, "Touch");
+                yield return null;
+                active = provider.ReadSnapshots();
                 Assert.That(p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, p1Service, .5f)
                     .ServiceAction.State, Is.EqualTo(PitActionState.Holding));
                 Assert.That(p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, p2Service, .5f)

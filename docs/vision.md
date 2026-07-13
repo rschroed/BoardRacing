@@ -33,9 +33,9 @@ A finished race should naturally lead to another. Rules, setup, results, and res
 
 1. Apply and release throttle while the digital car follows the track.
 2. Manage corner speed, tire wear, and motor heat.
-3. Prepare a service choice with the Pit Crew Piece.
-4. Decide whether and when to enter pit lane.
-5. Perform a short tactile pit interaction.
+3. Decide when to call the pit with the Pit Crew Piece.
+4. Once parked, choose the service that best answers the live race conditions.
+5. Perform the selected service with a short tactile interaction.
 6. Return to the race and adapt the strategy.
 
 ## Initial scope boundaries
@@ -53,4 +53,3 @@ A finished race should naturally lead to another. Rules, setup, results, and res
 - How much precision can pit interactions require before they become frustrating?
 - Is lane changing needed, and if so, which Piece should control it?
 - Which information should be public, approximate, or revealed through the Crew Piece?
-

@@ -26,7 +26,7 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 
 ## Provisional pit lifecycle
 
-- A deliberate request with a selected service latches until the racer's next start/finish crossing; duplicate requests do not create additional stops.
+- A deliberate Call Pit request latches without a preselected service until the racer's next start/finish crossing; duplicate requests do not create additional stops.
 - At the pit line, the simulation stops track movement and owns a `0.75`-second entry, an open-ended in-service state, and a `0.75`-second exit. Car throttle is ignored throughout those states.
 - In-service progress comes from an abstract Crew action. Lost or canceled input resets progress to zero without applying service or releasing the car.
 - Tires resets only tire wear. Cooling resets only motor heat. Each completion increments exactly once, and later stops remain available.
@@ -35,18 +35,20 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 
 ## Crew interaction
 
-- Each player has mirrored Tires and Cooling regions centered `190` pixels to either side of the proven Tranche 1 service center. Region half-size is `140 × 120` pixels.
-- A released Crew Piece establishes the selected service. Touching and then releasing the same contact in the same region emits one pit request; dragging to another region, removal, wrong-region placement, or reacquisition cannot emit a request.
-- Once the car is in service, the selected region uses the proven `0° ±15°` align-and-hold action for `1.5` seconds.
-- Contact loss, cancellation, bad alignment, release, provider changes, and Board input settings changes clear in-progress service before any completion can be emitted.
-- The keyboard fallback moves and rotates the Crew Piece with the existing player-specific keys, so it exercises the same region and align-and-hold adapter as Board input.
+- Each player has one mirrored Call Pit region centered on the proven Tranche 1 service center with the same half-size as a repair region. The repair regions replace that central target within the same player area once the car is parked, so three competing targets are never active together.
+- A request requires a safely armed Crew Piece to be observed outside Call Pit, move inside, and release there. A Piece initially or newly recognized inside the region, a held contact, wrong-region placement, removal, or settings reset cannot emit a request.
+- Requested and entering racers carry no selected service. Once the car is in service, mirrored Tires and Cooling regions centered `190` pixels to either side of the service center activate with `140 × 120`-pixel half-size.
+- Moving into Tires or Cooling selects that repair only while parked. The selected region uses the proven `0° ±15°` align-and-hold action for `1.5` seconds; changing regions before completion resets progress and changes the choice.
+- Contact loss, cancellation, bad alignment, release, provider changes, and Board input settings changes clear in-progress service before any completion can be emitted and leave the car parked.
+- After exit, Call Pit requires a fresh outside-to-inside released placement; a Ship left over a former repair region cannot automatically request another stop when the UI changes.
+- The keyboard fallback moves, touches, and rotates the Crew Piece with the existing player-specific keys, so it exercises the same Call Pit and repair adapter as Board input.
 
 ## Presentation scaffold
 
 - The HUD exposes normalized heat and tire wear with different meter shapes, numeric values, and normal/warning/critical text states. Required-stop, selected-service, pit-phase, service-progress, lap, place, throttle, incident, winner, and rematch feedback share the same mirrored player panel.
 - Each car has two stable presentation attachment regions: a rounded `H` heat badge and a square `T` tire badge. Warning adds `!`; critical adds `!!`, so the cues do not depend on color. A stateless mapper derives both levels only from immutable racer snapshots and condition rules.
 - The rendered track is compressed toward the center without altering deterministic track coordinates. A presentation-only lane places cars at distinct entry, player box, and exit positions while the simulation continues to own only the pit phase.
-- The Tires and Cooling panels use the exact Crew-adapter hit-region settings, converted from bottom-left screen coordinates to top-left IMGUI coordinates. They are mirrored for the two table sides and use different shapes and labels in addition to color.
+- While racing, one Call Pit panel per player uses the exact adapter hit region. Once parked, it is replaced by the exact Tires and Cooling repair regions. All targets are converted from bottom-left screen coordinates to top-left IMGUI coordinates, mirrored for the two table sides, and reinforced with different shapes and labels in addition to color.
 - Critical heat messaging says that power is limited and leaves cooling-on-track versus a voluntary Cooling stop to the player. Nothing in the presentation requests or forces a stop.
 
 ## First-pass balance evidence
@@ -77,8 +79,8 @@ The initial values are retained because the matrix already answers the balance q
 
 ### Simulator and keyboard
 
-1. Run the complete two-player keyboard trace through selection, request, entry, service, exit, five-lap finish, and rematch; then repeat the production provider flow with two simultaneous SDK simulator Crew contacts.
-2. Exercise Tires and Cooling independently, one lost-contact reset during service, a wrong-region placement, reacquisition, and a rematch. Record any invalid transition, duplicate completion, stale progress, or cross-player command as a failure.
+1. Run the complete two-player keyboard trace through Call Pit placement/release, request, entry, parked service selection, aligned hold, exit, five-lap finish, and rematch; then repeat the production provider flow with two simultaneous SDK simulator Crew contacts.
+2. Exercise different in-box Tires and Cooling choices, switching before completion, one lost-contact reset during service, a wrong-region placement, Call Pit rearming, reacquisition, and a rematch. Record any invalid transition, duplicate request/completion, stale progress, or cross-player command as a failure.
 3. Review captures from both table orientations at normal, warning, critical, requested, in-service, service-complete/exit, finished, and rematch states. Heat/tire and player/service identity must remain readable without color alone.
 
 ### Android smoke test

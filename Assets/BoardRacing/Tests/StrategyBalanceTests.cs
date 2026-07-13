@@ -156,13 +156,13 @@ namespace BoardRacing.Tests
             {
                 state.Requested = true;
                 request = true;
-                selection = state.Plan.Service;
             }
 
             float progress = 0f;
             bool complete = false;
             if (racer.Pit.Phase == PitPhase.InService)
             {
+                selection = state.Plan.Service;
                 state.HoldSeconds += Step;
                 progress = Math.Min(1f, state.HoldSeconds / ServiceHoldSeconds);
                 complete = state.HoldSeconds >= ServiceHoldSeconds;

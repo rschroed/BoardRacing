@@ -79,26 +79,31 @@ namespace BoardRacing.Domain
 
     public readonly struct CrewStrategyOutput
     {
-        public CrewStrategyOutput(PitService selectedService, bool requestPit, PitActionResult serviceAction)
-        { SelectedService = selectedService; RequestPit = requestPit; ServiceAction = serviceAction; }
+        public CrewStrategyOutput(PitService selectedService, bool requestPit, PitCallState callState,
+            PitActionResult serviceAction)
+        {
+            SelectedService = selectedService; RequestPit = requestPit;
+            CallState = callState; ServiceAction = serviceAction;
+        }
         public PitService SelectedService { get; }
         public bool RequestPit { get; }
+        public PitCallState CallState { get; }
         public PitActionResult ServiceAction { get; }
     }
 
     public sealed class CrewStrategyAdapter
     {
-        private readonly Vec2 tiresCenter, coolingCenter, halfSize;
+        private readonly Vec2 callCenter, tiresCenter, coolingCenter, halfSize;
         private readonly PitActionMachine tiresAction, coolingAction;
-        private int contactId = -1, armedContactId = -1;
-        private PitService lastReleasedService, armedService;
-        private bool requestArmed;
+        private int contactId = -1;
+        private bool callArmed, callRequestLatched;
 
-        public CrewStrategyAdapter(Vec2 tiresCenter, Vec2 coolingCenter, Vec2 halfSize,
+        public CrewStrategyAdapter(Vec2 callCenter, Vec2 tiresCenter, Vec2 coolingCenter, Vec2 halfSize,
             float targetAngle, float alignmentTolerance, float holdDuration)
         {
             if (halfSize.X <= 0f || halfSize.Y <= 0f) throw new ArgumentException("Crew service zones must be positive.");
-            this.tiresCenter = tiresCenter; this.coolingCenter = coolingCenter; this.halfSize = halfSize;
+            this.callCenter = callCenter; this.tiresCenter = tiresCenter;
+            this.coolingCenter = coolingCenter; this.halfSize = halfSize;
             tiresAction = new PitActionMachine(tiresCenter, halfSize, targetAngle, alignmentTolerance, holdDuration);
             coolingAction = new PitActionMachine(coolingCenter, halfSize, targetAngle, alignmentTolerance, holdDuration);
         }
@@ -116,21 +121,21 @@ namespace BoardRacing.Domain
 
             if (controls.Crew.ContactId != contactId)
             {
-                ResetRequest();
-                lastReleasedService = PitService.None;
+                ResetCall();
                 contactId = controls.Crew.ContactId;
             }
 
             if (pit.Phase == PitPhase.InService)
             {
-                ResetRequest();
+                callArmed = false; callRequestLatched = true;
+                PitService service = ServiceAt(controls.Crew.Position);
                 PitActionResult action;
-                if (pit.SelectedService == PitService.Tires)
+                if (service == PitService.Tires)
                 {
                     coolingAction.Reset();
                     action = tiresAction.Update(controls.Crew, deltaSeconds);
                 }
-                else if (pit.SelectedService == PitService.Cooling)
+                else if (service == PitService.Cooling)
                 {
                     tiresAction.Reset();
                     action = coolingAction.Update(controls.Crew, deltaSeconds);
@@ -140,42 +145,51 @@ namespace BoardRacing.Domain
                     ResetActions();
                     action = default;
                 }
-                return new CrewStrategyOutput(PitService.None, false, action);
+                return new CrewStrategyOutput(service, false, PitCallState.Unavailable, action);
             }
 
             ResetActions();
             if (pit.Phase != PitPhase.OnTrack)
             {
-                ResetRequest();
-                return default;
+                callArmed = false; callRequestLatched = true;
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.Requested, default);
             }
 
-            PitService service = ServiceAt(controls.Crew.Position);
-            bool request = false;
-            if (!controls.Crew.Touched)
+            bool insideCall = Inside(controls.Crew.Position, callCenter);
+            if (callRequestLatched)
             {
-                if (requestArmed && armedContactId == controls.Crew.ContactId && armedService == service &&
-                    service != PitService.None)
-                    request = true;
-                ResetRequest();
-                lastReleasedService = service;
-            }
-            else if (!requestArmed && service != PitService.None && service == lastReleasedService)
-            {
-                requestArmed = true; armedContactId = controls.Crew.ContactId; armedService = service;
-            }
-            else if (requestArmed && (armedContactId != controls.Crew.ContactId || armedService != service))
-            {
-                ResetRequest();
+                if (!insideCall && !controls.Crew.Touched)
+                {
+                    callRequestLatched = false;
+                    callArmed = true;
+                    return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
+                }
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.NeedsOutside, default);
             }
 
-            return new CrewStrategyOutput(service, request, default);
+            if (!callArmed)
+            {
+                if (!insideCall && !controls.Crew.Touched)
+                {
+                    callArmed = true;
+                    return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
+                }
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.NeedsOutside, default);
+            }
+
+            if (!insideCall)
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
+            if (controls.Crew.Touched)
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.ReleaseToRequest, default);
+
+            callArmed = false; callRequestLatched = true;
+            return new CrewStrategyOutput(PitService.None, true, PitCallState.Requested, default);
         }
 
         public void Reset()
         {
-            contactId = -1; lastReleasedService = PitService.None;
-            ResetRequest(); ResetActions();
+            contactId = -1;
+            ResetCall(); ResetActions();
         }
 
         private PitService ServiceAt(Vec2 position)
@@ -188,9 +202,9 @@ namespace BoardRacing.Domain
         private bool Inside(Vec2 position, Vec2 center) =>
             Math.Abs(position.X - center.X) <= halfSize.X && Math.Abs(position.Y - center.Y) <= halfSize.Y;
 
-        private void ResetRequest()
+        private void ResetCall()
         {
-            requestArmed = false; armedContactId = -1; armedService = PitService.None;
+            callArmed = false; callRequestLatched = false;
         }
 
         private void ResetActions()

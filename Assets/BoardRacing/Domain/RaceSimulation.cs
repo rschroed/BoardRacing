@@ -80,10 +80,13 @@ namespace BoardRacing.Domain
         private void CaptureStrategyIntent(RacerState racer, RacerCommand command)
         {
             if (!rules.Pit.Enabled) return;
-            if (racer.PitPhase == PitPhase.OnTrack && command.SelectedService != PitService.None)
+            if (racer.PitPhase == PitPhase.InService && command.SelectedService != PitService.None)
                 racer.SelectedService = command.SelectedService;
-            if (command.RequestPit && racer.SelectedService != PitService.None && racer.PitPhase == PitPhase.OnTrack)
+            if (command.RequestPit && racer.PitPhase == PitPhase.OnTrack)
+            {
+                racer.SelectedService = PitService.None;
                 racer.PitPhase = PitPhase.Requested;
+            }
         }
 
         private void AdvanceRacer(RacerState racer, RacerCommand command, float delta)
