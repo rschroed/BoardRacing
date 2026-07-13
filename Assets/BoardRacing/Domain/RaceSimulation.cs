@@ -12,7 +12,7 @@ namespace BoardRacing.Domain
             public float Speed, Distance, FinishTime = -1f, Recovery;
             public int PriorSection, Incidents;
             public bool Finished, IncidentThisStep;
-            public float Heat, TireWear, ServiceProgress;
+            public float Heat, TireWear, ServiceProgress, PitTimer;
             public PitService SelectedService;
             public PitPhase PitPhase;
             public int CompletedServices;
@@ -77,9 +77,10 @@ namespace BoardRacing.Domain
             return snapshot;
         }
 
-        private static void CaptureStrategyIntent(RacerState racer, RacerCommand command)
+        private void CaptureStrategyIntent(RacerState racer, RacerCommand command)
         {
-            if (command.SelectedService != PitService.None)
+            if (!rules.Pit.Enabled) return;
+            if (racer.PitPhase == PitPhase.OnTrack && command.SelectedService != PitService.None)
                 racer.SelectedService = command.SelectedService;
             if (command.RequestPit && racer.SelectedService != PitService.None && racer.PitPhase == PitPhase.OnTrack)
                 racer.PitPhase = PitPhase.Requested;
@@ -88,6 +89,12 @@ namespace BoardRacing.Domain
         private void AdvanceRacer(RacerState racer, RacerCommand command, float delta)
         {
             if (racer.Finished) return;
+            if (racer.PitPhase == PitPhase.Entering || racer.PitPhase == PitPhase.InService ||
+                racer.PitPhase == PitPhase.Exiting)
+            {
+                AdvancePit(racer, command, delta);
+                return;
+            }
             float throttleFraction = command.CarPresent && command.CarTouched ? (int)command.Throttle / 100f : 0f;
             UpdateHeat(racer, throttleFraction, delta);
             bool heatPenalty = HeatPenaltyActive(racer);
@@ -120,15 +127,61 @@ namespace BoardRacing.Domain
             float prior = racer.Distance;
             racer.Distance += racer.Speed * delta;
             float finishDistance = track.Length * rules.Laps;
-            if (racer.Distance >= finishDistance)
+            bool crossedPitLine = (int)(prior / track.Length) < (int)(racer.Distance / track.Length);
+            if (racer.PitPhase == PitPhase.Requested && rules.Pit.Enabled && crossedPitLine)
+            {
+                racer.Distance = ((int)(prior / track.Length) + 1) * track.Length;
+                racer.Speed = 0f; racer.PitPhase = PitPhase.Entering; racer.PitTimer = 0f;
+                return;
+            }
+            if (racer.Distance >= finishDistance && racer.CompletedServices >= rules.RequiredServiceCount)
             {
                 float moved = racer.Distance - prior;
                 float fraction = moved <= 0f ? 1f : Math.Max(0f, Math.Min(1f, (finishDistance - prior) / moved));
-                racer.Distance = finishDistance;
-                racer.Finished = true;
-                racer.FinishTime = elapsed + delta * fraction;
-                racer.Speed = 0f;
+                FinishRacer(racer, finishDistance, elapsed + delta * fraction);
             }
+        }
+
+        private void AdvancePit(RacerState racer, RacerCommand command, float delta)
+        {
+            racer.Speed = 0f;
+            UpdateHeat(racer, 0f, delta);
+            if (racer.PitPhase == PitPhase.Entering)
+            {
+                racer.ServiceProgress = 0f;
+                racer.PitTimer += delta;
+                if (racer.PitTimer >= rules.Pit.EntrySeconds)
+                {
+                    racer.PitPhase = PitPhase.InService; racer.PitTimer = 0f;
+                }
+                return;
+            }
+            if (racer.PitPhase == PitPhase.InService)
+            {
+                racer.ServiceProgress = command.ServiceActionProgress;
+                if (command.CompleteService && racer.SelectedService != PitService.None)
+                {
+                    if (racer.SelectedService == PitService.Tires) racer.TireWear = 0f;
+                    else if (racer.SelectedService == PitService.Cooling) racer.Heat = 0f;
+                    racer.CompletedServices++;
+                    racer.ServiceProgress = 1f; racer.PitPhase = PitPhase.Exiting; racer.PitTimer = 0f;
+                }
+                return;
+            }
+
+            racer.PitTimer += delta;
+            if (racer.PitTimer < rules.Pit.ExitSeconds) return;
+            racer.PitPhase = PitPhase.OnTrack; racer.PitTimer = racer.ServiceProgress = 0f;
+            racer.SelectedService = PitService.None;
+            racer.PriorSection = track.Sample(racer.Distance).SectionIndex;
+            float finishDistance = track.Length * rules.Laps;
+            if (racer.Distance >= finishDistance && racer.CompletedServices >= rules.RequiredServiceCount)
+                FinishRacer(racer, racer.Distance, elapsed + delta);
+        }
+
+        private static void FinishRacer(RacerState racer, float distance, float finishTime)
+        {
+            racer.Distance = distance; racer.Finished = true; racer.FinishTime = finishTime; racer.Speed = 0f;
         }
 
         private void UpdateHeat(RacerState racer, float throttleFraction, float delta)
@@ -173,7 +226,7 @@ namespace BoardRacing.Domain
                 racer.Speed = racer.Distance = racer.Recovery = 0f; racer.FinishTime = -1f;
                 racer.Finished = racer.IncidentThisStep = false; racer.Incidents = 0;
                 racer.PriorSection = track.Sample(0f).SectionIndex;
-                racer.Heat = racer.TireWear = racer.ServiceProgress = 0f;
+                racer.Heat = racer.TireWear = racer.ServiceProgress = racer.PitTimer = 0f;
                 racer.SelectedService = PitService.None; racer.PitPhase = PitPhase.OnTrack;
                 racer.CompletedServices = 0;
             }
