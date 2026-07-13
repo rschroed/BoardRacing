@@ -29,6 +29,7 @@ The first prototype will use Unity and the Board Unity SDK. Unity currently prov
 - [Tranche 1 control lab](docs/testing/tranche-1-control-lab.md)
 - [Tranche 1 validation record](docs/testing/tranche-1-validation.md)
 - [Tranche 2 racing-proof gate](docs/testing/tranche-2-racing-proof.md)
+- [Tranche 3 pit-crew proof](docs/testing/tranche-3-pit-crew-proof.md)
 - [GitHub workflow](docs/workflow.md)
 
 ## Immediate milestone

@@ -12,6 +12,10 @@ namespace BoardRacing.Domain
             public float Speed, Distance, FinishTime = -1f, Recovery;
             public int PriorSection, Incidents;
             public bool Finished, IncidentThisStep;
+            public float Heat, TireWear, ServiceProgress;
+            public PitService SelectedService;
+            public PitPhase PitPhase;
+            public int CompletedServices;
         }
 
         private readonly TrackDefinition track;
@@ -58,7 +62,12 @@ namespace BoardRacing.Domain
             }
             else if (phase == RacePhase.Racing)
             {
-                foreach (var racer in racers) AdvanceRacer(racer, Command(racer.Id), fixedDeltaSeconds);
+                foreach (var racer in racers)
+                {
+                    var command = Command(racer.Id);
+                    CaptureStrategyIntent(racer, command);
+                    AdvanceRacer(racer, command, fixedDeltaSeconds);
+                }
                 elapsed += fixedDeltaSeconds;
                 if (racers.All(x => x.Finished)) phase = RacePhase.Finished;
             }
@@ -66,6 +75,14 @@ namespace BoardRacing.Domain
 
             snapshot = BuildSnapshot();
             return snapshot;
+        }
+
+        private static void CaptureStrategyIntent(RacerState racer, RacerCommand command)
+        {
+            if (command.SelectedService != PitService.None)
+                racer.SelectedService = command.SelectedService;
+            if (command.RequestPit && racer.SelectedService != PitService.None && racer.PitPhase == PitPhase.OnTrack)
+                racer.PitPhase = PitPhase.Requested;
         }
 
         private void AdvanceRacer(RacerState racer, RacerCommand command, float delta)
@@ -124,6 +141,9 @@ namespace BoardRacing.Domain
                 racer.Speed = racer.Distance = racer.Recovery = 0f; racer.FinishTime = -1f;
                 racer.Finished = racer.IncidentThisStep = false; racer.Incidents = 0;
                 racer.PriorSection = track.Sample(0f).SectionIndex;
+                racer.Heat = racer.TireWear = racer.ServiceProgress = 0f;
+                racer.SelectedService = PitService.None; racer.PitPhase = PitPhase.OnTrack;
+                racer.CompletedServices = 0;
             }
         }
 
@@ -136,9 +156,13 @@ namespace BoardRacing.Domain
             {
                 int place = Array.IndexOf(ordered, racer) + 1;
                 float offset = close ? (racer.Id == PlayerId.Player1 ? -rules.PassingOffset : rules.PassingOffset) : 0f;
+                var condition = new RacerConditionSnapshot(racer.Heat, racer.TireWear, false, false);
+                var pit = new RacerPitSnapshot(racer.SelectedService, racer.PitPhase, racer.ServiceProgress,
+                    racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount);
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
                     Math.Min(rules.Laps, (int)(racer.Distance / track.Length)), place, racer.Finished, racer.FinishTime,
-                    track.Sample(racer.Distance), offset, racer.IncidentThisStep, racer.Recovery, racer.Incidents);
+                    track.Sample(racer.Distance), offset, racer.IncidentThisStep, racer.Recovery, racer.Incidents,
+                    condition, pit);
             }).ToArray();
             float progress = rules.RematchHoldSeconds <= 0f ? 1f : Math.Min(1f, rematchHeld / rules.RematchHoldSeconds);
             return new RaceSnapshot(phase, countdown, elapsed, result, progress, awaitingRematchRelease);
