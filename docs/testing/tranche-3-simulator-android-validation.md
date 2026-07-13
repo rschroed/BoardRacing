@@ -6,12 +6,12 @@ The Tranche 3 software-readiness gate **passed on July 13, 2026**. The complete 
 
 | Item | Recorded value |
 | --- | --- |
-| Runtime source commit | `1804af80fdff445a7509d92008122a417c27cddf` |
+| Runtime source commit | `778d43d` |
 | Unity | `2022.3.62f3` |
 | Board Unity SDK | `3.3.0` |
 | APK | `Builds/Android/BoardRacing-development.apk` |
-| APK size | `25,263,649` bytes |
-| APK SHA-256 | `95044a75cbd05f63ee2babbfaf721c13016f89692a23f9c4bf32a91b4aa65b20` |
+| APK size | `25,262,713` bytes |
+| APK SHA-256 | `ade133269871e4da50baa7fe2c321c54fe2bb214a1f625a70e57e273199ebeae` |
 | Package | `com.wholestudios.boardracing` |
 | Version | code `1`, name `1.0` |
 
@@ -21,11 +21,11 @@ The APK was rebuilt after the runtime source commit was created, then that exact
 
 | Suite | Passed | Failed | Duration |
 | --- | ---: | ---: | ---: |
-| Edit Mode | 64 | 0 | 0.49s |
-| Play Mode | 12 | 0 | 33.62s |
-| Total | 76 | 0 | 34.11s |
+| Edit Mode | 65 | 0 | 0.57s |
+| Play Mode | 13 | 0 | 32.16s |
+| Total | 78 | 0 | 32.73s |
 
-The final suites ran at the candidate source commit after the Call Pit/in-box interaction and continuous pit-motion refinements. Edit Mode covers the deterministic race, condition, pit, Crew-adapter, normalized phase progress, presentation-pose boundaries, and strategy-balance contracts. Play Mode covers runtime startup, the shared two-player provider path, Call Pit and parked repair choices, a complete accelerated keyboard race through service/finish/rematch, and the production Board provider through the Board SDK simulator.
+The final suites ran at the candidate source commit after the physical Call Pit follow-up from #49. Edit Mode covers the deterministic race, condition, pit, Crew-adapter, normalized phase progress, presentation-pose boundaries, and strategy-balance contracts. Play Mode covers runtime startup, the shared two-player provider path, Call Pit and parked repair choices, a complete accelerated keyboard race through service/finish/rematch, and the production Board provider through the Board SDK simulator—including both same-contact sliding and lift/place reacquisition followed by a safe release and deliberate touch/release.
 
 ## Board SDK simulator matrix
 
@@ -52,7 +52,7 @@ lib/arm64-v8a/libtensorflowlite.so
 lib/arm64-v8a/libunity.so
 ```
 
-The first inspection during Issue #48 exposed stale numbered IL2CPP copies from prior Bee outputs and a 160 MB APK. The build entry point now uses `BuildOptions.CleanBuildCache`; a clean rebuild produced the recorded 25,263,649-byte candidate with no numbered duplicate libraries. The Unity batch build exited successfully. Its only error-level build diagnostic was an early license-token refresh message; compilation, IL2CPP, Gradle packaging, and the final build result succeeded.
+The first inspection during Issue #48 exposed stale numbered IL2CPP copies from prior Bee outputs and a 160 MB APK. The build entry point now uses `BuildOptions.CleanBuildCache`; a clean rebuild produced the recorded 25,262,713-byte candidate with no numbered duplicate libraries. The Unity batch build exited successfully. Its only error-level build diagnostic was an early license-token refresh message; compilation, IL2CPP, Gradle packaging, and the final build result succeeded.
 
 ## Paired-Board smoke test
 
@@ -65,7 +65,7 @@ The first inspection during Issue #48 exposed stale numbered IL2CPP copies from 
 | Install and launch | Passed |
 | Render size | `1920 × 1080` |
 
-After the startup frame settled, a direct Board screenshot showed the refreshed five-lap race presentation: two mirrored player HUDs, one exact Call Pit region per player, distinct pit lane and player boxes, heat and tire meters, and both on-car `H`/`T` attachment cues. No editor-only provider hint was present. Automated pose coverage proves continuous phase endpoints; the remaining physical gate explicitly observes the complete motion and the dynamic replacement of Call Pit with Tires/Cooling repair regions after parking.
+After the startup frame settled, a direct Board screenshot showed the refreshed five-lap race presentation: two mirrored player HUDs, one exact Call Pit region per player, explicit `CALL PIT · TOUCH + RELEASE` status, distinct pit lane and player boxes, heat and tire meters, and both on-car `H`/`T` attachment cues. No editor-only provider hint was present. Automated pose coverage proves continuous phase endpoints; the remaining physical gate explicitly observes the complete motion and the dynamic replacement of Call Pit with the new `CAR PARKED · CHOOSE REPAIR` Tires/Cooling state.
 
 Warning-or-higher logs for the candidate process contained the Board platform's recurring hidden-method/property-access warnings and four `Invalid base format` graphics-layer messages during startup. They contained no managed exception, Unity stack trace, Board Racing error, crash, or stuck process. The same graphics messages recur in earlier launches, and the settled 1920×1080 capture rendered correctly.
 

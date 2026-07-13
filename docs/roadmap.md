@@ -63,7 +63,7 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 
 ## 3. Pit-crew proof
 
-**Status:** Software-ready as of July 13, 2026. Deterministic strategy, the Call Pit-to-parked-repair interaction, continuous pit presentation, balance, the complete 76-test automated/simulator pass, and the refreshed exact-candidate Android inspection/deployment smoke test are recorded in the [Tranche 3 proof](testing/tranche-3-pit-crew-proof.md) and [simulator/Android validation](testing/tranche-3-simulator-android-validation.md). The tranche remains in progress until the two-person physical gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49) passes.
+**Status:** Software-ready as of July 13, 2026. The first physical-gate attempt confirmed simultaneous racing but exposed an unnatural new-contact Call Pit arm requirement before either player could repair. Issue #62 replaced it with a safe touch/release action and is deployed for retest. Deterministic strategy, continuous pit presentation, balance, the complete 78-test automated/simulator pass, and the exact-candidate Android inspection/deployment smoke test are recorded in the [Tranche 3 proof](testing/tranche-3-pit-crew-proof.md) and [simulator/Android validation](testing/tranche-3-simulator-android-validation.md). The tranche remains in progress until the two-person physical gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49) passes.
 
 **Goal:** Determine whether the second Piece deepens the race.
 
