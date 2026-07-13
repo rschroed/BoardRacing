@@ -14,7 +14,10 @@ public static class BoardRacingBuild
             scenes = scenes,
             locationPathName = "Builds/Android/BoardRacing-development.apk",
             target = BuildTarget.Android,
-            options = BuildOptions.Development
+            // A hardware-ready verification build must not inherit stale Bee outputs.
+            // In particular, repeated IL2CPP builds can otherwise leave numbered native
+            // library copies in the APK, materially inflating the artifact.
+            options = BuildOptions.Development | BuildOptions.CleanBuildCache
         };
         BuildReport report = BuildPipeline.BuildPlayer(options);
         if (report.summary.result != BuildResult.Succeeded)

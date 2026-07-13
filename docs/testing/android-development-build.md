@@ -47,6 +47,8 @@ lib/arm64-v8a/libil2cpp.so
 lib/arm64-v8a/libunity.so
 ```
 
+The archive must contain exactly one unnumbered copy of each Unity runtime library. Files such as `libil2cpp 2.so` indicate stale Bee output and fail inspection. The repository's `BoardRacingBuild.BuildAndroidDevelopment` entry point requests `BuildOptions.CleanBuildCache` to prevent that contamination in scripted verification builds.
+
 To verify reproducibility, delete `Builds/Android`, repeat the procedure, and re-run the inspections. APK hashes may differ between development builds; success is defined by the build result and required package/native metadata, not byte-for-byte output.
 
 ## Initial validation evidence
