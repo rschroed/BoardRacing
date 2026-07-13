@@ -99,7 +99,7 @@ namespace BoardRacing.Domain
         public RaceRules(int laps, float countdownSeconds, float maxSpeed, float acceleration, float drag,
             float braking, float cornerSpeedScrub, float cornerRecoverySeconds, float recoveryAccelerationScale,
             float passingDistance, float passingOffset, float rematchHoldSeconds, int requiredServiceCount = 0,
-            ConditionRules conditionRules = default)
+            ConditionRules conditionRules = default, PitRules pitRules = default)
         {
             var scalarValues = new[] { countdownSeconds, maxSpeed, acceleration, drag, braking, cornerSpeedScrub,
                 cornerRecoverySeconds, recoveryAccelerationScale, passingDistance, passingOffset, rematchHoldSeconds };
@@ -111,11 +111,13 @@ namespace BoardRacing.Domain
                 recoveryAccelerationScale <= 0f || recoveryAccelerationScale > 1f || passingDistance < 0f ||
                 passingOffset < 0f || rematchHoldSeconds <= 0f || requiredServiceCount < 0)
                 throw new ArgumentException("Race rules contain invalid strategy or presentation values.");
+            if (requiredServiceCount > 0 && !pitRules.Enabled)
+                throw new ArgumentException("A required service count needs an enabled pit lifecycle.");
             Laps = laps; CountdownSeconds = countdownSeconds; MaxSpeed = maxSpeed; Acceleration = acceleration;
             Drag = drag; Braking = braking; CornerSpeedScrub = cornerSpeedScrub;
             CornerRecoverySeconds = cornerRecoverySeconds; RecoveryAccelerationScale = recoveryAccelerationScale;
             PassingDistance = passingDistance; PassingOffset = passingOffset; RematchHoldSeconds = rematchHoldSeconds;
-            RequiredServiceCount = requiredServiceCount; Conditions = conditionRules;
+            RequiredServiceCount = requiredServiceCount; Conditions = conditionRules; Pit = pitRules;
         }
         public int Laps { get; }
         public float CountdownSeconds { get; }
@@ -131,10 +133,11 @@ namespace BoardRacing.Domain
         public float RematchHoldSeconds { get; }
         public int RequiredServiceCount { get; }
         public ConditionRules Conditions { get; }
+        public PitRules Pit { get; }
         public static RaceRules Defaults => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f);
         public static RaceRules TrancheThreeDefaults =>
             new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f, 1,
-                ConditionRules.Defaults);
+                ConditionRules.Defaults, PitRules.Defaults);
     }
 
     public readonly struct ConditionRules
@@ -172,6 +175,22 @@ namespace BoardRacing.Domain
         public float FullyWornSafeSpeedScale { get; }
         public static ConditionRules Disabled => default;
         public static ConditionRules Defaults => new ConditionRules(.045f, .08f, .7f, .6f, .5f, .015f, .08f, .6f, .75f);
+    }
+
+    public readonly struct PitRules
+    {
+        public PitRules(float entrySeconds, float exitSeconds)
+        {
+            if (float.IsNaN(entrySeconds) || float.IsInfinity(entrySeconds) ||
+                float.IsNaN(exitSeconds) || float.IsInfinity(exitSeconds) || entrySeconds <= 0f || exitSeconds <= 0f)
+                throw new ArgumentException("Pit rules contain invalid values.");
+            Enabled = true; EntrySeconds = entrySeconds; ExitSeconds = exitSeconds;
+        }
+        public bool Enabled { get; }
+        public float EntrySeconds { get; }
+        public float ExitSeconds { get; }
+        public static PitRules Disabled => default;
+        public static PitRules Defaults => new PitRules(.75f, .75f);
     }
 
     public readonly struct RacerCommand

@@ -24,6 +24,15 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 - Tire wear progressively lowers the safe corner-speed margin to `75%` of its base value at fully worn. The warning state begins at `0.60` wear.
 - Both conditions are normalized and clamped to `0–1`. These values are first-pass deterministic defaults, not final balance.
 
+## Provisional pit lifecycle
+
+- A deliberate request with a selected service latches until the racer's next start/finish crossing; duplicate requests do not create additional stops.
+- At the pit line, the simulation stops track movement and owns a `0.75`-second entry, an open-ended in-service state, and a `0.75`-second exit. Car throttle is ignored throughout those states.
+- In-service progress comes from an abstract Crew action. Lost or canceled input resets progress to zero without applying service or releasing the car.
+- Tires resets only tire wear. Cooling resets only motor heat. Each completion increments exactly once, and later stops remain available.
+- An unserved racer may continue beyond the nominal finish but remains unclassified. Completing the required service at a later pit-line crossing makes the racer finish-eligible and classifies it after pit exit.
+- Rematch clears heat, wear, selection, pit phase, progress, and completed-service count for both racers.
+
 ## Questions the gate must answer
 
 1. Do heat and wear change how players drive without requiring constant HUD reading?
