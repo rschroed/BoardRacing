@@ -28,8 +28,8 @@ namespace BoardRacing.Runtime
         private static readonly Vec2 PlayerOnePitBox = new Vec2(820f, 455f);
         private static readonly Vec2 PlayerTwoPitBox = new Vec2(1100f, 455f);
         private static readonly Vec2 PitExit = new Vec2(1370f, 455f);
-        private static readonly Vec2 PitReturnBend = new Vec2(1480f, 505f);
-        private static readonly Vec2 PitReturnLane = new Vec2(360f, 505f);
+        private static readonly Vec2 PitReturnBend = new Vec2(1480f, 405f);
+        private static readonly Vec2 PitReturnLane = new Vec2(360f, 405f);
         private static readonly Vec2 PitMergeApproach = new Vec2(390f, 438f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
