@@ -82,7 +82,7 @@ The initial values are retained because the matrix already answers the balance q
 
 ### Simulator and keyboard
 
-1. Run the complete two-player keyboard trace through Call Pit placement/release, request, entry, parked service selection, aligned hold, exit, five-lap finish, and rematch; then repeat the production provider flow with two simultaneous SDK simulator Crew contacts.
+1. Run the complete two-player keyboard trace through Call Pit placement/alignment/hold, request, entry, parked service selection, aligned hold, smooth exit, five-lap finish, and Brake-confirmed rematch; then repeat the production provider flow with two simultaneous SDK simulator Robot contacts.
 2. Exercise different in-box Tires and Cooling choices, switching before completion, one lost-contact reset during service, a wrong-region placement, Call Pit rearming, reacquisition, and a rematch. Record any invalid transition, duplicate request/completion, stale progress, or cross-player command as a failure.
 3. Review captures from both table orientations at normal, warning, critical, requested, in-service, service-complete/exit, finished, and rematch states. Heat/tire and player/service identity must remain readable without color alone.
 4. Observe both a mid-race stop and a required stop after the nominal finish. Entry, each player box, exit, the start/finish merge, and the late per-racer finish handoff must remain continuous and legible while the opponent continues.
@@ -112,10 +112,10 @@ The initial values are retained because the matrix already answers the balance q
 
 ## Evidence status
 
-- [x] Race-domain, Crew-adapter, semantic presentation, pit-pose, and balance-trace coverage: 65 of 65 Edit Mode tests passed at the Issue #62 retest candidate commit.
-- [x] Runtime and Board SDK integration coverage: 13 of 13 Play Mode tests passed. The keyboard provider has a complete accelerated strategy race through Call Pit, parked service choice, entry, service, continuous exit, finish, and rematch; the production Board provider also covers same-contact sliding and physical lift/place → safe release → touch/release.
-- [x] Complete Board SDK simulator recovery matrix through the production provider: independent simultaneous service, concurrent Car control, wrong-region reset, contact cancellation, new-ID release gating, settings reset, reacquisition, and exactly-once recovery all passed without cross-player commands.
+- [x] Race-domain, Robot-adapter, semantic presentation, spline pit-pose, and balance-trace coverage: 65 of 65 EditMode tests passed at the #69 candidate.
+- [x] Runtime and Board SDK integration coverage: 13 of 13 PlayMode tests passed. The keyboard provider has a complete accelerated strategy race through Call Pit, parked service choice, entry, service, smooth exit, finish, and rotation-only rematch; the production Board provider covers same-contact sliding, physical lift/place, touch independence, and settings-reset recovery.
+- [x] Complete Board SDK simulator recovery matrix through the production provider: independent simultaneous service, concurrent Ship control, wrong-region reset, contact cancellation, new-ID placement, settings reset, reacquisition, and exactly-once recovery all passed without cross-player commands.
 - [x] Final Android inspection and paired-Board smoke test: the exact 24 MB candidate is API 33, ARM64, IL2CPP, contains one copy of every expected Board/runtime library, installs, launches, and renders the complete mirrored 1920×1080 presentation without a Unity exception or Board Racing failure.
 - [x] Exact candidate commit, test counts, APK hash, package inspection, Board environment, screenshot review, logs, and hardware-only carryover are recorded in the [Tranche 3 simulator and Android validation](tranche-3-simulator-android-validation.md).
-- [ ] Physical retest of the Issue #62 candidate: both players must reach the parked repair UI and complete service without developer explanation. The earlier attempt did not pass this criterion.
+- [ ] Physical retest of the #69/#70 candidate: both players must find the three Ship stops, reach the parked repair UI, complete Robot service, and observe the smooth return without developer explanation. The earlier touch/release attempt did not pass this criterion.
 - [ ] Two-person physical Board gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49).
