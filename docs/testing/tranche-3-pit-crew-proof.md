@@ -9,7 +9,7 @@ Tranche 3 is **in progress**. This record defines the provisional strategy hypot
 - Every racer completes at least one deliberately requested stop in a five-lap race.
 - Critical heat reduces performance but never automatically requests or forces a pit stop.
 - A racer that crosses the nominal finish without the required service remains unclassified until it services and later crosses start/finish.
-- The existing Crew Piece align-and-hold action is reused rather than adding a new physical gesture.
+- The existing placement/align/hold action is reused without active touch rather than adding another physical gesture.
 - Repair, AI, extra tracks, final art, and production balance remain outside this gate.
 
 ## Deterministic boundary
@@ -32,26 +32,26 @@ The race simulation consumes only player-scoped throttle, service-selection, pit
 - Tires resets only tire wear. Cooling resets only motor heat. Each completion increments exactly once, and later stops remain available.
 - An unserved racer may continue beyond the nominal finish but remains unclassified. Completing the required service at a later pit-line crossing makes the racer finish-eligible and classifies it after pit exit.
 - Immutable pit snapshots expose normalized entry and exit progress. Presentation maps that progress continuously through the pit-line connection, the correct player box, and back to the same start/finish merge without changing simulation distance or pit timing.
-- The car remains stationary in its own box while no repair is selected, while the Ship switches repair zones, and whenever service progress resets. A racer classified after a late required stop receives a readable per-racer `FINISHED` state while its opponent can continue.
+- The car remains stationary in its own box while no repair is selected, while the Robot switches repair zones, and whenever service progress resets. A racer classified after a late required stop receives a readable per-racer `FINISHED` state while its opponent can continue.
 - Rematch clears heat, wear, selection, pit phase, progress, and completed-service count for both racers.
 
-## Crew interaction
+## Robot crew interaction
 
 - Each player has one mirrored Call Pit region centered on the proven Tranche 1 service center with the same half-size as a repair region. The repair regions replace that central target within the same player area once the car is parked, so three competing targets are never active together.
-- A safely released Ship may remain in Call Pit without requesting a stop. Touching it there arms the request and releasing it there emits exactly once. A same-contact slide into Call Pit and release follows the same touch/release transition.
-- A newly recognized or settings-reset Ship is release-gated first. That safe release cannot request a stop; a subsequent touch/release cycle in Call Pit is required. Wrong-region placement, duplicate glyphs, removal, cancellation, or contact loss clears the armed request.
+- A Robot that enters or is newly placed in Call Pit during Racing selects the request action. Alignment at `0° ±15°` and a `0.75`-second steady hold emits exactly once. A Robot already sitting there before `GO` cannot request automatically.
+- Active touch is ignored. Wrong-region placement, duplicate glyphs, removal, cancellation, movement out of the region, bad alignment, or contact loss clears progress and cannot emit a request.
 - Requested and entering racers carry no selected service. Once the car is in service, mirrored Tires and Cooling regions centered `190` pixels to either side of the service center activate with `140 × 120`-pixel half-size.
-- Moving into Tires or Cooling selects that repair only while parked. The selected region uses the proven `0° ±15°` align-and-hold action for `1.5` seconds; changing regions before completion resets progress and changes the choice.
-- Contact loss, cancellation, bad alignment, release, provider changes, and Board input settings changes clear in-progress service before any completion can be emitted and leave the car parked.
-- After exit, Call Pit requires a fresh touch/release cycle. A released Ship left over a former repair region or inside the newly active Call Pit cannot automatically request another stop when the UI changes.
-- The keyboard fallback moves, touches, and rotates the Crew Piece with the existing player-specific keys, so it exercises the same Call Pit and repair adapter as Board input.
+- Moving the Robot into Tires or Cooling selects that repair only while parked. The selected region uses the same `0° ±15°` placement/align/hold action for `1.5` seconds; changing regions before completion resets progress and changes the choice.
+- Contact loss, cancellation, movement, bad alignment, provider changes, and Board input settings changes clear in-progress service before any completion can be emitted and leave the car parked.
+- After exit, Call Pit requires a fresh Robot entry/new placement and hold. A Robot left over a former repair region cannot automatically request another stop when the UI changes.
+- The keyboard fallback moves and rotates the Pit Robot and rotates the Driving Ship, so it exercises the same adapters as Board input without touch.
 
 ## Presentation scaffold
 
 - The HUD exposes normalized heat and tire wear with different meter shapes, numeric values, and normal/warning/critical text states. Required-stop, selected-service, pit-phase, service-progress, lap, place, throttle, incident, winner, and rematch feedback share the same mirrored player panel.
 - Each car has two stable presentation attachment regions: a rounded `H` heat badge and a square `T` tire badge. Warning adds `!`; critical adds `!!`, so the cues do not depend on color. A stateless mapper derives both levels only from immutable racer snapshots and condition rules.
 - The rendered track is compressed toward the center without altering deterministic track coordinates. A presentation-only lane places cars at distinct entry, player box, and exit positions while the simulation continues to own only the pit phase.
-- While racing, one Call Pit panel per player uses the exact adapter hit region and says to place, touch, and release the Ship. Once parked, it is replaced by the exact Tires and Cooling repair regions, and both the car and HUD explicitly say `CAR PARKED · CHOOSE REPAIR`. All targets are converted from bottom-left screen coordinates to top-left IMGUI coordinates, mirrored for the two table sides, and reinforced with different shapes and labels in addition to color.
+- While racing, one Call Pit panel per player uses the exact adapter hit region and shows Robot placement, alignment, and hold progress. Once parked, it is replaced by the exact Tires and Cooling repair regions, and both the car and HUD explicitly say `CAR PARKED · CHOOSE REPAIR`. All targets are converted from bottom-left screen coordinates to top-left IMGUI coordinates, mirrored for the two table sides, and reinforced with different shapes and labels in addition to color.
 - Critical heat messaging says that power is limited and leaves cooling-on-track versus a voluntary Cooling stop to the player. Nothing in the presentation requests or forces a stop.
 
 ## First-pass balance evidence
@@ -76,7 +76,7 @@ The initial values are retained because the matrix already answers the balance q
 - Full throttle adds `0.045` heat per second, released throttle removes `0.08`, and the `0.70` threshold limits maximum speed to `60%` and acceleration to `50%`. Half throttle manages heat while full throttle creates a strong but recoverable reason to choose Cooling.
 - Each corner adds `0.015` wear plus unsafe-speed wear at `0.08`; worn tires reduce the safe margin toward `75%` at full wear. This makes Tires beat Cooling in the managed profile without making Tires universally dominant.
 - The three-second stop floor is large enough that an irrelevant service loses, while a relevant Cooling service can repay the cost. No production constant was changed merely to widen deterministic margins.
-- With one service required, a no-service full-throttle control remains unclassified after traveling more than six laps; it cannot turn ignoring the Crew Piece into a winning shortcut.
+- With one service required, a no-service Boost control remains unclassified after traveling more than six laps; it cannot turn ignoring the Pit Robot into a winning shortcut.
 
 ## Tranche 3 playtest protocol
 
@@ -97,9 +97,9 @@ The initial values are retained because the matrix already answers the balance q
 
 1. Two players complete three five-lap races, swapping table sides after the first. Explain the controls and mandatory-stop rule once; after `GO`, do not name a preferred service or pit lap.
 2. For every racer record service type, request lap, pit-entry lap, finish order, peak condition cues noticed, assistance, false/lost contacts, and the player's stated reason for the decision.
-3. In the second race, deliberately remove one Crew Piece during service and require the player to recover from the visible prompt. In the third, allow both players to revise strategy based only on prior results and live feedback.
+3. In the second race, deliberately remove one Pit Robot during service and require the player to recover from the visible prompt. In the third, allow both players to revise strategy based only on prior results and live feedback.
 
-“Voluntary different decisions” passes when at least one race contains a different service choice or pit timing chosen without a post-start prompt, and at least one player changes a later plan for a stated heat, tire, opponent, or time-loss reason. “Crew Piece is essential” passes when both players independently select, request, and complete every required stop, recover the deliberate loss without the developer operating a Piece, and can identify a race consequence caused by their Crew decision. Any automatic/forced stop, skipped physical Crew action, or unclassified no-stop win fails the gate.
+“Voluntary different decisions” passes when at least one race contains a different service choice or pit timing chosen without a post-start prompt, and at least one player changes a later plan for a stated heat, tire, opponent, or time-loss reason. “Pit Robot is essential” passes when both players independently select, request, and complete every required stop, recover the deliberate loss without the developer operating a Piece, and can identify a race consequence caused by their crew decision. Any automatic/forced stop, skipped physical Robot action, or unclassified no-stop win fails the gate.
 
 ## Questions the gate must answer
 
@@ -108,7 +108,7 @@ The initial values are retained because the matrix already answers the balance q
 3. Is the time saved by a good service decision understandable after the race?
 4. Does aligning and holding during a live race remain deliberate rather than fiddly?
 5. Are condition and pit states readable from both sides while cars are close or overtaking?
-6. Do players regard the Crew Piece as essential rather than an extra confirmation control?
+6. Do players regard the Pit Robot as essential rather than an extra confirmation control?
 
 ## Evidence status
 
