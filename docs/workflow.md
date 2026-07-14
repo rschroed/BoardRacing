@@ -95,7 +95,7 @@ During triage, add one priority label:
 - `priority: high` — time-sensitive or blocks important work.
 - `priority: normal` — the default for planned work.
 
-Use `tranche: 1` through `tranche: 6` to connect work to the [roadmap](roadmap.md). Early ideas that have not been assigned to a tranche may remain unlabeled until clarified.
+Use `tranche: 1` through `tranche: 7` to connect work to the [roadmap](roadmap.md). Early ideas that have not been assigned to a tranche may remain unlabeled until clarified.
 
 Apply `blocked` only when progress requires an external decision, dependency, hardware access, or upstream fix. Add a comment stating the blocking condition and what will unblock the issue. Remove the label as soon as that condition clears.
 

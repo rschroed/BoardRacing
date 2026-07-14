@@ -57,7 +57,7 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 - Starting grid, laps, finish order, and restart.
 - Deterministic scripted throttle traces for repeatable testing.
 
-Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate remains focused on the proven two-human Car Piece interaction.
+Player-facing solo play and AI opponents are deferred to Tranche 5 so this gate remains focused on the proven two-human Car Piece interaction.
 
 **Exit criterion:** A five-lap race is understandable and competitive using the Car Piece alone.
 
@@ -77,7 +77,22 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 
 **Exit criterion:** Players voluntarily make different pit decisions and regard the Robot pit control as essential.
 
-## 4. Complete social game
+## 4. Wireframe experience proof
+
+**Goal:** Prove that the established two-player race can be read and operated as a coherent player experience.
+
+**Deliverables**
+
+- A complete inventory of grid, countdown, racing, warning, pit, split-finish, results, and rematch states.
+- Approved low-fidelity Figma wireframes covering the full state matrix.
+- A user-facing hierarchy with one dominant next action per player.
+- Physical action affordances aligned exactly to the established Call Pit, Tires, and Cooling hit regions.
+- Results and rematch treatment that works from opposite table sides.
+- Android and physical-Board readability evidence at the fixed 1920×1080 target.
+
+**Exit criterion:** Two players can complete and rematch the full race from opposite sides without developer assistance interpreting the UI.
+
+## 5. Complete social game
 
 **Goal:** Turn the prototype into a repeatable group experience.
 
@@ -91,7 +106,7 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 
 **Exit criterion:** A new group can launch, understand, finish, and replay the game without developer assistance.
 
-## 5. Presentation and content
+## 6. Presentation and content
 
 **Goal:** Establish a distinctive, coherent production experience.
 
@@ -104,7 +119,7 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 
 **Exit criterion:** The game is commercially presentable and remains readable from all four sides.
 
-## 6. Hardening and submission
+## 7. Hardening and submission
 
 **Goal:** Produce a reliable release candidate.
 
@@ -119,4 +134,4 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 
 ## Investment rule
 
-Do not invest heavily in final art, multiple tracks, championship content, or marketing production until Tranches 1–3 pass real playtests.
+Do not invest heavily in final art, multiple tracks, championship content, or marketing production until Tranche 4 proves the complete two-player experience is readable on physical hardware.
