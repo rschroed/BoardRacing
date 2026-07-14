@@ -6,12 +6,12 @@ The Tranche 3 software-readiness gate **passed on July 13, 2026**. The complete 
 
 | Item | Recorded value |
 | --- | --- |
-| Runtime source commit | `778d43d` |
+| Runtime source commit | `616cfe3` |
 | Unity | `2022.3.62f3` |
 | Board Unity SDK | `3.3.0` |
 | APK | `Builds/Android/BoardRacing-development.apk` |
-| APK size | `25,262,713` bytes |
-| APK SHA-256 | `ade133269871e4da50baa7fe2c321c54fe2bb214a1f625a70e57e273199ebeae` |
+| APK size | `25,272,289` bytes |
+| APK SHA-256 | `b05d871a88b2c418645db98d903f9882b2e6f693233fcd1bc224cfd1143778b1` |
 | Package | `com.wholestudios.boardracing` |
 | Version | code `1`, name `1.0` |
 
@@ -25,17 +25,17 @@ The APK was rebuilt after the runtime source commit was created, then that exact
 | Play Mode | 13 | 0 | 32.16s |
 | Total | 78 | 0 | 32.73s |
 
-The final suites ran at the candidate source commit after the physical Call Pit follow-up from #49. Edit Mode covers the deterministic race, condition, pit, Crew-adapter, normalized phase progress, presentation-pose boundaries, and strategy-balance contracts. Play Mode covers runtime startup, the shared two-player provider path, Call Pit and parked repair choices, a complete accelerated keyboard race through service/finish/rematch, and the production Board provider through the Board SDK simulator—including both same-contact sliding and lift/place reacquisition followed by a safe release and deliberate touch/release.
+The final suites ran for the placement/rotation candidate after the first physical attempt in #49. EditMode covers the deterministic race, condition, pit, Robot adapter, three player-relative Ship stops, normalized phase progress, spline presentation boundaries, and strategy-balance contracts. PlayMode covers runtime startup, the shared two-player provider path, Call Pit and parked repair choices, a complete accelerated keyboard race through service/finish/rematch, and the production Board provider through the Board SDK simulator—including same-contact sliding, lift/place reacquisition, touch independence, and settings-reset recovery.
 
 ## Board SDK simulator matrix
 
 The simulator tests use official Orange and Purple Robot and Ship contacts, `BoardContactInputProvider`, and the production `CrewStrategyAdapter`; they do not inject pit completions directly into the simulation.
 
-- Two players independently select different services, touch and release to request a stop, and complete simultaneous align-and-hold actions.
-- Both Car contacts remain active while Crew interactions are in progress. A Crew failure does not clear the same player's Car throttle or affect the other player.
-- Moving Player 1's Crew contact into the wrong player's region clears only Player 1's action progress and produces the expected wrong-region warning.
-- Canceling Player 2's Crew contact clears progress. A replacement contact starts release-gated, cannot complete while gated, and rearms only after a safe release.
-- Changing `BoardInput.settings` through the real SDK event resets both throttles and both Crew actions, release-gates every active Piece, and permits both players to recover after release and retouch.
+- Two players independently select different services, place/align/hold to request a stop, and complete simultaneous Robot actions without active touch.
+- Both Ship contacts remain active while Robot interactions are in progress. A Robot failure does not clear the same player's Ship throttle or affect the other player.
+- Moving Player 1's Robot into the wrong player's region clears only Player 1's action progress and produces the expected warning.
+- Canceling Player 2's Robot clears progress. A replacement contact can begin only from a fresh placement and cannot inherit an old action.
+- Changing `BoardInput.settings` through the real SDK event resets both Robot actions; service requires a fresh placement afterward. Active touch does not change the recovered Ship command.
 - After recovery, both different services complete exactly once; repeated updates cannot duplicate completion or cross-assign a command.
 
 The broader simulator suite also retains duplicate/unassigned Piece, crossing-region, removal, cancellation, recognition-loss, new-contact-ID, and ten simultaneous two-player cycle coverage.
@@ -52,7 +52,7 @@ lib/arm64-v8a/libtensorflowlite.so
 lib/arm64-v8a/libunity.so
 ```
 
-The first inspection during Issue #48 exposed stale numbered IL2CPP copies from prior Bee outputs and a 160 MB APK. The build entry point now uses `BuildOptions.CleanBuildCache`; a clean rebuild produced the recorded 25,262,713-byte candidate with no numbered duplicate libraries. The Unity batch build exited successfully. Its only error-level build diagnostic was an early license-token refresh message; compilation, IL2CPP, Gradle packaging, and the final build result succeeded.
+The first inspection during Issue #48 exposed stale numbered IL2CPP copies from prior Bee outputs and a 160 MB APK. The build entry point uses `BuildOptions.CleanBuildCache`; the refreshed build produced the recorded 25,272,289-byte candidate. The Unity batch build exited successfully.
 
 ## Paired-Board smoke test
 
@@ -65,7 +65,7 @@ The first inspection during Issue #48 exposed stale numbered IL2CPP copies from 
 | Install and launch | Passed |
 | Render size | `1920 × 1080` |
 
-After the startup frame settled, a direct Board screenshot showed the refreshed five-lap race presentation: two mirrored player HUDs, one exact Call Pit region per player, explicit `CALL PIT · TOUCH + RELEASE` status, distinct pit lane and player boxes, heat and tire meters, and both on-car `H`/`T` attachment cues. No editor-only provider hint was present. Automated pose coverage proves continuous phase endpoints; the remaining physical gate explicitly observes the complete motion and the dynamic replacement of Call Pit with the new `CAR PARKED · CHOOSE REPAIR` Tires/Cooling state.
+The first deployed #69 screenshot showed the refreshed five-lap presentation and exposed the new return lane clipping the center title. PR #70 moved the return lane into the open band above the inbound lane, then rebuilt, installed, and launched the corrected candidate. The settled Board capture mechanism preserved a partial frame after relaunch, so full-screen clearance is supported by the corrected geometry and automated pose coverage but remains an explicit hands-on observation in #49.
 
 Warning-or-higher logs for the candidate process contained the Board platform's recurring hidden-method/property-access warnings and four `Invalid base format` graphics-layer messages during startup. They contained no managed exception, Unity stack trace, Board Racing error, crash, or stuck process. The same graphics messages recur in earlier launches, and the settled 1920×1080 capture rendered correctly.
 
@@ -75,9 +75,9 @@ Automation and a single-device render smoke test cannot establish whether the ta
 
 - two operators completing three five-lap races and a clean rematch;
 - both physical service types and different voluntary service choices or timing;
-- a deliberate Crew removal during service followed by unassisted release/reacquisition recovery;
+- a deliberate Robot removal during service followed by unassisted placement/reacquisition recovery;
 - zero stale throttle, false/duplicate service, cross-player service, role swap, or unrecovered recognition failure;
 - readability of heat, wear, selection, commitment, progress, and completion from both table sides; and
-- each player explaining a result affected by Crew choice/timing and whether the Crew Piece is meaningfully essential.
+- each player explaining a result affected by Robot choice/timing and whether the Robot pit control is meaningfully essential.
 
 There are no forced pit stops. Critical heat limits performance, and the player remains responsible for deciding whether and when Cooling is worth a voluntary stop.

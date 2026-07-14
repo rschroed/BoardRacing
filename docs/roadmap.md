@@ -63,7 +63,7 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 
 ## 3. Pit-crew proof
 
-**Status:** Software-ready as of July 13, 2026. The first physical-gate attempt confirmed simultaneous racing but exposed an unnatural new-contact Call Pit arm requirement before either player could repair. Issue #62 replaced it with a safe touch/release action and is deployed for retest. Deterministic strategy, continuous pit presentation, balance, the complete 78-test automated/simulator pass, and the exact-candidate Android inspection/deployment smoke test are recorded in the [Tranche 3 proof](testing/tranche-3-pit-crew-proof.md) and [simulator/Android validation](testing/tranche-3-simulator-android-validation.md). The tranche remains in progress until the two-person physical gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49) passes.
+**Status:** Refreshed physical candidate deployed July 13, 2026. The first physical-gate attempt confirmed simultaneous racing but exposed unclear pit affordance, finicky touch/release actions, and a reversing pit exit. Issues #65–#68 swapped the physical roles, introduced touch-free Ship `BRAKE / DRIVE / BOOST` control and Robot placement/alignment/hold pit actions, and added a smooth presentation-only return lane. PR #70 corrected title clearance found in the first deployed screenshot. Deterministic strategy, continuous pit presentation, balance, the complete 78-test automated/simulator pass, and the exact-candidate Android deployment are recorded in the [Tranche 3 proof](testing/tranche-3-pit-crew-proof.md) and [simulator/Android validation](testing/tranche-3-simulator-android-validation.md). The tranche remains in progress until the two-person physical gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49) passes.
 
 **Goal:** Determine whether the second Piece deepens the race.
 
@@ -71,11 +71,11 @@ Player-facing solo play and AI opponents are deferred to Tranche 4 so this gate 
 
 - Tire wear and motor heat.
 - Pit entry, service, and exit.
-- Crew Piece service selection and tactile action.
+- Robot service selection and tactile placement/alignment action.
 - Condition and service feedback.
 - First-pass strategy balancing.
 
-**Exit criterion:** Players voluntarily make different pit decisions and regard the Crew Piece as essential.
+**Exit criterion:** Players voluntarily make different pit decisions and regard the Robot pit control as essential.
 
 ## 4. Complete social game
 
