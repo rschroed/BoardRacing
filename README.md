@@ -2,7 +2,7 @@
 
 Board Racing is a tactile, top-down slot-car game for 1–4 players on [Board](https://board.fun/). Each player uses two physical Pieces: one to drive and one to operate the pit crew.
 
-> Status: Tranche 3 pit-crew proof passed on July 13, 2026. Tranche 4 wireframe experience proof is the immediate milestone.
+> Status: Tranche 4 wireframe experience proof is in progress. The two-player state contract and Corner Controllers direction are approved; staged implementation captures, Android comparison, and the physical readability gate remain before passage.
 
 ## Player experience
 
@@ -23,6 +23,7 @@ The first prototype will use Unity and the Board Unity SDK. Unity currently prov
 
 - [Product vision](docs/vision.md)
 - [Car and Pit Crew interaction](docs/gameplay/car-and-pit-crew.md)
+- [Wireframe UI contract](docs/gameplay/wireframe-ui.md)
 - [Roadmap](docs/roadmap.md)
 - [Technical direction](docs/technical-direction.md)
 - [Development setup](docs/development-setup.md)
@@ -34,4 +35,4 @@ The first prototype will use Unity and the Board Unity SDK. Unity currently prov
 
 ## Immediate milestone
 
-Define, implement, and physically validate the Tranche 4 wireframe experience so two players can complete and rematch from opposite sides without developer UI interpretation. Final aesthetics, additional tracks, AI, setup, profiles, tutorials, championships, and broader group-flow work remain deferred.
+Implement and validate the Tranche 4 wireframe state matrix at 1920×1080, then run the two-person physical Board readability gate. Final aesthetics, additional tracks, AI, setup, profiles, tutorials, championships, and broader group-flow work remain deferred.
