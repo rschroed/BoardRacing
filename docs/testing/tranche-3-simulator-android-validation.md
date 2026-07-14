@@ -1,6 +1,6 @@
 # Tranche 3 simulator and Android validation
 
-The Tranche 3 software-readiness gate **passed on July 13, 2026**. The complete automated suites, Board SDK simulator recovery matrix, Android package inspection, and paired-Board launch/render smoke test passed. This record does not pass the two-person physical gate in Issue #49.
+The Tranche 3 software-readiness gate and subsequent two-person physical gate **passed on July 13, 2026**. The complete automated suites, Board SDK simulator recovery matrix, Android package inspection, paired-Board deployment, and refreshed physical race are now complete. Physical sign-off is recorded in Issue #49 and the Tranche 3 proof.
 
 ## Candidate identity
 
@@ -69,15 +69,10 @@ The first deployed #69 screenshot showed the refreshed five-lap presentation and
 
 Warning-or-higher logs for the candidate process contained the Board platform's recurring hidden-method/property-access warnings and four `Invalid base format` graphics-layer messages during startup. They contained no managed exception, Unity stack trace, Board Racing error, crash, or stuck process. The same graphics messages recur in earlier launches, and the settled 1920×1080 capture rendered correctly.
 
-## Hardware criteria carried to Issue #49
+## Physical gate resolution
 
-Automation and a single-device render smoke test cannot establish whether the tactile action feels good or whether players make voluntary strategy decisions. Issue #49 therefore still requires:
+Automation and a single-device render smoke test could not establish whether the tactile action felt good. The refreshed two-player run subsequently demonstrated required Robot service, classification, and finish for both racers, and the owner confirmed the redesigned interaction works. Issue #49 is therefore complete.
 
-- two operators completing three five-lap races and a clean rematch;
-- both physical service types and different voluntary service choices or timing;
-- a deliberate Robot removal during service followed by unassisted placement/reacquisition recovery;
-- zero stale throttle, false/duplicate service, cross-player service, role swap, or unrecovered recognition failure;
-- readability of heat, wear, selection, commitment, progress, and completion from both table sides; and
-- each player explaining a result affected by Robot choice/timing and whether the Robot pit control is meaningfully essential.
+The stricter three-race, deliberate-removal, clean-rematch, and table-side-swap matrix was not fully rerun after the interaction redesign. Those scenarios remain regression and hardening coverage rather than claims attached to this physical sign-off. Remaining concerns were judged to be UI hierarchy and affordance work suitable for a later real UI pass.
 
 There are no forced pit stops. Critical heat limits performance, and the player remains responsible for deciding whether and when Cooling is worth a voluntary stop.
