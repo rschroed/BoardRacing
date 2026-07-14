@@ -234,6 +234,23 @@ line.
 Before finishing, read the saved body back with `gh issue view <number> --json
 body --jq .body` and confirm headings and lists contain real line breaks.
 
+## Mandatory planning and design approval gates
+
+GitHub issue creation and implementation are separate user decisions in this repository.
+
+- When a task includes creating or materially rewriting issues, create the issues, verify their saved bodies, present the issue links and a concise dependency/order summary, and then stop.
+- Do not assign an issue, create an implementation branch, change production code, or begin acceptance verification for those issues until the user explicitly reviews and approves the issue set.
+- A request that combines planning, issue creation, and implementation still pauses at issue review unless the user explicitly says to skip issue review.
+- User approval must be given after the issue bodies exist. Do not treat approval of an earlier prose plan as approval of the resulting GitHub issues.
+
+Visual design also has a mandatory review loop before implementation:
+
+- If a Figma file or project is required and the user has not supplied the target Figma project URL, ask for it before creating a file. Do not choose an organization, team, drafts location, or project from the authenticated account on the user's behalf.
+- Start with competing low-fidelity layout directions and present links or screenshots for review. Explain the consequential differences and open questions without selecting a direction as “good” or “approved” on the user's behalf.
+- Incorporate the user's feedback in Figma and repeat the review loop until the user explicitly approves named frames or a named direction.
+- Only approved Figma frames are a source of truth for production UI work. Automated audits, design heuristics, and the agent's own visual judgment can identify problems, but cannot substitute for owner approval.
+- Do not implement production layout code while the relevant Figma page is labeled draft, exploration, candidate, or review.
+
 ## Additional references
 
 - Unity API: <https://docs.dev.board.fun/unity/api/>

@@ -79,6 +79,8 @@ Player-facing solo play and AI opponents are deferred to Tranche 5 so this gate 
 
 ## 4. Wireframe experience proof
 
+**Status:** In progress. The state inventory and Corner Controllers direction are approved in the [wireframe UI contract](gameplay/wireframe-ui.md). Staged implementation capture review, Android comparison, and the two-person physical Board gate remain required before passage.
+
 **Goal:** Prove that the established two-player race can be read and operated as a coherent player experience.
 
 **Deliverables**

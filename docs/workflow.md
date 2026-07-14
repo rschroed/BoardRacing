@@ -38,7 +38,18 @@ Turn the issue into one independently verifiable outcome. Record:
 
 Split the issue when it contains outcomes that could be implemented, reviewed, or accepted independently.
 
-### 3. Ready
+### 3. Review and approve
+
+After creating or materially rewriting issues, stop and give the owner the issue links, proposed order, dependencies, and unresolved decisions. Creating issues does not authorize implementation, even when the earlier request also described implementation work.
+
+The owner reviews the actual saved GitHub issue bodies and explicitly approves the issue set. Until that happens:
+
+- Leave the issues unassigned.
+- Do not create implementation branches or pull requests.
+- Do not change production code against the issues.
+- Do not treat approval of an earlier roadmap or prose plan as issue approval.
+
+### 4. Ready
 
 An issue is ready when it has:
 
@@ -49,7 +60,7 @@ An issue is ready when it has:
 
 Assign the issue to the person taking responsibility for it. Assignment means active ownership, not merely interest.
 
-### 4. Implement
+### 5. Implement
 
 Create a branch from `main` using:
 
@@ -65,7 +76,7 @@ issue-12-piece-reconnection
 
 Keep changes focused on the issue. If implementation exposes additional work that is not required by the acceptance criteria, create a follow-up issue instead of silently expanding the pull request.
 
-### 5. Pull request
+### 6. Pull request
 
 Open one pull request for the issue in the normal case. Include a closing keyword in the pull-request description:
 
@@ -77,9 +88,21 @@ The pull request should explain the change, record verification, state whether B
 
 Merge only after the issue's acceptance criteria are addressed and the relevant verification is recorded. Merging into the default branch closes the linked issue automatically.
 
-### 6. Close
+### 7. Close
 
 Completed issues close through their merged pull requests. If an issue is declined or obsolete, close it manually with a short comment explaining why so the decision remains discoverable.
+
+## Visual design review
+
+Layout and interaction-design work uses a separate approval gate before production implementation:
+
+1. Ask the owner for the target Figma project URL when none has been supplied. Do not place a new file in an inferred team, organization, project, or drafts folder.
+2. Create competing low-fidelity directions and present them for review with their meaningful tradeoffs and unresolved questions.
+3. Iterate in Figma from owner feedback. Agent audits may check consistency and mechanics but do not constitute design approval.
+4. Record explicit owner approval against named frames or a named direction.
+5. Only then mark dependent implementation issues ready and begin production UI changes.
+
+Pages or frames named draft, exploration, candidate, or review are not approved implementation sources.
 
 ## Labels and triage
 
