@@ -22,18 +22,59 @@ namespace BoardRacing.Tests
             AssertContained(layout.PlayerTwo.CornerBounds, layout.PlayerTwo.SafeContentBounds);
             AssertContained(layout.Canvas, layout.SharedRaceBounds);
             AssertContained(layout.SharedRaceBounds, layout.CenterOverlayBounds);
-            Assert.That(layout.SharedRaceBounds.Overlaps(layout.PlayerOne.DraftContextBounds), Is.False);
-            Assert.That(layout.SharedRaceBounds.Overlaps(layout.PlayerTwo.DraftContextBounds), Is.False);
         }
 
         [Test]
-        public void DraftContextBoundsRemainMirroredWithoutClaimingFinalCornerPlacement()
+        public void CornerControllerGeometryIsMirroredAndKeepsPlayerCopyOutOfActionTargets()
         {
             RaceLayout layout = Layout();
 
-            AssertMirrored(layout.PlayerOne.DraftContextBounds, layout.PlayerTwo.DraftContextBounds);
             AssertMirrored(layout.PlayerOne.CornerBounds, layout.PlayerTwo.CornerBounds);
             AssertMirrored(layout.PlayerOne.SafeContentBounds, layout.PlayerTwo.SafeContentBounds);
+            Assert.That(layout.PlayerOne.Controller.Center,
+                Is.EqualTo(new Vector2(RaceLayout.ReferenceWidth, RaceLayout.ReferenceHeight)));
+            Assert.That(layout.PlayerTwo.Controller.Center, Is.EqualTo(Vector2.zero));
+            AssertMirrored(layout.PlayerOne.Controller.IdentityBounds,
+                layout.PlayerTwo.Controller.IdentityBounds);
+            AssertMirrored(layout.PlayerOne.Controller.StatusBounds,
+                layout.PlayerTwo.Controller.StatusBounds);
+            AssertMirrored(layout.PlayerOne.Controller.InstructionBounds,
+                layout.PlayerTwo.Controller.InstructionBounds);
+            AssertMirrored(layout.PlayerOne.Controller.HeatBounds,
+                layout.PlayerTwo.Controller.HeatBounds);
+            AssertMirrored(layout.PlayerOne.Controller.TiresBounds,
+                layout.PlayerTwo.Controller.TiresBounds);
+            AssertMirrored(layout.PlayerOne.Controller.BrakeBounds,
+                layout.PlayerTwo.Controller.BrakeBounds);
+            AssertMirrored(layout.PlayerOne.Controller.DriveBounds,
+                layout.PlayerTwo.Controller.DriveBounds);
+            AssertMirrored(layout.PlayerOne.Controller.BoostBounds,
+                layout.PlayerTwo.Controller.BoostBounds);
+            AssertContained(layout.PlayerOne.SafeContentBounds,
+                layout.PlayerOne.Controller.StatusBounds);
+            AssertContained(layout.PlayerOne.SafeContentBounds,
+                layout.PlayerOne.Controller.InstructionBounds);
+            AssertContained(layout.PlayerTwo.SafeContentBounds,
+                layout.PlayerTwo.Controller.StatusBounds);
+            AssertContained(layout.PlayerTwo.SafeContentBounds,
+                layout.PlayerTwo.Controller.InstructionBounds);
+            Assert.That(layout.PlayerOne.Controller.StatusBounds.Overlaps(layout.PlayerOne.CallPit), Is.False);
+            Assert.That(layout.PlayerOne.Controller.InstructionBounds.Overlaps(layout.PlayerOne.CallPit), Is.False);
+            Assert.That(layout.PlayerTwo.Controller.StatusBounds.Overlaps(layout.PlayerTwo.CallPit), Is.False);
+            Assert.That(layout.PlayerTwo.Controller.InstructionBounds.Overlaps(layout.PlayerTwo.CallPit), Is.False);
+        }
+
+        [Test]
+        public void StableRacingUsesSpatialThrottleGuideAndOneCompactInstruction()
+        {
+            RaceUiModel model = Build(RacePhase.Racing, Racer(PlayerId.Player1),
+                Racer(PlayerId.Player2), Controls());
+
+            Assert.That(model.PlayerOne.Status, Is.EqualTo("LAP 3 / 5 · 1ST · STOP REQUIRED"));
+            Assert.That(model.PlayerOne.Status, Does.Not.Contain("DRIVE"));
+            Assert.That(model.PlayerOne.PrimaryInstruction,
+                Is.EqualTo("DRIVE WITH SHIP · ROBOT CAN CALL PIT"));
+            AssertSingleInstruction(model.PlayerOne);
         }
 
         [Test]

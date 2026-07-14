@@ -20,7 +20,8 @@ namespace BoardRacing.Runtime
         private readonly Dictionary<PlayerId, CrewStrategyOutput> crewOutputs =
             new Dictionary<PlayerId, CrewStrategyOutput>();
         private float accumulator;
-        private GUIStyle title, heading, body, carLabel, warning, small, meter, cue;
+        private GUIStyle title, heading, carLabel, warning, small, cue,
+            controllerLabel, controllerActive, controllerStatus, controllerInstruction;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
 #endif
@@ -146,12 +147,15 @@ namespace BoardRacing.Runtime
             if (title != null) return;
             title = Style(42, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             heading = Style(26, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            body = Style(20, FontStyle.Normal, new Color(.9f, .92f, .95f), TextAnchor.MiddleCenter);
             carLabel = Style(22, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             warning = Style(26, FontStyle.Bold, new Color(1f, .75f, .2f), TextAnchor.MiddleCenter);
             small = Style(15, FontStyle.Bold, new Color(.87f, .9f, .94f), TextAnchor.MiddleCenter);
-            meter = Style(16, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
             cue = Style(13, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            controllerLabel = Style(17, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            controllerActive = Style(14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            controllerStatus = Style(16, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            controllerInstruction = Style(17, FontStyle.Normal,
+                new Color(.92f, .94f, .97f), TextAnchor.MiddleCenter);
         }
 
         private static GUIStyle Style(int size, FontStyle fontStyle, Color color, TextAnchor anchor) => new GUIStyle(GUI.skin.label)
@@ -188,13 +192,13 @@ namespace BoardRacing.Runtime
             DrawPitLane();
             DrawCrewRegions(layout, ui);
             foreach (var racer in presentedRace.Racers) DrawCar(racer);
-            DrawHud(ui.PlayerTwo, layout.PlayerTwo, new Color(.48f, .28f, .72f));
-            DrawHud(ui.PlayerOne, layout.PlayerOne, new Color(.92f, .39f, .12f));
+            DrawCornerController(ui.PlayerTwo, layout.PlayerTwo, new Color(.48f, .28f, .72f));
+            DrawCornerController(ui.PlayerOne, layout.PlayerOne, new Color(.92f, .39f, .12f));
             DrawCenterMessage(ui, layout);
 #if UNITY_EDITOR
-            GUI.Label(new Rect(8, 527, 330, 26),
+            GUI.Label(new Rect(1500, 8, 412, 24),
                 (activeProvider == boardProvider ? "BOARD INPUT" : "KEYBOARD FALLBACK") + " · F1 provider", small);
-            GUI.Label(new Rect(8, 553, 500, 26), previewScenarioIndex < 0
+            GUI.Label(new Rect(1500, 34, 412, 24), previewScenarioIndex < 0
                 ? "LIVE PRESENTATION · F2 preview"
                 : "PREVIEW: " + ((RaceUiPreviewScenario)previewScenarioIndex) + " · F2 next", small);
 #endif
@@ -212,7 +216,6 @@ namespace BoardRacing.Runtime
             Vec2 line = ProjectTrack(simulation.Track.Sample(0f).Position);
             GUI.DrawTexture(new Rect(line.X - 12, line.Y - 28, 24, 56), Texture2D.whiteTexture,
                 ScaleMode.StretchToFill, true, 0, Color.white, 0, 0);
-            GUI.Label(new Rect(610, 510, 700, 80), "BOARD RACING\n5 LAPS · DRIVE + CREW", title);
         }
 
         private static Vec2 ProjectTrack(Vec2 point) =>
@@ -306,7 +309,8 @@ namespace BoardRacing.Runtime
                 instruction = "HOLD STEADY · " + Mathf.RoundToInt(model.CallAction.Progress * 100f) + "%";
             else if (state == PitCallState.Requested)
             { titleText = "PIT CALLED ✓"; instruction = "ENTRY AT START / FINISH"; }
-            else instruction = "PLACE ROBOT HERE · ALIGN TO 0°";
+            else instruction = state == PitCallState.NeedsPlacement
+                ? "0° ALIGNMENT · HOLD .75s" : "ROBOT TARGET";
             GUI.Label(new Rect(rect.x + 10, rect.y + 62, rect.width - 20, 48), titleText, heading);
             GUI.Label(new Rect(rect.x + 12, rect.y + 112, rect.width - 24, 58), instruction, small);
             GUI.Label(new Rect(rect.x + 12, rect.y + 18, rect.width - 24, 34),
@@ -435,39 +439,109 @@ namespace BoardRacing.Runtime
             return string.Empty;
         }
 
-        private void DrawHud(PlayerUiModel model, PlayerLayout layout, Color accent)
+        private void DrawCornerController(PlayerUiModel model, PlayerLayout layout, Color accent)
         {
-            Rect rect = layout.DraftContextBounds;
+            CornerControllerLayout controller = layout.Controller;
+            Rect core = new Rect(controller.Center.x - controller.CoreRadius,
+                controller.Center.y - controller.CoreRadius, controller.CoreRadius * 2f,
+                controller.CoreRadius * 2f);
+            GUI.DrawTexture(core, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
+                new Color(accent.r, accent.g, accent.b, .92f), 0, controller.CoreRadius);
+
+            float angleOffset = layout.Opposite ? 180f : 0f;
+            DrawThrottleSector(controller, model.Throttle, ThrottleStep.Brake,
+                184f + angleOffset, 206f + angleOffset, accent, layout);
+            DrawThrottleSector(controller, model.Throttle, ThrottleStep.Drive,
+                214f + angleOffset, 238f + angleOffset, accent, layout);
+            DrawThrottleSector(controller, model.Throttle, ThrottleStep.Boost,
+                246f + angleOffset, 268f + angleOffset, accent, layout);
+
+            DrawConditionArc(controller.Center, controller.ConditionRadius,
+                184f + angleOffset, 220f + angleOffset, model.Condition.TireWear,
+                model.Condition.TireLevel);
+            DrawConditionArc(controller.Center, controller.ConditionRadius,
+                232f + angleOffset, 268f + angleOffset, model.Condition.Heat,
+                model.Condition.HeatLevel);
+
+            DrawRotatedLabel(controller.IdentityBounds,
+                model.PlayerId == PlayerId.Player1 ? "▲ ORANGE" : "● PURPLE",
+                -45f + layout.RotationDegrees, controllerLabel);
+            DrawRotatedLabel(controller.TiresBounds,
+                ConditionText("TIRES", model.Condition.TireWear, model.Condition.TireLevel),
+                -70f + layout.RotationDegrees, small);
+            DrawRotatedLabel(controller.HeatBounds,
+                ConditionText("HEAT", model.Condition.Heat, model.Condition.HeatLevel),
+                -10f + layout.RotationDegrees, small);
+            DrawRotatedLabel(controller.StatusBounds, model.Status,
+                layout.RotationDegrees, controllerStatus);
+            DrawRotatedLabel(controller.InstructionBounds, model.PrimaryInstruction,
+                layout.RotationDegrees, controllerInstruction);
+        }
+
+        private void DrawThrottleSector(CornerControllerLayout controller, ThrottleStep current,
+            ThrottleStep sector, float startAngle, float endAngle, Color accent, PlayerLayout layout)
+        {
+            bool active = current == sector;
+            DrawArc(controller.Center, controller.ThrottleRadius, startAngle, endAngle,
+                active ? 78f : 68f, active ? Color.white : new Color(.72f, .76f, .82f));
+            DrawArc(controller.Center, controller.ThrottleRadius, startAngle, endAngle,
+                active ? 68f : 62f, active ? accent : new Color(.045f, .06f, .08f));
+            Rect bounds = controller.ThrottleBounds(sector);
+            float rotation = sector == ThrottleStep.Brake ? -76f :
+                sector == ThrottleStep.Drive ? -45f : -14f;
+            string name = RaceUiModelBuilder.ThrottleName(sector);
+            DrawRotatedLabel(bounds, active ? name + "\nACTIVE" : name,
+                rotation + layout.RotationDegrees, active ? controllerActive : controllerLabel);
+        }
+
+        private static void DrawConditionArc(Vector2 center, float radius, float startAngle,
+            float endAngle, float value, ConditionVisualLevel level)
+        {
+            DrawArc(center, radius, startAngle, endAngle, 34f, new Color(.7f, .74f, .8f));
+            DrawArc(center, radius, startAngle, endAngle, 28f, new Color(.045f, .06f, .08f));
+            float clamped = Mathf.Clamp01(value);
+            if (clamped > .001f)
+                DrawArc(center, radius, startAngle, Mathf.Lerp(startAngle, endAngle, clamped),
+                    28f, ConditionColor(level));
+        }
+
+        private static string ConditionText(string name, float value, ConditionVisualLevel level)
+        {
+            string severity = level == ConditionVisualLevel.Critical ? "CRITICAL" :
+                level == ConditionVisualLevel.Warning ? "WARNING" : "NORMAL";
+            return name + " " + Mathf.RoundToInt(value * 100f) + "% · " + severity;
+        }
+
+        private static void DrawRotatedLabel(Rect rect, string text, float rotationDegrees,
+            GUIStyle style)
+        {
             Matrix4x4 original = GUI.matrix;
-            if (layout.Opposite)
-            {
-                Vector3 pivot = new Vector3(rect.center.x, rect.center.y, 0f);
-                GUI.matrix = original * Matrix4x4.Translate(pivot) * Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, 180f)) * Matrix4x4.Translate(-pivot);
-            }
-            GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                new Color(accent.r * .18f, accent.g * .18f, accent.b * .18f), 0, 22);
-            GUI.Label(new Rect(rect.x + 20, rect.y + 8, 310, 36), model.Identity, heading);
-            GUI.Label(new Rect(rect.x + 325, rect.y + 8, rect.width - 345, 36), model.Status, heading);
-            DrawMeter(new Rect(rect.x + 28, rect.y + 52, 315, 34), "HEAT ^", model.Condition.Heat,
-                model.Condition.HeatLevel, false);
-            DrawMeter(new Rect(rect.x + 365, rect.y + 52, 315, 34), "TIRES [ ]",
-                model.Condition.TireWear, model.Condition.TireLevel, true);
-            GUI.Label(new Rect(rect.x + 24, rect.y + 94, rect.width - 48, 64),
-                model.PrimaryInstruction, body);
+            Vector3 pivot = new Vector3(rect.center.x, rect.center.y, 0f);
+            GUI.matrix = original * Matrix4x4.Translate(pivot) *
+                Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, rotationDegrees)) *
+                Matrix4x4.Translate(-pivot);
+            GUI.Label(rect, text, style);
             GUI.matrix = original;
         }
 
-        private void DrawMeter(Rect rect, string label, float value, ConditionVisualLevel level, bool wear)
+        private static void DrawArc(Vector2 center, float radius, float startAngle,
+            float endAngle, float width, Color color)
         {
-            GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                new Color(.07f, .09f, .12f), 0, wear ? 3f : rect.height * .5f);
-            float visible = Mathf.Max(0f, Mathf.Min(rect.width, rect.width * value));
-            if (visible > 0f)
-                GUI.DrawTexture(new Rect(rect.x, rect.y, visible, rect.height), Texture2D.whiteTexture,
-                    ScaleMode.StretchToFill, true, 0, ConditionColor(level), 0, wear ? 3f : rect.height * .5f);
-            string status = level == ConditionVisualLevel.Critical ? " CRITICAL!!" :
-                level == ConditionVisualLevel.Warning ? " WARNING!" : string.Empty;
-            GUI.Label(rect, label + "  " + Mathf.RoundToInt(value * 100f) + "%" + status, meter);
+            int segments = Mathf.Max(2, Mathf.CeilToInt(Mathf.Abs(endAngle - startAngle) / 3f));
+            Vector2 prior = ArcPoint(center, radius, startAngle);
+            for (int i = 1; i <= segments; i++)
+            {
+                Vector2 next = ArcPoint(center, radius,
+                    Mathf.Lerp(startAngle, endAngle, i / (float)segments));
+                DrawLine(new Vec2(prior.x, prior.y), new Vec2(next.x, next.y), width, color);
+                prior = next;
+            }
+        }
+
+        private static Vector2 ArcPoint(Vector2 center, float radius, float degrees)
+        {
+            float radians = degrees * Mathf.Deg2Rad;
+            return center + new Vector2(Mathf.Cos(radians), Mathf.Sin(radians)) * radius;
         }
 
         private void DrawCenterMessage(RaceUiModel ui, RaceLayout layout)

@@ -49,7 +49,13 @@ namespace BoardRacing.Runtime
             bool awaitingRelease = false;
             RacerSnapshot playerOne = Racer(PlayerId.Player1, track.Sample(540f), place: 1);
             RacerSnapshot playerTwo = Racer(PlayerId.Player2, track.Sample(1080f), place: 2);
-            var crew = new Dictionary<PlayerId, CrewStrategyOutput>();
+            var crew = new Dictionary<PlayerId, CrewStrategyOutput>
+            {
+                [PlayerId.Player1] = new CrewStrategyOutput(PitService.None, false,
+                    PitCallState.NeedsPlacement, default, default),
+                [PlayerId.Player2] = new CrewStrategyOutput(PitService.None, false,
+                    PitCallState.NeedsPlacement, default, default)
+            };
 
             switch (scenario)
             {

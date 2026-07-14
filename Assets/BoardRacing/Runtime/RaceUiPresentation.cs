@@ -6,16 +6,53 @@ using UnityEngine;
 
 namespace BoardRacing.Runtime
 {
+    internal readonly struct CornerControllerLayout
+    {
+        public CornerControllerLayout(Vector2 center, float coreRadius, float throttleRadius,
+            float conditionRadius, Rect identityBounds, Rect statusBounds, Rect instructionBounds,
+            Rect heatBounds, Rect tiresBounds, Rect brakeBounds, Rect driveBounds, Rect boostBounds)
+        {
+            Center = center;
+            CoreRadius = coreRadius;
+            ThrottleRadius = throttleRadius;
+            ConditionRadius = conditionRadius;
+            IdentityBounds = identityBounds;
+            StatusBounds = statusBounds;
+            InstructionBounds = instructionBounds;
+            HeatBounds = heatBounds;
+            TiresBounds = tiresBounds;
+            BrakeBounds = brakeBounds;
+            DriveBounds = driveBounds;
+            BoostBounds = boostBounds;
+        }
+
+        public Vector2 Center { get; }
+        public float CoreRadius { get; }
+        public float ThrottleRadius { get; }
+        public float ConditionRadius { get; }
+        public Rect IdentityBounds { get; }
+        public Rect StatusBounds { get; }
+        public Rect InstructionBounds { get; }
+        public Rect HeatBounds { get; }
+        public Rect TiresBounds { get; }
+        public Rect BrakeBounds { get; }
+        public Rect DriveBounds { get; }
+        public Rect BoostBounds { get; }
+
+        public Rect ThrottleBounds(ThrottleStep throttle) => throttle == ThrottleStep.Brake
+            ? BrakeBounds : throttle == ThrottleStep.Drive ? DriveBounds : BoostBounds;
+    }
+
     internal readonly struct PlayerLayout
     {
         public PlayerLayout(PlayerId playerId, float rotationDegrees, Rect cornerBounds,
-            Rect safeContentBounds, Rect draftContextBounds, Rect callPit, Rect tires, Rect cooling)
+            Rect safeContentBounds, CornerControllerLayout controller, Rect callPit, Rect tires, Rect cooling)
         {
             PlayerId = playerId;
             RotationDegrees = rotationDegrees;
             CornerBounds = cornerBounds;
             SafeContentBounds = safeContentBounds;
-            DraftContextBounds = draftContextBounds;
+            Controller = controller;
             CallPit = callPit;
             Tires = tires;
             Cooling = cooling;
@@ -26,10 +63,7 @@ namespace BoardRacing.Runtime
         public bool Opposite => Mathf.Approximately(RotationDegrees, 180f);
         public Rect CornerBounds { get; }
         public Rect SafeContentBounds { get; }
-
-        // Preserves the pre-Tranche 4 HUD while the Corner Controllers placement is reviewed in #77.
-        public Rect DraftContextBounds { get; }
-
+        public CornerControllerLayout Controller { get; }
         public Rect CallPit { get; }
         public Rect Tires { get; }
         public Rect Cooling { get; }
@@ -76,16 +110,39 @@ namespace BoardRacing.Runtime
             var playerTwoCooling = new Vector2(playerTwoRuntimeCenter.x - serviceOffsetX,
                 playerTwoRuntimeCenter.y);
 
+            Rect MirrorRect(Rect rect) => new Rect(ReferenceWidth - rect.xMax,
+                ReferenceHeight - rect.yMax, rect.width, rect.height);
+            Vector2 MirrorPoint(Vector2 point) => new Vector2(ReferenceWidth - point.x,
+                ReferenceHeight - point.y);
+
+            var playerOneController = new CornerControllerLayout(
+                new Vector2(ReferenceWidth, ReferenceHeight), 305f, 355f, 430f,
+                new Rect(1669f, 903f, 190f, 42f),
+                new Rect(1185f, 933f, 280f, 40f),
+                new Rect(1185f, 977f, 280f, 63f),
+                new Rect(1680f, 651f, 220f, 42f),
+                new Rect(1468f, 916f, 142f, 40f),
+                new Rect(1510f, 974f, 130f, 42f),
+                new Rect(1594f, 808f, 150f, 42f),
+                new Rect(1769f, 715f, 130f, 42f));
+            var playerTwoController = new CornerControllerLayout(
+                MirrorPoint(playerOneController.Center), playerOneController.CoreRadius,
+                playerOneController.ThrottleRadius, playerOneController.ConditionRadius,
+                MirrorRect(playerOneController.IdentityBounds), MirrorRect(playerOneController.StatusBounds),
+                MirrorRect(playerOneController.InstructionBounds), MirrorRect(playerOneController.HeatBounds),
+                MirrorRect(playerOneController.TiresBounds), MirrorRect(playerOneController.BrakeBounds),
+                MirrorRect(playerOneController.DriveBounds), MirrorRect(playerOneController.BoostBounds));
+
             return new RaceLayout(
                 new PlayerLayout(PlayerId.Player1, 0f,
                     new Rect(960f, 540f, 960f, 540f),
                     new Rect(1000f, 580f, 880f, 460f),
-                    new Rect(420f, 896f, 1080f, 170f),
+                    playerOneController,
                     Target(playerOneRuntimeCenter), Target(playerOneTires), Target(playerOneCooling)),
                 new PlayerLayout(PlayerId.Player2, 180f,
                     new Rect(0f, 0f, 960f, 540f),
                     new Rect(40f, 40f, 880f, 460f),
-                    new Rect(420f, 14f, 1080f, 170f),
+                    playerTwoController,
                     Target(playerTwoRuntimeCenter), Target(playerTwoTires), Target(playerTwoCooling)));
         }
     }
@@ -222,7 +279,7 @@ namespace BoardRacing.Runtime
                 PitService selected = racer.Pit.SelectedService != PitService.None
                     ? racer.Pit.SelectedService : crew.SelectedService;
                 Instruction instruction = PrimaryInstruction(race, racer, control, crew, condition);
-                return new PlayerUiModel(id, Identity(id), Status(racer, control, selected, laps),
+                return new PlayerUiModel(id, Identity(id), Status(racer, selected, laps),
                     instruction.Kind, instruction.Copy, control.Throttle, condition, racer.Pit.Phase,
                     selected, racer.Pit.ServiceProgress, crew.CallState, crew.CallAction,
                     crew.ServiceAction, control.Car.Present, control.Crew.Present, control.Warnings,
@@ -234,8 +291,7 @@ namespace BoardRacing.Runtime
                 kind, copy);
         }
 
-        private static string Status(RacerSnapshot racer, PlayerControlSnapshot control,
-            PitService selected, int laps)
+        private static string Status(RacerSnapshot racer, PitService selected, int laps)
         {
             if (racer.Finished)
                 return "FINISHED · " + Ordinal(racer.Place) + " · " +
@@ -249,8 +305,7 @@ namespace BoardRacing.Runtime
             if (racer.Pit.Phase == PitPhase.Entering) return "PIT ENTRY · THROTTLE LOCKED";
             if (racer.Pit.Phase == PitPhase.Exiting) return "SERVICE COMPLETE ✓ · REJOINING";
             return "LAP " + Math.Min(laps, racer.CompletedLaps + 1) + " / " + laps + " · " +
-                Ordinal(racer.Place) + " · " + ThrottleName(control.Throttle) + " · " +
-                (racer.Pit.FinishEligible ? "STOP ✓" : "STOP REQUIRED");
+                Ordinal(racer.Place) + " · " + (racer.Pit.FinishEligible ? "STOP ✓" : "STOP REQUIRED");
         }
 
         private static Instruction PrimaryInstruction(RaceSnapshot race, RacerSnapshot racer,
@@ -315,7 +370,7 @@ namespace BoardRacing.Runtime
                 return new Instruction(PlayerUiInstructionKind.TiresWarning,
                     "TIRES WARNING · PROTECT CORNER SPEED OR PREPARE TIRES");
             return new Instruction(PlayerUiInstructionKind.DriveAndPit,
-                "ROTATE SHIP: BRAKE / DRIVE / BOOST · ROBOT CALLS PIT");
+                "DRIVE WITH SHIP · ROBOT CAN CALL PIT");
         }
 
         private static Instruction ServiceInstruction(RacerSnapshot racer, PlayerControlSnapshot control,
