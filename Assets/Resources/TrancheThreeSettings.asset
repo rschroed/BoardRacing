@@ -24,5 +24,6 @@ MonoBehaviour:
   requiredServiceCount: 1
   pitEntrySeconds: 0.75
   pitExitSeconds: 0.75
+  pitCallHoldSeconds: 0.75
   serviceOffsetX: 190
   serviceHalfSize: {x: 140, y: 120}

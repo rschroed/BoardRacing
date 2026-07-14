@@ -18,15 +18,14 @@ namespace BoardRacing.PlayModeTests
             var keyboard = InputSystem.AddDevice<Keyboard>();
             var provider = new KeyboardInputProvider();
 
-            Tap(provider, keyboard.qKey);
-            Tap(provider, keyboard.uKey);
             Tap(provider, keyboard.cKey);
-            var snapshots = Tap(provider, keyboard.digit8Key);
+            Tap(provider, keyboard.digit8Key);
+            var snapshots = Tap(provider, keyboard.digit9Key);
 
             Assert.That(snapshots.Single(x => x.PlayerId == PlayerId.Player1).Throttle,
-                Is.Not.EqualTo(ThrottleStep.Off));
+                Is.EqualTo(ThrottleStep.Boost));
             Assert.That(snapshots.Single(x => x.PlayerId == PlayerId.Player2).Throttle,
-                Is.Not.EqualTo(ThrottleStep.Off));
+                Is.EqualTo(ThrottleStep.Drive));
             yield return null;
         }
 
@@ -62,10 +61,7 @@ namespace BoardRacing.PlayModeTests
             race.SetInputProvider(provider);
             yield return new WaitForSecondsRealtime(3.2f);
             provider.AtCallPit = true;
-            provider.CrewTouched = true;
-            yield return new WaitForSecondsRealtime(.05f);
-            provider.CrewTouched = false;
-            yield return new WaitForSecondsRealtime(.05f);
+            yield return new WaitForSecondsRealtime(1f);
 
             var snapshot = race.GetRaceSnapshot();
             Assert.That(snapshot.Phase, Is.EqualTo(RacePhase.Racing));
@@ -123,27 +119,21 @@ namespace BoardRacing.PlayModeTests
                 Is.InRange(1185f, 1465f));
             Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player2).Crew.Position.X,
                 Is.InRange(455f, 735f));
-            Assert.That(race.GetCrewStrategy(PlayerId.Player1).CallState, Is.EqualTo(PitCallState.Ready));
-            Assert.That(race.GetCrewStrategy(PlayerId.Player2).CallState, Is.EqualTo(PitCallState.Ready));
+            Assert.That(race.GetCrewStrategy(PlayerId.Player1).CallState, Is.EqualTo(PitCallState.NeedsPlacement));
+            Assert.That(race.GetCrewStrategy(PlayerId.Player2).CallState, Is.EqualTo(PitCallState.NeedsPlacement));
 
-            TapRaceKeys(race, update, keyboard.wKey);
-            Assert.That(race.GetCrewStrategy(PlayerId.Player1).CallState,
-                Is.EqualTo(PitCallState.ReleaseToRequest));
-            TapRaceKeys(race, update, keyboard.wKey);
+            HoldRaceKey(race, update, keyboard.fKey, .7f);
+            HoldRaceKey(race, update, keyboard.kKey, .7f);
+            HoldRaceKey(race, update, keyboard.gKey, .7f);
+            HoldRaceKey(race, update, keyboard.hKey, .7f);
             Assert.That(PumpUntil(race, update, 2f, x => x.Racers.Single(r =>
                 r.PlayerId == PlayerId.Player1).Pit.Phase == PitPhase.Requested), Is.True);
-            TapRaceKeys(race, update, keyboard.iKey);
-            Assert.That(race.GetCrewStrategy(PlayerId.Player2).CallState,
-                Is.EqualTo(PitCallState.ReleaseToRequest));
-            TapRaceKeys(race, update, keyboard.iKey);
             Assert.That(PumpUntil(race, update, 2f, x => x.Racers.Single(r =>
                 r.PlayerId == PlayerId.Player2).Pit.Phase == PitPhase.Requested), Is.True);
             Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.SelectedService == PitService.None), Is.True);
 
             TapRaceKeys(race, update, keyboard.vKey);
             TapRaceKeys(race, update, keyboard.digit0Key);
-            TapRaceKeys(race, update, keyboard.qKey);
-            TapRaceKeys(race, update, keyboard.uKey);
             Assert.That(PumpUntil(race, update, 140f,
                 x => x.Racers.All(r => r.Pit.Phase == PitPhase.InService)), Is.True);
 
@@ -159,8 +149,6 @@ namespace BoardRacing.PlayModeTests
             Assert.That(race.GetRaceSnapshot().Racers.Single(x => x.PlayerId == PlayerId.Player2)
                 .Pit.SelectedService, Is.EqualTo(PitService.Cooling));
 
-            TapRaceKeys(race, update, keyboard.wKey);
-            TapRaceKeys(race, update, keyboard.iKey);
             bool servicesCompleted = PumpUntil(race, update, 5f,
                 x => x.Racers.All(r => r.Pit.CompletedServices == 1));
             var serviceSnapshot = race.GetRaceSnapshot();
@@ -175,9 +163,9 @@ namespace BoardRacing.PlayModeTests
             Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.FinishEligible), Is.True);
 
             Assert.That(PumpUntil(race, update, 180f, x => x.Phase == RacePhase.Finished), Is.True);
+            TapRaceKeys(race, update, keyboard.zKey, keyboard.digit7Key);
             Assert.That(PumpUntil(race, update, 2f, x => x.AwaitingRematchRelease), Is.True);
-            TapRaceKeys(race, update, keyboard.qKey);
-            TapRaceKeys(race, update, keyboard.uKey);
+            TapRaceKeys(race, update, keyboard.xKey, keyboard.digit8Key);
             PumpRace(race, update, .05f);
 
             var rematch = race.GetRaceSnapshot();
@@ -239,6 +227,15 @@ namespace BoardRacing.PlayModeTests
             PumpRace(race, update, .05f);
         }
 
+        private void HoldRaceKey(RacePrototype race, System.Reflection.MethodInfo update,
+            ButtonControl button, float seconds)
+        {
+            Press(button, queueEventOnly: true); InputSystem.Update();
+            PumpRace(race, update, seconds);
+            Release(button, queueEventOnly: true); InputSystem.Update();
+            PumpRace(race, update, .05f);
+        }
+
         private static bool PumpUntil(RacePrototype race, System.Reflection.MethodInfo update, float timeout,
             System.Func<RaceSnapshot, bool> predicate)
         {
@@ -273,8 +270,8 @@ namespace BoardRacing.PlayModeTests
                 var p2Crew = present ? new PieceState(true, touched, 201, p2Position, 0f) : PieceState.Missing;
                 snapshots = new[]
                 {
-                    new PlayerControlSnapshot(PlayerId.Player1, ThrottleStep.Off, PieceState.Missing, p1Crew, InputWarning.None),
-                    new PlayerControlSnapshot(PlayerId.Player2, ThrottleStep.Off, PieceState.Missing, p2Crew, InputWarning.None)
+                    new PlayerControlSnapshot(PlayerId.Player1, ThrottleStep.Brake, PieceState.Missing, p1Crew, InputWarning.None),
+                    new PlayerControlSnapshot(PlayerId.Player2, ThrottleStep.Brake, PieceState.Missing, p2Crew, InputWarning.None)
                 };
             }
 
@@ -287,7 +284,7 @@ namespace BoardRacing.PlayModeTests
             public bool Touched { get; set; }
             public System.Collections.Generic.IReadOnlyList<PlayerControlSnapshot> ReadSnapshots()
             {
-                var throttle = Touched ? ThrottleStep.Full : ThrottleStep.Off;
+                var throttle = Touched ? ThrottleStep.Boost : ThrottleStep.Brake;
                 return new[]
                 {
                     new PlayerControlSnapshot(PlayerId.Player1, throttle,
@@ -309,7 +306,7 @@ namespace BoardRacing.PlayModeTests
             };
 
             private PlayerControlSnapshot Snapshot(PlayerId id, int contactId, Vec2 position) =>
-                new PlayerControlSnapshot(id, ThrottleStep.Off,
+                new PlayerControlSnapshot(id, ThrottleStep.Brake,
                     new PieceState(true, false, contactId + 1000, new Vec2(), 0f),
                     new PieceState(true, CrewTouched, contactId, position, 0f), InputWarning.None);
         }

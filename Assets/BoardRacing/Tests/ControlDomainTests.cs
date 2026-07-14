@@ -27,33 +27,43 @@ namespace BoardRacing.Tests
             Assert.That(errors.Any(x => x.Contains("missing")), Is.True);
         }
 
-        [TestCase(0f, ThrottleStep.Quarter)]
-        [TestCase(1.5707963f, ThrottleStep.Half)]
-        [TestCase(3.1415926f, ThrottleStep.ThreeQuarters)]
-        [TestCase(4.712389f, ThrottleStep.Full)]
-        [TestCase(-0.01f, ThrottleStep.Quarter)]
-        [TestCase(6.273185f, ThrottleStep.Quarter)]
+        [TestCase(0f, ThrottleStep.Brake)]
+        [TestCase(2.0943951f, ThrottleStep.Drive)]
+        [TestCase(4.1887902f, ThrottleStep.Boost)]
+        [TestCase(-0.01f, ThrottleStep.Brake)]
+        [TestCase(6.273185f, ThrottleStep.Brake)]
         public void ThrottleMapsSectorsAndWraparound(float angle, ThrottleStep expected)
         {
-            Assert.That(new CoarseThrottleMapper(0.1f).Map(true, true, angle), Is.EqualTo(expected));
+            Assert.That(new CoarseThrottleMapper(0.1f).Map(true, angle), Is.EqualTo(expected));
         }
 
         [Test]
         public void ThrottleFailsSafeAndReacquiresFromZero()
         {
             var mapper = new CoarseThrottleMapper(0.1f);
-            Assert.That(mapper.Map(true, true, 1.6f), Is.EqualTo(ThrottleStep.Half));
-            Assert.That(mapper.Map(false, false, 1.6f), Is.EqualTo(ThrottleStep.Off));
-            Assert.That(mapper.Map(true, false, 1.6f), Is.EqualTo(ThrottleStep.Off));
+            Assert.That(mapper.Map(true, 2.1f), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(mapper.Map(false, 2.1f), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(mapper.Map(true, 2.1f), Is.EqualTo(ThrottleStep.Drive));
         }
 
         [Test]
         public void HysteresisPreventsBoundaryFlicker()
         {
             var mapper = new CoarseThrottleMapper(0.2f);
-            Assert.That(mapper.Map(true, true, 0f), Is.EqualTo(ThrottleStep.Quarter));
-            Assert.That(mapper.Map(true, true, (float)Math.PI / 4f + 0.05f), Is.EqualTo(ThrottleStep.Quarter));
-            Assert.That(mapper.Map(true, true, (float)Math.PI / 4f + 0.25f), Is.EqualTo(ThrottleStep.Half));
+            Assert.That(mapper.Map(true, 0f), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(mapper.Map(true, (float)Math.PI / 3f + 0.05f), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(mapper.Map(true, (float)Math.PI / 3f + 0.25f), Is.EqualTo(ThrottleStep.Drive));
+        }
+
+        [Test]
+        public void OppositePlayerOrientationUsesTheSamePlayerRelativeStops()
+        {
+            var playerOne = new CoarseThrottleMapper(.1f);
+            var playerTwo = new CoarseThrottleMapper(.1f, (float)Math.PI);
+            Assert.That(playerOne.Map(true, 0f), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(playerTwo.Map(true, (float)Math.PI), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(playerOne.Map(true, 2f * (float)Math.PI / 3f), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(playerTwo.Map(true, 5f * (float)Math.PI / 3f), Is.EqualTo(ThrottleStep.Drive));
         }
 
         [Test]
@@ -70,26 +80,26 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void PitActionResetsForLossReleaseAndBadAlignment()
+        public void PitActionIgnoresTouchAndResetsForLossAndBadAlignment()
         {
             var machine = Machine();
             machine.Update(Crew(true, true, 100f, 100f, 0f), 0.8f);
             Assert.That(machine.Update(PieceState.Missing, 0.3f).State, Is.EqualTo(PitActionState.Canceled));
-            Assert.That(machine.Update(Crew(true, false, 100f, 100f, 0f), 0.3f).State, Is.EqualTo(PitActionState.Positioned));
+            Assert.That(machine.Update(Crew(true, false, 100f, 100f, 0f), 0.3f).State, Is.EqualTo(PitActionState.Holding));
             Assert.That(machine.Update(Crew(true, true, 100f, 100f, 1f), 0.3f).State, Is.EqualTo(PitActionState.Aligning));
             Assert.That(machine.Update(Crew(true, true, 100f, 100f, 0f), 0.3f).CompletedThisUpdate, Is.False);
         }
 
         [Test]
-        public void NewContactRequiresSafeReleaseBeforeThrottle()
+        public void NewContactTouchStateDoesNotGateThrottle()
         {
             var reconciler = Reconciler();
-            var waiting = Player(reconciler.Reconcile(new[] { Contact(10, 2, true, 100f) }), PlayerId.Player1);
-            Assert.That(waiting.Throttle, Is.EqualTo(ThrottleStep.Off));
+            var waiting = Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1);
+            Assert.That(waiting.Throttle, Is.EqualTo(ThrottleStep.Drive));
             Assert.That(waiting.Car.RequiresRelease, Is.True);
-            reconciler.Reconcile(new[] { Contact(10, 2, false, 100f) });
-            var rearmed = Player(reconciler.Reconcile(new[] { Contact(10, 2, true, 100f) }), PlayerId.Player1);
-            Assert.That(rearmed.Throttle, Is.EqualTo(ThrottleStep.Quarter));
+            reconciler.Reconcile(new[] { Contact(10, 7, false, 100f, RawContactPhase.Stationary, 2.1f) });
+            var rearmed = Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1);
+            Assert.That(rearmed.Throttle, Is.EqualTo(ThrottleStep.Drive));
             Assert.That(rearmed.Car.RequiresRelease, Is.False);
         }
 
@@ -99,10 +109,10 @@ namespace BoardRacing.Tests
             var reconciler = Reconciler();
             ArmCar(reconciler, 10);
             Assert.That(Player(reconciler.Reconcile(Array.Empty<RawPieceContact>()), PlayerId.Player1).Throttle,
-                Is.EqualTo(ThrottleStep.Off));
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 2, true, 100f, RawContactPhase.Canceled) }), PlayerId.Player1).Car.Present,
+                Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Canceled) }), PlayerId.Player1).Car.Present,
                 Is.False);
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 2, true, 100f, RawContactPhase.Ended) }), PlayerId.Player1).Car.Present,
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Ended) }), PlayerId.Player1).Car.Present,
                 Is.False);
         }
 
@@ -111,20 +121,17 @@ namespace BoardRacing.Tests
         {
             var reconciler = Reconciler();
             ArmCar(reconciler, 10);
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(11, 2, true, 100f) }), PlayerId.Player1).Throttle,
-                Is.EqualTo(ThrottleStep.Off));
-            reconciler.Reconcile(new[] { Contact(11, 2, false, 100f) });
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(11, 2, true, 100f) }), PlayerId.Player1).Throttle,
-                Is.EqualTo(ThrottleStep.Quarter));
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(11, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1).Throttle,
+                Is.EqualTo(ThrottleStep.Drive));
         }
 
         [Test]
         public void DuplicateAssignedGlyphFailsSafeAndWarns()
         {
             var reconciler = Reconciler();
-            var player = Player(reconciler.Reconcile(new[] { Contact(10, 2, true, 100f), Contact(11, 2, true, 100f) }), PlayerId.Player1);
+            var player = Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f), Contact(11, 7, true, 100f) }), PlayerId.Player1);
             Assert.That(player.Car.Present, Is.False);
-            Assert.That(player.Throttle, Is.EqualTo(ThrottleStep.Off));
+            Assert.That(player.Throttle, Is.EqualTo(ThrottleStep.Brake));
             Assert.That(player.Warnings.HasFlag(InputWarning.DuplicateGlyph), Is.True);
         }
 
@@ -133,7 +140,7 @@ namespace BoardRacing.Tests
         {
             var reconciler = Reconciler();
             var snapshots = reconciler.Reconcile(new[] { Contact(10, 0, true, 100f) });
-            Assert.That(snapshots.All(x => x.Throttle == ThrottleStep.Off && !x.Car.Present && !x.Crew.Present), Is.True);
+            Assert.That(snapshots.All(x => x.Throttle == ThrottleStep.Brake && !x.Car.Present && !x.Crew.Present), Is.True);
             Assert.That(snapshots.All(x => x.Warnings.HasFlag(InputWarning.UnassignedGlyph)), Is.True);
         }
 
@@ -141,10 +148,10 @@ namespace BoardRacing.Tests
         public void WrongRegionWarnsButDoesNotReassignPiece()
         {
             var reconciler = Reconciler();
-            var player1 = Player(reconciler.Reconcile(new[] { Contact(10, 2, false, 800f) }), PlayerId.Player1);
+            var player1 = Player(reconciler.Reconcile(new[] { Contact(10, 7, false, 800f) }), PlayerId.Player1);
             Assert.That(player1.Car.Present, Is.True);
             Assert.That(player1.Warnings.HasFlag(InputWarning.WrongRegion), Is.True);
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 2, false, 800f) }), PlayerId.Player2).Car.Present, Is.False);
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 7, false, 800f) }), PlayerId.Player2).Car.Present, Is.False);
         }
 
         [Test]
@@ -153,8 +160,8 @@ namespace BoardRacing.Tests
             var reconciler = Reconciler();
             var snapshots = reconciler.Reconcile(new[]
             {
-                Contact(10, 2, false, 800f), Contact(20, 1, false, 200f),
-                Contact(30, 7, false, 800f), Contact(40, 6, false, 200f)
+                Contact(10, 7, false, 800f), Contact(20, 6, false, 200f),
+                Contact(30, 2, false, 800f), Contact(40, 1, false, 200f)
             });
             Assert.That(Player(snapshots, PlayerId.Player1).Car.ContactId, Is.EqualTo(10));
             Assert.That(Player(snapshots, PlayerId.Player1).Crew.ContactId, Is.EqualTo(30));
@@ -168,27 +175,28 @@ namespace BoardRacing.Tests
             var reconciler = Reconciler();
             ArmCar(reconciler, 10);
             reconciler.ResetAll();
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 2, true, 100f) }), PlayerId.Player1).Throttle,
-                Is.EqualTo(ThrottleStep.Off));
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1).Throttle,
+                Is.EqualTo(ThrottleStep.Drive));
         }
 
         [Test]
-        public void CrewCallPitRequiresTouchReleaseAndEmitsOnce()
+        public void PitRobotRequiresFreshPlacementAlignmentAndHoldAndEmitsOnce()
         {
             var adapter = StrategyAdapter();
             var pit = Pit(PitService.None, PitPhase.OnTrack);
             var initiallyInside = adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
                 RacePhase.Racing, pit, .1f);
-            Assert.That(initiallyInside.CallState, Is.EqualTo(PitCallState.Ready));
+            Assert.That(initiallyInside.CallState, Is.EqualTo(PitCallState.NeedsPlacement));
             Assert.That(initiallyInside.RequestPit, Is.False);
 
+            adapter.Update(StrategyControls(Crew(true, true, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
             var positioned = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
                 RacePhase.Racing, pit, .1f);
-            Assert.That(positioned.CallState, Is.EqualTo(PitCallState.ReleaseToRequest));
+            Assert.That(positioned.CallState, Is.EqualTo(PitCallState.Holding));
             Assert.That(positioned.RequestPit, Is.False);
 
             var requested = adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
-                RacePhase.Racing, pit, .1f);
+                RacePhase.Racing, pit, .7f);
             Assert.That(requested.SelectedService, Is.EqualTo(PitService.None));
             Assert.That(requested.RequestPit, Is.True);
             Assert.That(requested.CallState, Is.EqualTo(PitCallState.Requested));
@@ -197,57 +205,49 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void CrewCallPitSupportsSameContactSlideIntoRegion()
+        public void PitRobotSupportsSameContactSlideIntoRegionAndIgnoresTouch()
         {
             var adapter = StrategyAdapter();
             var pit = Pit(PitService.None, PitPhase.OnTrack);
             adapter.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            adapter.Update(StrategyControls(Crew(true, true, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            var inside = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
-                RacePhase.Racing, pit, .1f);
-            Assert.That(inside.CallState, Is.EqualTo(PitCallState.ReleaseToRequest));
+            var inside = adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .4f);
+            Assert.That(inside.CallState, Is.EqualTo(PitCallState.Holding));
             Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
-                RacePhase.Racing, pit, .1f).RequestPit, Is.True);
+                RacePhase.Racing, pit, .4f).RequestPit, Is.True);
         }
 
         [Test]
-        public void CrewCallPitSupportsNewContactAfterSafeReleaseAndRequiresFreshTouchCycle()
+        public void PitRobotNewContactAndFaultRecoveryRequireFreshPlacement()
         {
             var adapter = StrategyAdapter();
             var pit = Pit(PitService.None, PitPhase.OnTrack);
             var requiresRelease = new PieceState(true, false, 2, new Vec2(200f, 100f), 0f, true);
             var gated = adapter.Update(StrategyControls(requiresRelease), RacePhase.Racing, pit, .1f);
-            Assert.That(gated.CallState, Is.EqualTo(PitCallState.NeedsRelease));
+            Assert.That(gated.CallState, Is.EqualTo(PitCallState.NeedsPlacement));
             Assert.That(gated.RequestPit, Is.False);
 
-            var safeRelease = new PieceState(true, false, 2, new Vec2(200f, 100f), 0f);
-            Assert.That(adapter.Update(StrategyControls(safeRelease), RacePhase.Racing, pit, .1f).RequestPit,
-                Is.False);
-            var touched = new PieceState(true, true, 2, new Vec2(200f, 100f), 0f);
-            Assert.That(adapter.Update(StrategyControls(touched), RacePhase.Racing, pit, .1f).CallState,
-                Is.EqualTo(PitCallState.ReleaseToRequest));
-            Assert.That(adapter.Update(StrategyControls(safeRelease), RacePhase.Racing, pit, .1f).RequestPit,
-                Is.True);
+            adapter.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            var misaligned = new PieceState(true, true, 2, new Vec2(200f, 100f), 1f, true);
+            Assert.That(adapter.Update(StrategyControls(misaligned), RacePhase.Racing, pit, .1f).CallState,
+                Is.EqualTo(PitCallState.Aligning));
+            var aligned = new PieceState(true, true, 2, new Vec2(200f, 100f), 0f, true);
+            Assert.That(adapter.Update(StrategyControls(aligned), RacePhase.Racing, pit, .8f).RequestPit, Is.True);
 
-            adapter.Update(StrategyControls(touched), RacePhase.Racing, pit, .1f);
             var wrongRegion = adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f),
                 InputWarning.WrongRegion), RacePhase.Racing, pit, .1f);
             Assert.That(wrongRegion.RequestPit, Is.False);
             Assert.That(wrongRegion.CallState, Is.EqualTo(PitCallState.Unavailable));
 
-            adapter.Update(StrategyControls(touched), RacePhase.Racing, pit, .1f);
             Assert.That(adapter.Update(StrategyControls(PieceState.Missing), RacePhase.Racing, pit, .1f).RequestPit, Is.False);
-            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
-                RacePhase.Racing, pit, .1f).RequestPit, Is.False);
+            var replaced = new PieceState(true, true, 3, new Vec2(200f, 100f), 0f, true);
+            Assert.That(adapter.Update(StrategyControls(replaced), RacePhase.Racing, pit, .8f).RequestPit, Is.True);
 
             var requestedPit = Pit(PitService.None, PitPhase.Requested);
-            Assert.That(adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
+            Assert.That(adapter.Update(StrategyControls(replaced),
                 RacePhase.Racing, requestedPit, .1f).RequestPit, Is.False);
-            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
+            Assert.That(adapter.Update(StrategyControls(replaced),
                 RacePhase.Racing, pit, .1f).RequestPit, Is.False);
-            adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            Assert.That(adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)),
-                RacePhase.Racing, pit, .1f).RequestPit, Is.True);
         }
 
         [Test]
@@ -258,12 +258,12 @@ namespace BoardRacing.Tests
             var positioned = adapter.Update(StrategyControls(Crew(true, false, 100f, 100f, 0f)),
                 RacePhase.Racing, tiresPit, .1f);
             Assert.That(positioned.SelectedService, Is.EqualTo(PitService.Tires));
-            Assert.That(positioned.ServiceAction.State, Is.EqualTo(PitActionState.Positioned));
+            Assert.That(positioned.ServiceAction.State, Is.EqualTo(PitActionState.Holding));
 
             var valid = StrategyControls(Crew(true, true, 100f, 100f, 0f));
             var tireHold = adapter.Update(valid, RacePhase.Racing, tiresPit, .4f);
             Assert.That(tireHold.SelectedService, Is.EqualTo(PitService.Tires));
-            Assert.That(tireHold.ServiceAction.Progress, Is.EqualTo(.4f).Within(.001f));
+            Assert.That(tireHold.ServiceAction.Progress, Is.EqualTo(.5f).Within(.001f));
 
             var coolingHold = adapter.Update(StrategyControls(Crew(true, true, 300f, 100f, 0f)),
                 RacePhase.Racing, tiresPit, .4f);
@@ -274,7 +274,6 @@ namespace BoardRacing.Tests
             var lost = adapter.Update(StrategyControls(PieceState.Missing), RacePhase.Racing, tiresPit, .2f);
             Assert.That(lost.ServiceAction.State, Is.EqualTo(PitActionState.Idle));
 
-            adapter.Update(StrategyControls(Crew(true, false, 100f, 100f, 0f)), RacePhase.Racing, tiresPit, .1f);
             Assert.That(adapter.Update(valid, RacePhase.Racing, tiresPit, .4f).ServiceAction.CompletedThisUpdate, Is.False);
             Assert.That(adapter.Update(valid, RacePhase.Racing, tiresPit, .6f).ServiceAction.CompletedThisUpdate, Is.True);
             Assert.That(adapter.Update(valid, RacePhase.Racing, tiresPit, 1f).ServiceAction.CompletedThisUpdate, Is.False);
@@ -291,10 +290,10 @@ namespace BoardRacing.Tests
         {
             var p1 = StrategyAdapter(); var p2 = StrategyAdapter();
             var pit = Pit(PitService.None, PitPhase.OnTrack);
-            p1.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            p2.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            var p1Request = p1.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            var p2Request = p2.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            p1.Update(StrategyControls(Crew(true, true, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            p2.Update(StrategyControls(Crew(true, true, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            var p1Request = p1.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f)), RacePhase.Racing, pit, .8f);
+            var p2Request = p2.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)), RacePhase.Racing, pit, .8f);
             Assert.That(p1Request.SelectedService, Is.EqualTo(PitService.None));
             Assert.That(p2Request.SelectedService, Is.EqualTo(PitService.None));
             Assert.That(p1Request.RequestPit, Is.True);
@@ -312,23 +311,23 @@ namespace BoardRacing.Tests
             new RacerPitSnapshot(service, phase, 0f, 0, false);
         private static PlayerControlSnapshot StrategyControls(PieceState crew,
             InputWarning warning = InputWarning.None) =>
-            new PlayerControlSnapshot(PlayerId.Player1, ThrottleStep.Off, PieceState.Missing, crew, warning);
+            new PlayerControlSnapshot(PlayerId.Player1, ThrottleStep.Brake, PieceState.Missing, crew, warning);
 
         private static ContactSnapshotReconciler Reconciler() =>
             new ContactSnapshotReconciler(TrancheOneAssignments.All, 0.1f, 540f);
 
         private static RawPieceContact Contact(int contactId, int glyphId, bool touched, float y,
-            RawContactPhase phase = RawContactPhase.Stationary) =>
-            new RawPieceContact(contactId, glyphId, new Vec2(100f, y), 0f, touched, phase);
+            RawContactPhase phase = RawContactPhase.Stationary, float angle = 0f) =>
+            new RawPieceContact(contactId, glyphId, new Vec2(100f, y), angle, touched, phase);
 
         private static PlayerControlSnapshot Player(System.Collections.Generic.IReadOnlyList<PlayerControlSnapshot> snapshots,
             PlayerId playerId) => snapshots.Single(x => x.PlayerId == playerId);
 
         private static void ArmCar(ContactSnapshotReconciler reconciler, int contactId)
         {
-            reconciler.Reconcile(new[] { Contact(contactId, 2, false, 100f) });
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(contactId, 2, true, 100f) }), PlayerId.Player1).Throttle,
-                Is.EqualTo(ThrottleStep.Quarter));
+            reconciler.Reconcile(new[] { Contact(contactId, 7, false, 100f, RawContactPhase.Stationary, 2.1f) });
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(contactId, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1).Throttle,
+                Is.EqualTo(ThrottleStep.Drive));
         }
     }
 }

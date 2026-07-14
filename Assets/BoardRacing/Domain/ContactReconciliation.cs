@@ -44,7 +44,8 @@ namespace BoardRacing.Domain
             if (errors.Length > 0) throw new ArgumentException(string.Join(" ", errors), nameof(assignments));
             this.assignments = all.ToDictionary(x => x.GlyphId);
             throttleMappers = Enum.GetValues(typeof(PlayerId)).Cast<PlayerId>()
-                .ToDictionary(x => x, _ => new CoarseThrottleMapper(throttleHysteresisRadians));
+                .ToDictionary(x => x, id => new CoarseThrottleMapper(throttleHysteresisRadians,
+                    id == PlayerId.Player1 ? 0f : (float)Math.PI));
             this.playerRegionBoundaryY = playerRegionBoundaryY;
         }
 
@@ -61,7 +62,11 @@ namespace BoardRacing.Domain
                 InputWarning warning = hasUnassigned ? InputWarning.UnassignedGlyph : InputWarning.None;
                 var car = Resolve(player, PieceRole.Car, activeByGlyph, ref warning);
                 var crew = Resolve(player, PieceRole.Crew, activeByGlyph, ref warning);
-                var throttle = throttleMappers[player].Map(car.Present, car.Touched, car.OrientationRadians);
+                bool carInWrongRegion = car.Present && (player == PlayerId.Player1
+                    ? car.Position.Y >= playerRegionBoundaryY
+                    : car.Position.Y < playerRegionBoundaryY);
+                var throttle = throttleMappers[player].Map(car.Present && !carInWrongRegion,
+                    car.OrientationRadians);
                 result.Add(new PlayerControlSnapshot(player, throttle, car, crew, warning));
             }
 

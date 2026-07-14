@@ -8,7 +8,7 @@ namespace BoardRacing.Domain
     public enum TrackSectionKind { Straight, Corner }
     public enum PitService { None, Tires, Cooling }
     public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting }
-    public enum PitCallState { Unavailable, NeedsRelease, Ready, ReleaseToRequest, Requested }
+    public enum PitCallState { Unavailable, NeedsPlacement, Aligning, Holding, Requested }
 
     public readonly struct TrackSegment
     {
@@ -196,23 +196,24 @@ namespace BoardRacing.Domain
 
     public readonly struct RacerCommand
     {
-        public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool carPresent, bool carTouched)
-            : this(playerId, throttle, carPresent, carTouched, PitService.None, false, 0f, false) { }
+        public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool drivingPiecePresent, bool rematchConfirming)
+            : this(playerId, throttle, drivingPiecePresent, rematchConfirming, PitService.None, false, 0f, false) { }
 
-        public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool carPresent, bool carTouched,
+        public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool drivingPiecePresent, bool rematchConfirming,
             PitService selectedService, bool requestPit, float serviceActionProgress, bool completeService)
         {
             if (!Enum.IsDefined(typeof(PitService), selectedService) || serviceActionProgress < 0f ||
                 serviceActionProgress > 1f || float.IsNaN(serviceActionProgress))
                 throw new ArgumentException("Racer strategy command contains invalid values.");
-            PlayerId = playerId; Throttle = throttle; CarPresent = carPresent; CarTouched = carTouched;
+            PlayerId = playerId; Throttle = throttle; DrivingPiecePresent = drivingPiecePresent;
+            RematchConfirming = rematchConfirming;
             SelectedService = selectedService; RequestPit = requestPit;
             ServiceActionProgress = serviceActionProgress; CompleteService = completeService;
         }
         public PlayerId PlayerId { get; }
         public ThrottleStep Throttle { get; }
-        public bool CarPresent { get; }
-        public bool CarTouched { get; }
+        public bool DrivingPiecePresent { get; }
+        public bool RematchConfirming { get; }
         public PitService SelectedService { get; }
         public bool RequestPit { get; }
         public float ServiceActionProgress { get; }
@@ -310,7 +311,7 @@ namespace BoardRacing.Domain
         { this.points = points?.OrderBy(x => x.Time).ToArray() ?? throw new ArgumentNullException(nameof(points)); }
         public ThrottleStep At(float time)
         {
-            ThrottleStep result = ThrottleStep.Off;
+            ThrottleStep result = ThrottleStep.Brake;
             foreach (var point in points) { if (point.Time > time) break; result = point.Throttle; }
             return result;
         }
