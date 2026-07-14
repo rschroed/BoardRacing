@@ -28,6 +28,9 @@ namespace BoardRacing.Runtime
         private static readonly Vec2 PlayerOnePitBox = new Vec2(820f, 455f);
         private static readonly Vec2 PlayerTwoPitBox = new Vec2(1100f, 455f);
         private static readonly Vec2 PitExit = new Vec2(1370f, 455f);
+        private static readonly Vec2 PitReturnBend = new Vec2(1480f, 505f);
+        private static readonly Vec2 PitReturnLane = new Vec2(360f, 505f);
+        private static readonly Vec2 PitMergeApproach = new Vec2(390f, 438f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -50,6 +53,7 @@ namespace BoardRacing.Runtime
             activeProvider = fallbackProvider;
 #endif
             foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) CreateCrewAdapter(id);
+            AttachResetSource(activeProvider);
             simulation = new RaceSimulation(TrackDefinition.Placeholder(raceSettings.cornerSafeSpeed),
                 raceSettings.ToRules(strategySettings.requiredServiceCount, strategySettings.ToConditionRules(),
                     strategySettings.ToPitRules()));
@@ -64,12 +68,14 @@ namespace BoardRacing.Runtime
             crewAdapters[id] = new CrewStrategyAdapter(new Vec2(center.x, center.y), tires, cooling,
                 new Vec2(strategySettings.serviceHalfSize.x, strategySettings.serviceHalfSize.y),
                 inputSettings.targetAngleDegrees * Mathf.Deg2Rad,
-                inputSettings.alignmentToleranceDegrees * Mathf.Deg2Rad, inputSettings.holdDurationSeconds);
+                inputSettings.alignmentToleranceDegrees * Mathf.Deg2Rad, inputSettings.holdDurationSeconds,
+                strategySettings.pitCallHoldSeconds);
             crewOutputs[id] = default;
         }
 
         private void OnDestroy()
         {
+            DetachResetSource(activeProvider);
             if (boardProvider is IDisposable disposable) disposable.Dispose();
         }
 
@@ -89,7 +95,9 @@ namespace BoardRacing.Runtime
                     var racer = simulation.Snapshot.Racers.Single(x => x.PlayerId == control.PlayerId);
                     var crew = crewAdapters[control.PlayerId].Update(control, simulation.Snapshot.Phase, racer.Pit, step);
                     crewOutputs[control.PlayerId] = crew;
-                    return new RacerCommand(control.PlayerId, control.Throttle, control.Car.Present, control.Car.Touched,
+                    bool rematchConfirming = simulation.Snapshot.Phase == RacePhase.Finished &&
+                        control.Car.Present && control.Throttle == ThrottleStep.Brake;
+                    return new RacerCommand(control.PlayerId, control.Throttle, control.Car.Present, rematchConfirming,
                         crew.SelectedService, crew.RequestPit, crew.ServiceAction.Progress,
                         crew.ServiceAction.CompletedThisUpdate);
                 }).ToArray();
@@ -102,8 +110,26 @@ namespace BoardRacing.Runtime
             crewOutputs.TryGetValue(playerId, out var output) ? output : default;
         public void SetInputProvider(IPlayerInputProvider provider)
         {
+            DetachResetSource(activeProvider);
             activeProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+            AttachResetSource(activeProvider);
             foreach (var adapter in crewAdapters.Values) adapter.Reset();
+        }
+
+        private void AttachResetSource(IPlayerInputProvider provider)
+        {
+            if (provider is IInputResetSource source) source.InputReset += OnInputReset;
+        }
+
+        private void DetachResetSource(IPlayerInputProvider provider)
+        {
+            if (provider is IInputResetSource source) source.InputReset -= OnInputReset;
+        }
+
+        private void OnInputReset()
+        {
+            foreach (var adapter in crewAdapters.Values) adapter.Reset();
+            foreach (PlayerId id in crewOutputs.Keys.ToArray()) crewOutputs[id] = default;
         }
 
         private void EnsureStyles()
@@ -164,13 +190,26 @@ namespace BoardRacing.Runtime
             Vec2 start = ProjectTrack(simulation.Track.Sample(0f).Position);
             DrawLine(start, PitEntry, 30f, new Color(.08f, .11f, .15f));
             DrawLine(PitEntry, PitExit, 30f, new Color(.08f, .11f, .15f));
-            DrawLine(PitExit, start, 30f, new Color(.08f, .11f, .15f));
+            DrawPitReturnLane(start, 30f, new Color(.08f, .11f, .15f));
             DrawLine(start, PitEntry, 2f, new Color(.62f, .68f, .74f, .55f));
             DrawLine(PitEntry, PitExit, 2f, new Color(.62f, .68f, .74f, .55f));
-            DrawLine(PitExit, start, 2f, new Color(.62f, .68f, .74f, .55f));
+            DrawPitReturnLane(start, 2f, new Color(.62f, .68f, .74f, .55f));
             DrawPitBox(PlayerOnePitBox, "▲ P1 BOX", new Color(.92f, .39f, .12f));
             DrawPitBox(PlayerTwoPitBox, "● P2 BOX", new Color(.48f, .28f, .72f));
             GUI.Label(new Rect(865, 421, 190, 28), "PIT LANE", small);
+        }
+
+        private static void DrawPitReturnLane(Vec2 start, float width, Color color)
+        {
+            var layout = new PitLanePresentationLayout(start, PitEntry, PlayerOnePitBox,
+                PlayerTwoPitBox, PitExit, PitReturnBend, PitReturnLane, PitMergeApproach);
+            CarPresentationPose prior = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
+            for (int i = 1; i <= 36; i++)
+            {
+                CarPresentationPose next = PitLanePresentationMapper.ExitPose(PlayerId.Player1, i / 36f, false, layout);
+                DrawLine(prior.Position, next.Position, width, color);
+                prior = next;
+            }
         }
 
         private void DrawPitBox(Vec2 center, string label, Color accent)
@@ -223,7 +262,7 @@ namespace BoardRacing.Runtime
             }
             PitCallState state = crewOutputs.TryGetValue(id, out var output)
                 ? output.CallState : PitCallState.Unavailable;
-            bool emphasized = state == PitCallState.ReleaseToRequest || state == PitCallState.Requested ||
+            bool emphasized = state == PitCallState.Holding || state == PitCallState.Requested ||
                 racer.Pit.Phase == PitPhase.Requested;
             GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
                 new Color(accent.r, accent.g, accent.b, emphasized ? .42f : .14f), 0, 34f);
@@ -239,18 +278,18 @@ namespace BoardRacing.Runtime
             { titleText = "SERVICE COMPLETE ✓"; instruction = "REJOINING"; }
             else if (simulation.Snapshot.Phase != RacePhase.Racing)
                 instruction = "AVAILABLE AFTER GO";
-            else if (state == PitCallState.NeedsRelease)
-                instruction = "RELEASE SHIP · THEN TOUCH + RELEASE";
-            else if (state == PitCallState.ReleaseToRequest)
-                instruction = "RELEASE SHIP TO CALL";
+            else if (state == PitCallState.Aligning)
+                instruction = "ROTATE ROBOT TO 0°";
+            else if (state == PitCallState.Holding)
+                instruction = "HOLD STEADY · " + Mathf.RoundToInt(output.CallAction.Progress * 100f) + "%";
             else if (state == PitCallState.Requested)
             { titleText = "PIT CALLED ✓"; instruction = "ENTRY AT START / FINISH"; }
-            else instruction = "PLACE SHIP HERE · TOUCH + RELEASE";
+            else instruction = "PLACE ROBOT HERE · ALIGN TO 0°";
             GUI.Label(new Rect(rect.x + 10, rect.y + 62, rect.width - 20, 48), titleText, heading);
             GUI.Label(new Rect(rect.x + 12, rect.y + 112, rect.width - 24, 58),
                 instruction, small);
             GUI.Label(new Rect(rect.x + 12, rect.y + 18, rect.width - 24, 34),
-                id == PlayerId.Player1 ? "▲ ORANGE CREW" : "● PURPLE CREW", small);
+                id == PlayerId.Player1 ? "▲ ORANGE PIT ROBOT" : "● PURPLE PIT ROBOT", small);
             GUI.matrix = original;
         }
 
@@ -277,8 +316,8 @@ namespace BoardRacing.Runtime
             string instruction;
             if (!selected) instruction = selectedService == PitService.None
                 ? "CAR PARKED · MOVE HERE TO CHOOSE" : "MOVE HERE TO SWITCH";
-            else if (action.State == PitActionState.Positioned) instruction = "TOUCH + ALIGN TO SERVICE";
-            else if (action.State == PitActionState.Aligning) instruction = "ROTATE SHIP TO 0°";
+            else if (action.State == PitActionState.Positioned) instruction = "ALIGN ROBOT TO SERVICE";
+            else if (action.State == PitActionState.Aligning) instruction = "ROTATE ROBOT TO 0°";
             else if (action.State == PitActionState.Holding)
                 instruction = "HOLD STEADY · " + Mathf.RoundToInt(action.Progress * 100f) + "%";
             else if (action.State == PitActionState.Completed) instruction = "SERVICE COMPLETE ✓";
@@ -344,7 +383,8 @@ namespace BoardRacing.Runtime
             Vec2 trackPosition = ProjectTrack(racer.Track.Position);
             var trackTangent = new Vec2(racer.Track.Tangent.X, racer.Track.Tangent.Y * TrackVerticalScale);
             var layout = new PitLanePresentationLayout(ProjectTrack(simulation.Track.Sample(0f).Position),
-                PitEntry, PlayerOnePitBox, PlayerTwoPitBox, PitExit);
+                PitEntry, PlayerOnePitBox, PlayerTwoPitBox, PitExit,
+                PitReturnBend, PitReturnLane, PitMergeApproach);
             CarPresentationPose pose = PitLanePresentationMapper.From(racer, trackPosition, trackTangent, layout);
             position = new Vector2(pose.Position.X, pose.Position.Y);
             tangent = new Vector2(pose.Tangent.X, pose.Tangent.Y);
@@ -399,7 +439,7 @@ namespace BoardRacing.Runtime
             GUI.Label(new Rect(rect.x + 20, rect.y + 8, 310, 36), marker, heading);
             GUI.Label(new Rect(rect.x + 325, rect.y + 8, 210, 36), "LAP " + Math.Min(raceSettings.laps, racer.CompletedLaps + 1) + " / " + raceSettings.laps, heading);
             GUI.Label(new Rect(rect.x + 535, rect.y + 8, 130, 36), Ordinal(racer.Place), heading);
-            GUI.Label(new Rect(rect.x + 665, rect.y + 8, 150, 36), ((int)control.Throttle) + "%", heading);
+            GUI.Label(new Rect(rect.x + 665, rect.y + 8, 180, 36), ThrottleName(control.Throttle), heading);
             GUI.Label(new Rect(rect.x + 815, rect.y + 8, 245, 36),
                 racer.Pit.FinishEligible ? "STOP ✓" : "STOP REQUIRED", racer.Pit.FinishEligible ? body : warning);
             CarConditionVisualState visual = CarConditionVisualMapper.From(racer, simulation.Rules.Conditions);
@@ -438,18 +478,18 @@ namespace BoardRacing.Runtime
             if (pit.Phase == PitPhase.Exiting) return "SERVICE COMPLETE ✓ · PIT EXIT";
             PitCallState state = crewOutputs.TryGetValue(racer.PlayerId, out var output)
                 ? output.CallState : PitCallState.Unavailable;
-            return state == PitCallState.NeedsRelease
-                ? "CALL PIT · RELEASE SHIP TO REARM" : "CALL PIT · TOUCH + RELEASE";
+            return state == PitCallState.Holding
+                ? "CALL PIT · HOLD " + Mathf.RoundToInt(output.CallAction.Progress * 100f) + "%"
+                : "CALL PIT · PLACE + ALIGN ROBOT";
         }
 
         private string HudGuidance(RacerSnapshot racer, PlayerControlSnapshot control)
         {
             var race = simulation.Snapshot;
             if (racer.Finished) return "FINISHED · " + Ordinal(racer.Place) + " · waiting for the other racer";
-            if (!control.Car.Present) return "PLACE YOUR ROBOT · throttle is safely off";
-            if (control.Car.RequiresRelease) return "RELEASE ROBOT TO REARM";
-            if (race.Phase == RacePhase.Grid) return "READY · leave Robot released for the countdown";
-            if (race.Phase == RacePhase.Countdown) return "GET READY · touch and rotate after GO";
+            if (!control.Car.Present) return "PLACE YOUR SHIP · throttle is safely at BRAKE";
+            if (race.Phase == RacePhase.Grid) return "READY · SHIP CONTROLS BRAKE / DRIVE / BOOST";
+            if (race.Phase == RacePhase.Countdown) return "GET READY · ROTATE SHIP AFTER GO";
             if (race.Phase == RacePhase.Racing)
             {
                 if (racer.Pit.Phase == PitPhase.InService) return ServiceGuidance(racer, control);
@@ -464,31 +504,31 @@ namespace BoardRacing.Runtime
                     return "TIRES CRITICAL · CORNER MARGIN REDUCED · choose when to make a Tires stop";
                 PitCallState state = crewOutputs.TryGetValue(racer.PlayerId, out var output)
                     ? output.CallState : PitCallState.Unavailable;
-                if (state == PitCallState.NeedsRelease) return "RELEASE SHIP · THEN TOUCH + RELEASE IN CALL PIT";
-                if (state == PitCallState.ReleaseToRequest) return "RELEASE SHIP TO CALL PIT";
-                return "Rotate for speed · brake for dark corners · place Ship in Call Pit, touch + release";
+                if (state == PitCallState.Aligning) return "ROTATE PIT ROBOT TO 0° TO CALL";
+                if (state == PitCallState.Holding)
+                    return "HOLD PIT ROBOT STEADY · " + Mathf.RoundToInt(output.CallAction.Progress * 100f) + "%";
+                return "Rotate Ship: BRAKE / DRIVE / BOOST · place Robot in Call Pit";
             }
-            if (race.AwaitingRematchRelease) return "RELEASE BOTH ROBOTS TO RESTART";
-            return "BOTH PLAYERS TOUCH AND HOLD ROBOTS FOR REMATCH";
+            if (race.AwaitingRematchRelease) return "ROTATE BOTH SHIPS OUT OF BRAKE TO RESTART";
+            return "BOTH SHIPS TO BRAKE · HOLD FOR REMATCH";
         }
 
         private string ServiceGuidance(RacerSnapshot racer, PlayerControlSnapshot control)
         {
             string service = ServiceName(racer.Pit.SelectedService);
-            if (!control.Crew.Present) return "PLACE SHIP IN TIRES OR COOLING · progress reset";
-            if (control.Crew.RequiresRelease) return "RELEASE SHIP TO REARM · progress reset";
+            if (!control.Crew.Present) return "PLACE ROBOT IN TIRES OR COOLING · progress reset";
             if (control.Warnings.HasFlag(InputWarning.WrongRegion))
-                return "MOVE SHIP TO YOUR REPAIR ZONES · progress reset";
+                return "MOVE ROBOT TO YOUR REPAIR ZONES · progress reset";
             PitActionResult action = crewOutputs.TryGetValue(racer.PlayerId, out var output)
                 ? output.ServiceAction : default;
             if (racer.Pit.SelectedService == PitService.None)
-                return "CAR PARKED · CHOOSE REPAIR · MOVE SHIP TO TIRES OR COOLING";
-            if (action.State == PitActionState.Positioned) return "TOUCH SHIP IN " + service + " ZONE TO BEGIN SERVICE";
-            if (action.State == PitActionState.Aligning) return "ALIGN SHIP TO 0° · HOLD STARTS WHEN ALIGNED";
+                return "CAR PARKED · CHOOSE REPAIR · MOVE ROBOT TO TIRES OR COOLING";
+            if (action.State == PitActionState.Positioned) return "ALIGN ROBOT IN " + service + " ZONE";
+            if (action.State == PitActionState.Aligning) return "ALIGN ROBOT TO 0° · HOLD STARTS WHEN ALIGNED";
             if (action.State == PitActionState.Holding)
-                return "HOLD SHIP STEADY · " + Mathf.RoundToInt(action.Progress * 100f) + "%";
+                return "HOLD ROBOT STEADY · " + Mathf.RoundToInt(action.Progress * 100f) + "%";
             if (action.State == PitActionState.Completed) return service + " SERVICE COMPLETE";
-            return "PLACE SHIP IN HIGHLIGHTED " + service + " ZONE";
+            return "PLACE ROBOT IN HIGHLIGHTED " + service + " ZONE";
         }
 
         private void DrawCenterMessage()
@@ -507,6 +547,9 @@ namespace BoardRacing.Runtime
 
         private static string ServiceName(PitService service) =>
             service == PitService.Tires ? "TIRES" : service == PitService.Cooling ? "COOLING" : "NO SERVICE";
+
+        private static string ThrottleName(ThrottleStep throttle) =>
+            throttle == ThrottleStep.Boost ? "BOOST" : throttle == ThrottleStep.Drive ? "DRIVE" : "BRAKE";
 
         private static string Ordinal(int place) => place == 1 ? "1ST" : "2ND";
     }

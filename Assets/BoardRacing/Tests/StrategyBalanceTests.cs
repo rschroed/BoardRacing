@@ -15,20 +15,20 @@ namespace BoardRacing.Tests
         public void FirstPassStrategyMatrixProducesProfileDependentWinnersAndServiceValue()
         {
             var managed = RunDuel(BalanceRules(1),
-                Plan("early tires", ThrottleStep.Half, PitService.Tires, 1),
-                Plan("later cooling", ThrottleStep.Half, PitService.Cooling, 2));
+                Plan("early tires", ThrottleStep.Drive, PitService.Tires, 1),
+                Plan("later cooling", ThrottleStep.Drive, PitService.Cooling, 2));
             var sustained = RunDuel(BalanceRules(1),
-                Plan("early tires", ThrottleStep.Full, PitService.Tires, 1),
-                Plan("later cooling", ThrottleStep.Full, PitService.Cooling, 2));
+                Plan("early tires", ThrottleStep.Boost, PitService.Tires, 1),
+                Plan("later cooling", ThrottleStep.Boost, PitService.Cooling, 2));
             var coolingValue = RunDuel(BalanceRules(0),
-                Plan("timed cooling", ThrottleStep.Full, PitService.Cooling, 2),
-                Plan("no stop", ThrottleStep.Full, PitService.None, 0));
+                Plan("timed cooling", ThrottleStep.Boost, PitService.Cooling, 2),
+                Plan("no stop", ThrottleStep.Boost, PitService.None, 0));
             var coolingCost = RunDuel(BalanceRules(0),
-                Plan("unneeded cooling", ThrottleStep.Half, PitService.Cooling, 1),
-                Plan("no stop", ThrottleStep.Half, PitService.None, 0));
+                Plan("unneeded cooling", ThrottleStep.Drive, PitService.Cooling, 1),
+                Plan("no stop", ThrottleStep.Drive, PitService.None, 0));
             var tireTiming = RunDuel(BalanceRules(1),
-                Plan("early tires", ThrottleStep.Half, PitService.Tires, 1),
-                Plan("late tires", ThrottleStep.Half, PitService.Tires, 3));
+                Plan("early tires", ThrottleStep.Drive, PitService.Tires, 1),
+                Plan("late tires", ThrottleStep.Drive, PitService.Tires, 3));
 
             Write("managed", managed);
             Write("sustained", sustained);
@@ -69,8 +69,8 @@ namespace BoardRacing.Tests
         public void MandatoryStopCannotBeIgnoredByHoldingMaximumThrottle()
         {
             var duel = RunDuel(BalanceRules(1),
-                Plan("served cooling", ThrottleStep.Full, PitService.Cooling, 2),
-                Plan("unserved full throttle", ThrottleStep.Full, PitService.None, 0));
+                Plan("served cooling", ThrottleStep.Boost, PitService.Cooling, 2),
+                Plan("unserved full throttle", ThrottleStep.Boost, PitService.None, 0));
 
             Assert.That(duel.PlayerOne.Finished, Is.True);
             Assert.That(duel.PlayerOne.CompletedServices, Is.EqualTo(1));
@@ -87,11 +87,11 @@ namespace BoardRacing.Tests
         public void FullStrategyTraceIsExactlyRepeatable()
         {
             var first = RunDuel(BalanceRules(1),
-                Plan("early tires", ThrottleStep.Half, PitService.Tires, 1),
-                Plan("later cooling", ThrottleStep.Half, PitService.Cooling, 2));
+                Plan("early tires", ThrottleStep.Drive, PitService.Tires, 1),
+                Plan("later cooling", ThrottleStep.Drive, PitService.Cooling, 2));
             var second = RunDuel(BalanceRules(1),
-                Plan("early tires", ThrottleStep.Half, PitService.Tires, 1),
-                Plan("later cooling", ThrottleStep.Half, PitService.Cooling, 2));
+                Plan("early tires", ThrottleStep.Drive, PitService.Tires, 1),
+                Plan("later cooling", ThrottleStep.Drive, PitService.Cooling, 2));
 
             AssertEquivalent(first.PlayerOne, second.PlayerOne);
             AssertEquivalent(first.PlayerTwo, second.PlayerTwo);
@@ -174,8 +174,8 @@ namespace BoardRacing.Tests
 
         private static RacerCommand[] ReleasedCommands() => new[]
         {
-            new RacerCommand(PlayerId.Player1, ThrottleStep.Off, true, false),
-            new RacerCommand(PlayerId.Player2, ThrottleStep.Off, true, false)
+            new RacerCommand(PlayerId.Player1, ThrottleStep.Brake, true, false),
+            new RacerCommand(PlayerId.Player2, ThrottleStep.Brake, true, false)
         };
 
         private static void AssertValidCompletedDuel(TraceDuel duel, int requiredServices)

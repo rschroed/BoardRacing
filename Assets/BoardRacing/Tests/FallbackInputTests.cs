@@ -19,50 +19,43 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void BothPlayersCanTouchCarsAndChooseThrottleSimultaneously()
+        public void BothPlayersCanChooseDrivingStopsSimultaneouslyWithoutTouch()
         {
-            Tap(keyboard.qKey);
-            Tap(keyboard.uKey);
             Tap(keyboard.vKey);
             var snapshots = Tap(keyboard.digit8Key);
-            Assert.That(Player(snapshots, PlayerId.Player1).Throttle, Is.EqualTo(ThrottleStep.Full));
-            Assert.That(Player(snapshots, PlayerId.Player2).Throttle, Is.EqualTo(ThrottleStep.Half));
+            Assert.That(Player(snapshots, PlayerId.Player1).Throttle, Is.EqualTo(ThrottleStep.Boost));
+            Assert.That(Player(snapshots, PlayerId.Player2).Throttle, Is.EqualTo(ThrottleStep.Drive));
         }
 
         [Test]
-        public void RemovingCarsClearsTouchAndThrottleForBothPlayers()
+        public void RemovingDrivingShipsClearsThrottleForBothPlayers()
         {
-            Tap(keyboard.qKey);
-            Tap(keyboard.uKey);
             Tap(keyboard.eKey);
             var snapshots = Tap(keyboard.oKey);
             Assert.That(Player(snapshots, PlayerId.Player1).Car.Present, Is.False);
             Assert.That(Player(snapshots, PlayerId.Player2).Car.Present, Is.False);
-            Assert.That(snapshots.All(x => x.Throttle == ThrottleStep.Off), Is.True);
+            Assert.That(snapshots.All(x => x.Throttle == ThrottleStep.Brake), Is.True);
         }
 
         [Test]
-        public void CrewTouchAndRemovalAreIndependent()
+        public void TouchKeysAreIgnoredAndPitRobotRemovalIsIndependent()
         {
             Tap(keyboard.wKey);
             var touched = Tap(keyboard.iKey);
-            Assert.That(touched.All(x => x.Crew.Touched), Is.True);
+            Assert.That(touched.All(x => !x.Crew.Touched), Is.True);
             var removed = Tap(keyboard.rKey);
             Assert.That(Player(removed, PlayerId.Player1).Crew.Present, Is.False);
             Assert.That(Player(removed, PlayerId.Player2).Crew.Present, Is.True);
-            Assert.That(Player(removed, PlayerId.Player2).Crew.Touched, Is.True);
+            Assert.That(Player(removed, PlayerId.Player2).Crew.Touched, Is.False);
         }
 
         [Test]
         public void EveryDocumentedThrottleKeySelectsItsSector()
         {
-            Tap(keyboard.qKey);
-            Tap(keyboard.uKey);
-
-            AssertSector(keyboard.zKey, keyboard.digit7Key, ThrottleStep.Quarter);
-            AssertSector(keyboard.xKey, keyboard.digit8Key, ThrottleStep.Half);
-            AssertSector(keyboard.cKey, keyboard.digit9Key, ThrottleStep.ThreeQuarters);
-            AssertSector(keyboard.vKey, keyboard.digit0Key, ThrottleStep.Full);
+            AssertSector(keyboard.zKey, keyboard.digit7Key, ThrottleStep.Brake);
+            AssertSector(keyboard.xKey, keyboard.digit8Key, ThrottleStep.Drive);
+            AssertSector(keyboard.cKey, keyboard.digit9Key, ThrottleStep.Boost);
+            AssertSector(keyboard.vKey, keyboard.digit0Key, ThrottleStep.Boost);
         }
 
         private void AssertSector(UnityEngine.InputSystem.Controls.ButtonControl p1,

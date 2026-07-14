@@ -47,17 +47,17 @@ namespace BoardRacing.Domain
             if (fixedDeltaSeconds <= 0f) throw new ArgumentOutOfRangeException(nameof(fixedDeltaSeconds));
             var byPlayer = commands?.ToDictionary(x => x.PlayerId) ?? new Dictionary<PlayerId, RacerCommand>();
             RacerCommand Command(PlayerId id) => byPlayer.TryGetValue(id, out var command)
-                ? command : new RacerCommand(id, ThrottleStep.Off, false, false);
+                ? command : new RacerCommand(id, ThrottleStep.Brake, false, false);
 
             foreach (var racer in racers) racer.IncidentThisStep = false;
             if (phase == RacePhase.Grid)
             {
-                if (racers.All(x => { var c = Command(x.Id); return c.CarPresent && !c.CarTouched; }))
+                if (racers.All(x => Command(x.Id).DrivingPiecePresent))
                 { phase = RacePhase.Countdown; countdown = rules.CountdownSeconds; }
             }
             else if (phase == RacePhase.Countdown)
             {
-                if (racers.Any(x => !Command(x.Id).CarPresent)) { phase = RacePhase.Grid; countdown = 0f; }
+                if (racers.Any(x => !Command(x.Id).DrivingPiecePresent)) { phase = RacePhase.Grid; countdown = 0f; }
                 else if ((countdown -= fixedDeltaSeconds) <= 0f) { countdown = 0f; phase = RacePhase.Racing; }
             }
             else if (phase == RacePhase.Racing)
@@ -98,7 +98,7 @@ namespace BoardRacing.Domain
                 AdvancePit(racer, command, delta);
                 return;
             }
-            float throttleFraction = command.CarPresent && command.CarTouched ? (int)command.Throttle / 100f : 0f;
+            float throttleFraction = command.DrivingPiecePresent ? (int)command.Throttle / 100f : 0f;
             UpdateHeat(racer, throttleFraction, delta);
             bool heatPenalty = HeatPenaltyActive(racer);
             float maximumSpeed = rules.MaxSpeed * (heatPenalty ? rules.Conditions.HeatedMaximumSpeedScale : 1f);
@@ -211,11 +211,13 @@ namespace BoardRacing.Domain
 
         private void HandleRematch(IReadOnlyList<RacerCommand> commands, float delta)
         {
-            bool allTouched = racers.All(x => commands.Any(c => c.PlayerId == x.Id && c.CarPresent && c.CarTouched));
-            bool allReleased = racers.All(x => commands.Any(c => c.PlayerId == x.Id && c.CarPresent && !c.CarTouched));
+            bool allConfirming = racers.All(x => commands.Any(c => c.PlayerId == x.Id &&
+                c.DrivingPiecePresent && c.RematchConfirming));
+            bool allReleased = racers.All(x => commands.Any(c => c.PlayerId == x.Id &&
+                c.DrivingPiecePresent && !c.RematchConfirming));
             if (!awaitingRematchRelease)
             {
-                rematchHeld = allTouched ? rematchHeld + delta : 0f;
+                rematchHeld = allConfirming ? rematchHeld + delta : 0f;
                 if (rematchHeld >= rules.RematchHoldSeconds) awaitingRematchRelease = true;
             }
             else if (allReleased) ResetForRematch();

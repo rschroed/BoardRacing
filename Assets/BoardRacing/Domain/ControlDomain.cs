@@ -6,7 +6,7 @@ namespace BoardRacing.Domain
 {
     public enum PlayerId { Player1 = 1, Player2 = 2 }
     public enum PieceRole { Car, Crew }
-    public enum ThrottleStep { Off = 0, Quarter = 25, Half = 50, ThreeQuarters = 75, Full = 100 }
+    public enum ThrottleStep { Brake = 0, Drive = 50, Boost = 100 }
     [Flags] public enum InputWarning { None = 0, UnassignedGlyph = 1, DuplicateGlyph = 2, WrongRegion = 4 }
     public enum PitActionState { Idle, Positioned, Aligning, Holding, Completed, Canceled }
 
@@ -61,14 +61,19 @@ namespace BoardRacing.Domain
         IReadOnlyList<PlayerControlSnapshot> ReadSnapshots();
     }
 
+    public interface IInputResetSource
+    {
+        event Action InputReset;
+    }
+
     public static class TrancheOneAssignments
     {
         public static readonly PieceAssignment[] All =
         {
-            new PieceAssignment(PlayerId.Player1, PieceRole.Car, 2, "Orange Robot", "Orange / Robot"),
-            new PieceAssignment(PlayerId.Player1, PieceRole.Crew, 7, "Orange Ship", "Orange / Ship"),
-            new PieceAssignment(PlayerId.Player2, PieceRole.Car, 1, "Purple Robot", "Purple / Robot"),
-            new PieceAssignment(PlayerId.Player2, PieceRole.Crew, 6, "Purple Ship", "Purple / Ship")
+            new PieceAssignment(PlayerId.Player1, PieceRole.Car, 7, "Orange Driving Ship", "Orange / Ship"),
+            new PieceAssignment(PlayerId.Player1, PieceRole.Crew, 2, "Orange Pit Robot", "Orange / Robot"),
+            new PieceAssignment(PlayerId.Player2, PieceRole.Car, 6, "Purple Driving Ship", "Purple / Ship"),
+            new PieceAssignment(PlayerId.Player2, PieceRole.Crew, 1, "Purple Pit Robot", "Purple / Robot")
         };
 
         public static string[] Validate(IEnumerable<PieceAssignment> assignments)

@@ -119,6 +119,20 @@ namespace BoardRacing.Tests
             Assert.That(finished.Finished, Is.True);
         }
 
+        [Test]
+        public void PitExitUsesSeparateSmoothReturnLaneAndMergesInTrackDirection()
+        {
+            var layout = Layout();
+            var start = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
+            var returnLane = PitLanePresentationMapper.ExitPose(PlayerId.Player1, .7f, false, layout);
+            var end = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 1f, false, layout);
+
+            Assert.That(start.Tangent.X, Is.GreaterThan(.9f));
+            Assert.That(returnLane.Position.Y, Is.GreaterThan(layout.Entry.Y));
+            Assert.That(end.Tangent.X, Is.GreaterThan(.9f));
+            AssertPosition(end, layout.PitLine);
+        }
+
         private static RacerConditionSnapshot Condition(float heat, float wear) =>
             new RacerConditionSnapshot(heat, wear, false, false);
 
@@ -136,7 +150,8 @@ namespace BoardRacing.Tests
 
         private static PitLanePresentationLayout Layout() => new PitLanePresentationLayout(
             new Vec2(5f, 5f), new Vec2(10f, 10f), new Vec2(20f, 10f),
-            new Vec2(30f, 10f), new Vec2(40f, 10f));
+            new Vec2(30f, 10f), new Vec2(40f, 10f), new Vec2(45f, 20f),
+            new Vec2(0f, 20f), new Vec2(0f, 5f));
 
         private static CarPresentationPose Pose(RacerSnapshot racer, PitLanePresentationLayout layout) =>
             PitLanePresentationMapper.From(racer, new Vec2(5f, 5f), new Vec2(1f, 0f), layout);

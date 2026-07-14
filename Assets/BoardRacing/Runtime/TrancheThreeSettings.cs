@@ -21,6 +21,7 @@ namespace BoardRacing.Runtime
         [Min(0)] public int requiredServiceCount = 1;
         [Min(.01f)] public float pitEntrySeconds = .75f;
         [Min(.01f)] public float pitExitSeconds = .75f;
+        [Min(.01f)] public float pitCallHoldSeconds = .75f;
 
         [Header("Crew service regions")]
         [Min(1f)] public float serviceOffsetX = 190f;

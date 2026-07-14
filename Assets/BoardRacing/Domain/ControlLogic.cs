@@ -5,23 +5,26 @@ namespace BoardRacing.Domain
     public sealed class CoarseThrottleMapper
     {
         private readonly float hysteresis;
+        private readonly float orientationOffset;
         private int previousSector = -1;
-        public CoarseThrottleMapper(float hysteresisRadians) { hysteresis = Math.Max(0f, hysteresisRadians); }
+        public CoarseThrottleMapper(float hysteresisRadians, float orientationOffsetRadians = 0f)
+        { hysteresis = Math.Max(0f, hysteresisRadians); orientationOffset = orientationOffsetRadians; }
         public void Reset() { previousSector = -1; }
 
-        public ThrottleStep Map(bool present, bool touched, float radians)
+        public ThrottleStep Map(bool present, float radians)
         {
-            if (!present || !touched) { Reset(); return ThrottleStep.Off; }
-            float angle = Normalize(radians);
-            int nearest = (int)Math.Floor((angle + Math.PI / 4d) / (Math.PI / 2d)) % 4;
+            if (!present) { Reset(); return ThrottleStep.Brake; }
+            float sectorAngle = (float)(Math.PI * 2d / 3d);
+            float angle = Normalize(radians - orientationOffset);
+            int nearest = (int)Math.Floor((angle + sectorAngle * .5f) / sectorAngle) % 3;
             if (previousSector >= 0 && nearest != previousSector)
             {
-                float previousCenter = previousSector * (float)(Math.PI / 2d);
-                if (AngularDistance(angle, previousCenter) < (float)Math.PI / 4f + hysteresis)
+                float previousCenter = previousSector * sectorAngle;
+                if (AngularDistance(angle, previousCenter) < sectorAngle * .5f + hysteresis)
                     nearest = previousSector;
             }
             previousSector = nearest;
-            return (ThrottleStep)((nearest + 1) * 25);
+            return nearest == 0 ? ThrottleStep.Brake : nearest == 1 ? ThrottleStep.Drive : ThrottleStep.Boost;
         }
 
         public static float Normalize(float radians)
@@ -66,7 +69,6 @@ namespace BoardRacing.Domain
             bool inZone = crew.Present && Math.Abs(crew.Position.X - center.X) <= halfSize.X && Math.Abs(crew.Position.Y - center.Y) <= halfSize.Y;
             if (!inZone) { held = 0f; latched = false; return new PitActionResult(crew.Present ? PitActionState.Idle : PitActionState.Canceled, 0f, false); }
             if (latched) return new PitActionResult(PitActionState.Completed, 1f, false);
-            if (!crew.Touched) { held = 0f; return new PitActionResult(PitActionState.Positioned, 0f, false); }
             if (CoarseThrottleMapper.AngularDistance(crew.OrientationRadians, targetAngle) > tolerance)
             { held = 0f; return new PitActionResult(PitActionState.Aligning, 0f, false); }
             held += Math.Max(0f, deltaSeconds);
@@ -80,30 +82,33 @@ namespace BoardRacing.Domain
     public readonly struct CrewStrategyOutput
     {
         public CrewStrategyOutput(PitService selectedService, bool requestPit, PitCallState callState,
-            PitActionResult serviceAction)
+            PitActionResult callAction, PitActionResult serviceAction)
         {
             SelectedService = selectedService; RequestPit = requestPit;
-            CallState = callState; ServiceAction = serviceAction;
+            CallState = callState; CallAction = callAction; ServiceAction = serviceAction;
         }
         public PitService SelectedService { get; }
         public bool RequestPit { get; }
         public PitCallState CallState { get; }
+        public PitActionResult CallAction { get; }
         public PitActionResult ServiceAction { get; }
     }
 
     public sealed class CrewStrategyAdapter
     {
         private readonly Vec2 callCenter, tiresCenter, coolingCenter, halfSize;
-        private readonly PitActionMachine tiresAction, coolingAction;
+        private readonly PitActionMachine callAction, tiresAction, coolingAction;
         private int contactId = -1;
-        private bool callTouchArmed;
+        private bool wasInsideCall, callPlacementArmed, suppressNextObservedContact = true;
+        private bool suppressServiceUntilPlacement;
 
         public CrewStrategyAdapter(Vec2 callCenter, Vec2 tiresCenter, Vec2 coolingCenter, Vec2 halfSize,
-            float targetAngle, float alignmentTolerance, float holdDuration)
+            float targetAngle, float alignmentTolerance, float holdDuration, float callHoldDuration = .75f)
         {
             if (halfSize.X <= 0f || halfSize.Y <= 0f) throw new ArgumentException("Crew service zones must be positive.");
             this.callCenter = callCenter; this.tiresCenter = tiresCenter;
             this.coolingCenter = coolingCenter; this.halfSize = halfSize;
+            callAction = new PitActionMachine(callCenter, halfSize, targetAngle, alignmentTolerance, callHoldDuration);
             tiresAction = new PitActionMachine(tiresCenter, halfSize, targetAngle, alignmentTolerance, holdDuration);
             coolingAction = new PitActionMachine(coolingCenter, halfSize, targetAngle, alignmentTolerance, holdDuration);
         }
@@ -111,31 +116,46 @@ namespace BoardRacing.Domain
         public CrewStrategyOutput Update(PlayerControlSnapshot controls, RacePhase racePhase,
             RacerPitSnapshot pit, float deltaSeconds)
         {
-            if (racePhase != RacePhase.Racing || !controls.Crew.Present ||
-                controls.Warnings.HasFlag(InputWarning.WrongRegion))
+            if (!controls.Crew.Present || controls.Warnings.HasFlag(InputWarning.WrongRegion))
             {
-                Reset();
+                ResetForContactLoss();
                 return default;
             }
 
-            if (controls.Crew.RequiresRelease)
+            if (racePhase != RacePhase.Racing)
             {
                 contactId = controls.Crew.ContactId;
-                callTouchArmed = false;
+                wasInsideCall = Inside(controls.Crew.Position, callCenter);
+                callPlacementArmed = false;
+                suppressNextObservedContact = false;
+                callAction.Reset();
                 ResetActions();
-                return new CrewStrategyOutput(PitService.None, false, PitCallState.NeedsRelease, default);
+                return default;
             }
 
+            bool newContact = controls.Crew.ContactId != contactId;
             if (controls.Crew.ContactId != contactId)
             {
-                ResetCall();
                 contactId = controls.Crew.ContactId;
+                callAction.Reset();
+                bool inside = Inside(controls.Crew.Position, callCenter);
+                callPlacementArmed = inside && !suppressNextObservedContact;
+                wasInsideCall = inside;
+                suppressNextObservedContact = false;
             }
 
             if (pit.Phase == PitPhase.InService)
             {
-                callTouchArmed = false;
+                callPlacementArmed = false;
+                callAction.Reset();
                 PitService service = ServiceAt(controls.Crew.Position);
+                if (suppressServiceUntilPlacement)
+                {
+                    ResetActions();
+                    if (service == PitService.None) suppressServiceUntilPlacement = false;
+                    return new CrewStrategyOutput(PitService.None, false,
+                        PitCallState.Unavailable, default, default);
+                }
                 PitActionResult action;
                 if (service == PitService.Tires)
                 {
@@ -152,40 +172,55 @@ namespace BoardRacing.Domain
                     ResetActions();
                     action = default;
                 }
-                return new CrewStrategyOutput(service, false, PitCallState.Unavailable, action);
+                return new CrewStrategyOutput(service, false, PitCallState.Unavailable, default, action);
             }
 
             ResetActions();
+            suppressServiceUntilPlacement = false;
             if (pit.Phase != PitPhase.OnTrack)
             {
-                callTouchArmed = false;
-                return new CrewStrategyOutput(PitService.None, false, PitCallState.Requested, default);
+                callPlacementArmed = false;
+                callAction.Reset();
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.Requested, default, default);
             }
 
             bool insideCall = Inside(controls.Crew.Position, callCenter);
             if (!insideCall)
             {
-                callTouchArmed = false;
-                return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
+                wasInsideCall = false;
+                callPlacementArmed = false;
+                callAction.Reset();
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.NeedsPlacement, default, default);
             }
 
-            if (controls.Crew.Touched)
+            if (!newContact && !wasInsideCall)
             {
-                callTouchArmed = true;
-                return new CrewStrategyOutput(PitService.None, false, PitCallState.ReleaseToRequest, default);
+                callPlacementArmed = true;
+                callAction.Reset();
             }
+            wasInsideCall = true;
 
-            if (!callTouchArmed)
-                return new CrewStrategyOutput(PitService.None, false, PitCallState.Ready, default);
+            if (!callPlacementArmed)
+                return new CrewStrategyOutput(PitService.None, false, PitCallState.NeedsPlacement, default, default);
 
-            callTouchArmed = false;
-            return new CrewStrategyOutput(PitService.None, true, PitCallState.Requested, default);
+            PitActionResult call = callAction.Update(controls.Crew, deltaSeconds);
+            PitCallState state = call.State == PitActionState.Aligning ? PitCallState.Aligning :
+                call.State == PitActionState.Holding ? PitCallState.Holding :
+                call.State == PitActionState.Completed ? PitCallState.Requested : PitCallState.NeedsPlacement;
+            if (!call.CompletedThisUpdate)
+                return new CrewStrategyOutput(PitService.None, false, state, call, default);
+
+            callPlacementArmed = false;
+            return new CrewStrategyOutput(PitService.None, true, PitCallState.Requested, call, default);
         }
 
         public void Reset()
         {
             contactId = -1;
-            ResetCall(); ResetActions();
+            wasInsideCall = callPlacementArmed = false;
+            suppressNextObservedContact = true;
+            suppressServiceUntilPlacement = true;
+            callAction.Reset(); ResetActions();
         }
 
         private PitService ServiceAt(Vec2 position)
@@ -198,9 +233,13 @@ namespace BoardRacing.Domain
         private bool Inside(Vec2 position, Vec2 center) =>
             Math.Abs(position.X - center.X) <= halfSize.X && Math.Abs(position.Y - center.Y) <= halfSize.Y;
 
-        private void ResetCall()
+        private void ResetForContactLoss()
         {
-            callTouchArmed = false;
+            contactId = -1;
+            wasInsideCall = callPlacementArmed = false;
+            suppressNextObservedContact = false;
+            suppressServiceUntilPlacement = false;
+            callAction.Reset(); ResetActions();
         }
 
         private void ResetActions()

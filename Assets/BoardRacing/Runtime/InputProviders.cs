@@ -8,9 +8,10 @@ using UnityEngine.InputSystem;
 
 namespace BoardRacing.Runtime
 {
-    public sealed class BoardContactInputProvider : IPlayerInputProvider, IDisposable
+    public sealed class BoardContactInputProvider : IPlayerInputProvider, IInputResetSource, IDisposable
     {
         private readonly ContactSnapshotReconciler reconciler;
+        public event Action InputReset;
 
         public BoardContactInputProvider(float throttleHysteresisRadians, float playerRegionBoundaryY)
         {
@@ -29,7 +30,11 @@ namespace BoardRacing.Runtime
         }
 
         public void Dispose() => BoardInput.settingsChanged -= OnSettingsChanged;
-        private void OnSettingsChanged() => reconciler.ResetAll();
+        private void OnSettingsChanged()
+        {
+            reconciler.ResetAll();
+            InputReset?.Invoke();
+        }
 
         private static RawContactPhase MapPhase(BoardContactPhase phase)
         {
@@ -48,7 +53,7 @@ namespace BoardRacing.Runtime
     {
         private sealed class MutablePlayer
         {
-            public bool CarPresent = true, CarTouched, CrewPresent = true, CrewTouched;
+            public bool CarPresent = true, CrewPresent = true;
             public int Sector;
             public Vector2 CrewPosition;
             public float CrewAngle;
@@ -70,12 +75,11 @@ namespace BoardRacing.Runtime
             Key crewPresent, Key rotateLeft, Key rotateRight, Key s1, Key s2, Key s3,
             Key s4, Key moveLeft, Key moveRight, Key moveUp, Key moveDown)
         {
-            if (Pressed(carTouch)) p.CarTouched = !p.CarTouched;
-            if (Pressed(crewTouch)) p.CrewTouched = !p.CrewTouched;
-            if (Pressed(carPresent)) { p.CarPresent = !p.CarPresent; if (!p.CarPresent) p.CarTouched = false; }
-            if (Pressed(crewPresent)) { p.CrewPresent = !p.CrewPresent; if (!p.CrewPresent) p.CrewTouched = false; }
+            // Touch keys are intentionally ignored: physical controls use placement and rotation only.
+            if (Pressed(carPresent)) p.CarPresent = !p.CarPresent;
+            if (Pressed(crewPresent)) p.CrewPresent = !p.CrewPresent;
             if (Pressed(s1)) p.Sector = 0; if (Pressed(s2)) p.Sector = 1;
-            if (Pressed(s3)) p.Sector = 2; if (Pressed(s4)) p.Sector = 3;
+            if (Pressed(s3) || Pressed(s4)) p.Sector = 2;
             float speed = 280f * Time.unscaledDeltaTime;
             if (Held(moveLeft)) p.CrewPosition += Vector2.left * speed;
             if (Held(moveRight)) p.CrewPosition += Vector2.right * speed;
@@ -90,10 +94,11 @@ namespace BoardRacing.Runtime
 
         private static PlayerControlSnapshot Snapshot(PlayerId id, MutablePlayer p, int contactBase)
         {
-            var car = p.CarPresent ? new PieceState(true, p.CarTouched, contactBase, new Vec2(), p.Sector * Mathf.PI / 2f) : PieceState.Missing;
-            var crew = p.CrewPresent ? new PieceState(true, p.CrewTouched, contactBase + 1,
+            var car = p.CarPresent ? new PieceState(true, false, contactBase, new Vec2(), p.Sector * Mathf.PI * 2f / 3f) : PieceState.Missing;
+            var crew = p.CrewPresent ? new PieceState(true, false, contactBase + 1,
                 new Vec2(p.CrewPosition.x, p.CrewPosition.y), p.CrewAngle) : PieceState.Missing;
-            var throttle = p.CarPresent && p.CarTouched ? (ThrottleStep)((p.Sector + 1) * 25) : ThrottleStep.Off;
+            var throttle = !p.CarPresent || p.Sector == 0 ? ThrottleStep.Brake :
+                p.Sector == 1 ? ThrottleStep.Drive : ThrottleStep.Boost;
             return new PlayerControlSnapshot(id, throttle, car, crew, InputWarning.None);
         }
     }

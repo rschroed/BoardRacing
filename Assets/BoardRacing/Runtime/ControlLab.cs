@@ -143,21 +143,21 @@ namespace BoardRacing.Runtime
 
         private void DrawCar(Rect r, PlayerControlSnapshot s, Color accent)
         {
-            GUI.Label(new Rect(r.x + 55, r.y + 95, 400, 35), "ROBOT · CAR CONTROL", body);
-            string carStatus = !s.Car.Present ? "PLACE ROBOT" :
-                s.Car.RequiresRelease ? "RELEASE TO REARM" :
-                s.Car.Touched ? "TOUCHED" : "RELEASED";
+            GUI.Label(new Rect(r.x + 55, r.y + 95, 400, 35), "SHIP · DRIVING CONTROL", body);
+            string carStatus = !s.Car.Present ? "PLACE SHIP" :
+                s.Throttle == ThrottleStep.Boost ? "BOOST" :
+                s.Throttle == ThrottleStep.Drive ? "DRIVE" : "BRAKE";
             GUI.Label(new Rect(r.x + 55, r.y + 140, 420, 80), carStatus, heading);
             GUI.DrawTexture(new Rect(r.x + 485, r.y + 100, 360, 230), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, new Color(accent.r, accent.g, accent.b, .28f), 0, 18);
             GUI.Label(new Rect(r.x + 485, r.y + 118, 360, 110), ((int)s.Throttle) + "%", throttle);
             GUI.Label(new Rect(r.x + 485, r.y + 230, 360, 45), "REQUESTED THROTTLE", progress);
-            GUI.Label(new Rect(r.x + 55, r.y + 260, 410, 70), "Touch Robot, then rotate between four coarse sectors.", body);
+            GUI.Label(new Rect(r.x + 55, r.y + 260, 410, 70), "Rotate Ship between BRAKE, DRIVE, and BOOST.", body);
         }
 
         private void DrawCrew(Rect r, PlayerControlSnapshot s, Color accent)
         {
             PitActionResult pit = pitResults.TryGetValue(s.PlayerId, out var value) ? value : default;
-            GUI.Label(new Rect(r.x + 920, r.y + 95, 420, 35), "SHIP · PIT CONTROL", body);
+            GUI.Label(new Rect(r.x + 920, r.y + 95, 420, 35), "ROBOT · PIT CONTROL", body);
             string status = CrewStatus(s, pit);
             GUI.Label(new Rect(r.x + 920, r.y + 140, 500, 65), status, heading);
             GUI.Label(new Rect(r.x + 1435, r.y + 105, 265, 95),
@@ -171,36 +171,34 @@ namespace BoardRacing.Runtime
 
         private string CrewStatus(PlayerControlSnapshot snapshot, PitActionResult pit)
         {
-            if (!snapshot.Crew.Present) return "PLACE SHIP";
-            if (snapshot.Crew.RequiresRelease) return "RELEASE TO REARM";
+            if (!snapshot.Crew.Present) return "PLACE ROBOT";
             switch (pit.State)
             {
-                case PitActionState.Positioned: return "TOUCH SHIP";
+                case PitActionState.Positioned: return "ALIGN ROBOT";
                 case PitActionState.Aligning:
-                    return "ALIGN SHIP · " + Mathf.RoundToInt(AlignmentErrorDegrees(snapshot.Crew)) + "° OFF";
+                    return "ALIGN ROBOT · " + Mathf.RoundToInt(AlignmentErrorDegrees(snapshot.Crew)) + "° OFF";
                 case PitActionState.Holding: return "HOLD STEADY";
                 case PitActionState.Completed: return "PIT COMPLETE";
                 case PitActionState.Idle: return "MOVE TO PIT BAR";
-                default: return "PLACE SHIP";
+                default: return "PLACE ROBOT";
             }
         }
 
         private string CrewGuidance(PlayerControlSnapshot snapshot, PitActionResult pit)
         {
-            if (!snapshot.Crew.Present) return "Place the assigned Ship on the blue pit bar.";
-            if (snapshot.Crew.RequiresRelease) return "Let go once, then touch the Ship again.";
+            if (!snapshot.Crew.Present) return "Place the assigned Robot on the blue pit bar.";
 
             float angle = NormalizeDegrees(snapshot.Crew.OrientationRadians * Mathf.Rad2Deg);
-            string reading = "SHIP ANGLE " + Mathf.RoundToInt(angle) + "°  ·  TARGET " +
+            string reading = "ROBOT ANGLE " + Mathf.RoundToInt(angle) + "°  ·  TARGET " +
                 Mathf.RoundToInt(NormalizeDegrees(settings.targetAngleDegrees)) + "° ±" +
                 Mathf.RoundToInt(settings.alignmentToleranceDegrees) + "°";
             if (pit.State == PitActionState.Aligning)
                 return reading + "\nRotate slowly until HOLD STEADY appears.";
             if (pit.State == PitActionState.Holding)
-                return reading + "\nKeep the Ship touched and still.";
+                return reading + "\nKeep the Robot aligned and still.";
             if (pit.State == PitActionState.Completed)
-                return "Cycle recorded. Move the Ship off the pit bar to rearm.";
-            return reading + "\nTouch the Ship to begin alignment.";
+                return "Cycle recorded. Move the Robot off the pit bar to rearm.";
+            return reading + "\nAlign the Robot to begin.";
         }
 
         private float AlignmentErrorDegrees(PieceState crew)
