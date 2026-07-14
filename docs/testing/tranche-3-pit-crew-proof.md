@@ -1,6 +1,6 @@
 # Tranche 3 pit-crew proof
 
-Tranche 3 is **in progress**. This record defines the provisional strategy hypothesis before condition mechanics, pit behavior, presentation, balance, simulator coverage, and physical testing are complete.
+Tranche 3 **passed on July 13, 2026**. The deterministic strategy loop, touch-free physical controls, pit presentation, automated/simulator coverage, Android deployment, and refreshed two-player physical run collectively resolve the tranche's core risk: the second Piece deepens the race and is required to complete it.
 
 ## Prototype hypothesis
 
@@ -117,5 +117,13 @@ The initial values are retained because the matrix already answers the balance q
 - [x] Complete Board SDK simulator recovery matrix through the production provider: independent simultaneous service, concurrent Ship control, wrong-region reset, contact cancellation, new-ID placement, settings reset, reacquisition, and exactly-once recovery all passed without cross-player commands.
 - [x] Final Android inspection and paired-Board smoke test: the exact 24 MB candidate is API 33, ARM64, IL2CPP, contains one copy of every expected Board/runtime library, installs, launches, and renders the complete mirrored 1920×1080 presentation without a Unity exception or Board Racing failure.
 - [x] Exact candidate commit, test counts, APK hash, package inspection, Board environment, screenshot review, logs, and hardware-only carryover are recorded in the [Tranche 3 simulator and Android validation](tranche-3-simulator-android-validation.md).
-- [ ] Physical retest of the #69/#70 candidate: both players must find the three Ship stops, reach the parked repair UI, complete Robot service, and observe the smooth return without developer explanation. The earlier touch/release attempt did not pass this criterion.
-- [ ] Two-person physical Board gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49).
+- [x] Physical retest of the #69/#70 candidate: two players used the three Ship stops and Robot pit interaction through required service, classification, and finish. The owner confirmed the interaction works.
+- [x] Two-person physical Board gate in [Issue #49](https://github.com/rschroed/BoardRacing/issues/49), closed by owner sign-off on July 13, 2026.
+
+## Physical sign-off
+
+The refreshed physical run reached a complete classified result for both racers: Orange finished first and Purple second, and both HUDs showed the required-stop check. The final state also demonstrated materially different condition outcomes—Orange at 0% heat and 18% tire wear, Purple at 100% heat and 94% tire wear—while both remained valid finishers. This is sufficient evidence that driving and pit decisions coexist in the complete race loop.
+
+The owner judged the redesigned interaction to be working and chose not to tighten the remaining presentation affordances in the prototype. Crowded finish markers, repeated status messages, control-stop visualization, condition hierarchy, and general table-side spacing are deferred UI work rather than failures of the tactile strategy gate.
+
+The full three-race exploratory matrix above was not repeated after the redesign. Its removal/reacquisition and multi-race checks remain useful later hardening scenarios, but owner sign-off closes this product-risk tranche without representing those unrun scenarios as physical evidence.
