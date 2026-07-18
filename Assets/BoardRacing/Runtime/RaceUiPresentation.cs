@@ -134,10 +134,10 @@ namespace BoardRacing.Runtime
             // instruction occupy the safe content band clear of every Robot zone.
             var playerOneController = new CornerControllerLayout(
                 new Vector2(ReferenceWidth, ReferenceHeight), 170f, 250f, 46f,
-                new Rect(1000f, 590f, 240f, 40f),
+                new Rect(1000f, 715f, 240f, 40f),
                 new Rect(1000f, 910f, 250f, 80f),
                 new Rect(1000f, 860f, 240f, 40f),
-                new Rect(1000f, 640f, 420f, 60f),
+                new Rect(1000f, 760f, 420f, 60f),
                 new Rect(1260f, 1000f, 220f, 26f),
                 new Rect(1510f, 830f, 220f, 26f),
                 new Rect(1616f, 1008f, 90f, 30f),
