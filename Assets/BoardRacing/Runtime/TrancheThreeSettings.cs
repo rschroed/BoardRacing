@@ -24,8 +24,13 @@ namespace BoardRacing.Runtime
         [Min(.01f)] public float pitCallHoldSeconds = .75f;
 
         [Header("Crew service regions")]
-        [Min(1f)] public float serviceOffsetX = 190f;
-        public Vector2 serviceHalfSize = new Vector2(140f, 120f);
+        // Explicit per-seat service centers around each corner cluster (wireframe-ui.md, issue #85).
+        // Tires sits between Call Pit and the corner; Cooling sits along the long edge.
+        public Vector2 playerOneTiresCenter = new Vector2(1620f, 310f);
+        public Vector2 playerOneCoolingCenter = new Vector2(1370f, 140f);
+        public Vector2 playerTwoTiresCenter = new Vector2(300f, 770f);
+        public Vector2 playerTwoCoolingCenter = new Vector2(550f, 940f);
+        public Vector2 serviceHalfSize = new Vector2(110f, 110f);
 
         public ConditionRules ToConditionRules() => new ConditionRules(heatGainPerSecondAtFullThrottle,
             heatCoolingPerSecond, heatPenaltyThreshold, heatedMaximumSpeedScale, heatedAccelerationScale,

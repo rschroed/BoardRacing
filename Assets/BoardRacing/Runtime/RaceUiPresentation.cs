@@ -6,21 +6,37 @@ using UnityEngine;
 
 namespace BoardRacing.Runtime
 {
+    internal readonly struct ServiceTargets
+    {
+        public ServiceTargets(Vector2 callPit, Vector2 tires, Vector2 cooling)
+        {
+            CallPit = callPit;
+            Tires = tires;
+            Cooling = cooling;
+        }
+
+        public Vector2 CallPit { get; }
+        public Vector2 Tires { get; }
+        public Vector2 Cooling { get; }
+    }
+
     internal readonly struct CornerControllerLayout
     {
         public CornerControllerLayout(Vector2 center, float coreRadius, float throttleRadius,
-            float conditionRadius, Rect identityBounds, Rect statusBounds, Rect instructionBounds,
-            Rect heatBounds, Rect tiresBounds, Rect brakeBounds, Rect driveBounds, Rect boostBounds)
+            float dialRadius, Rect identityBounds, Rect stateWordBounds, Rect statusBounds,
+            Rect instructionBounds, Rect heatLabelBounds, Rect tiresLabelBounds,
+            Rect brakeBounds, Rect driveBounds, Rect boostBounds)
         {
             Center = center;
             CoreRadius = coreRadius;
             ThrottleRadius = throttleRadius;
-            ConditionRadius = conditionRadius;
+            DialRadius = dialRadius;
             IdentityBounds = identityBounds;
+            StateWordBounds = stateWordBounds;
             StatusBounds = statusBounds;
             InstructionBounds = instructionBounds;
-            HeatBounds = heatBounds;
-            TiresBounds = tiresBounds;
+            HeatLabelBounds = heatLabelBounds;
+            TiresLabelBounds = tiresLabelBounds;
             BrakeBounds = brakeBounds;
             DriveBounds = driveBounds;
             BoostBounds = boostBounds;
@@ -29,12 +45,13 @@ namespace BoardRacing.Runtime
         public Vector2 Center { get; }
         public float CoreRadius { get; }
         public float ThrottleRadius { get; }
-        public float ConditionRadius { get; }
+        public float DialRadius { get; }
         public Rect IdentityBounds { get; }
+        public Rect StateWordBounds { get; }
         public Rect StatusBounds { get; }
         public Rect InstructionBounds { get; }
-        public Rect HeatBounds { get; }
-        public Rect TiresBounds { get; }
+        public Rect HeatLabelBounds { get; }
+        public Rect TiresLabelBounds { get; }
         public Rect BrakeBounds { get; }
         public Rect DriveBounds { get; }
         public Rect BoostBounds { get; }
@@ -90,10 +107,9 @@ namespace BoardRacing.Runtime
 
         public PlayerLayout For(PlayerId id) => id == PlayerId.Player1 ? PlayerOne : PlayerTwo;
 
-        public static RaceLayout Create(Vector2 playerOneRuntimeCenter, Vector2 playerTwoRuntimeCenter,
-            float serviceOffsetX, Vector2 serviceHalfSize)
+        public static RaceLayout Create(ServiceTargets playerOneTargets, ServiceTargets playerTwoTargets,
+            Vector2 serviceHalfSize)
         {
-            if (serviceOffsetX < 0f) throw new ArgumentOutOfRangeException(nameof(serviceOffsetX));
             if (serviceHalfSize.x <= 0f || serviceHalfSize.y <= 0f)
                 throw new ArgumentException("Service target half-size must be positive.", nameof(serviceHalfSize));
 
@@ -101,49 +117,54 @@ namespace BoardRacing.Runtime
                 ReferenceHeight - runtimeCenter.y - serviceHalfSize.y,
                 serviceHalfSize.x * 2f, serviceHalfSize.y * 2f);
 
-            var playerOneTires = new Vector2(playerOneRuntimeCenter.x - serviceOffsetX,
-                playerOneRuntimeCenter.y);
-            var playerOneCooling = new Vector2(playerOneRuntimeCenter.x + serviceOffsetX,
-                playerOneRuntimeCenter.y);
-            var playerTwoTires = new Vector2(playerTwoRuntimeCenter.x + serviceOffsetX,
-                playerTwoRuntimeCenter.y);
-            var playerTwoCooling = new Vector2(playerTwoRuntimeCenter.x - serviceOffsetX,
-                playerTwoRuntimeCenter.y);
+            if (Target(playerOneTargets.Tires).Overlaps(Target(playerOneTargets.Cooling)))
+                throw new ArgumentException("Tires and Cooling zones must not overlap.",
+                    nameof(playerOneTargets));
+            if (Target(playerTwoTargets.Tires).Overlaps(Target(playerTwoTargets.Cooling)))
+                throw new ArgumentException("Tires and Cooling zones must not overlap.",
+                    nameof(playerTwoTargets));
 
             Rect MirrorRect(Rect rect) => new Rect(ReferenceWidth - rect.xMax,
                 ReferenceHeight - rect.yMax, rect.width, rect.height);
             Vector2 MirrorPoint(Vector2 point) => new Vector2(ReferenceWidth - point.x,
                 ReferenceHeight - point.y);
 
+            // Corner cluster per the approved frames (17:14 dial/arc treatment, 40:23 board):
+            // Ship well and throttle arc tuck into the corner; state word, status, and
+            // instruction occupy the safe content band clear of every Robot zone.
             var playerOneController = new CornerControllerLayout(
-                new Vector2(ReferenceWidth, ReferenceHeight), 305f, 355f, 430f,
-                new Rect(1669f, 903f, 190f, 42f),
-                new Rect(1185f, 933f, 280f, 40f),
-                new Rect(1185f, 977f, 280f, 63f),
-                new Rect(1680f, 651f, 220f, 42f),
-                new Rect(1468f, 916f, 142f, 40f),
-                new Rect(1510f, 974f, 130f, 42f),
-                new Rect(1594f, 808f, 150f, 42f),
-                new Rect(1769f, 715f, 130f, 42f));
+                new Vector2(ReferenceWidth, ReferenceHeight), 170f, 250f, 46f,
+                new Rect(1000f, 590f, 240f, 40f),
+                new Rect(1000f, 910f, 250f, 80f),
+                new Rect(1000f, 860f, 240f, 40f),
+                new Rect(1000f, 640f, 420f, 60f),
+                new Rect(1260f, 1000f, 220f, 26f),
+                new Rect(1510f, 830f, 220f, 26f),
+                new Rect(1616f, 1008f, 90f, 30f),
+                new Rect(1688f, 882f, 90f, 30f),
+                new Rect(1820f, 806f, 90f, 30f));
             var playerTwoController = new CornerControllerLayout(
                 MirrorPoint(playerOneController.Center), playerOneController.CoreRadius,
-                playerOneController.ThrottleRadius, playerOneController.ConditionRadius,
-                MirrorRect(playerOneController.IdentityBounds), MirrorRect(playerOneController.StatusBounds),
-                MirrorRect(playerOneController.InstructionBounds), MirrorRect(playerOneController.HeatBounds),
-                MirrorRect(playerOneController.TiresBounds), MirrorRect(playerOneController.BrakeBounds),
-                MirrorRect(playerOneController.DriveBounds), MirrorRect(playerOneController.BoostBounds));
+                playerOneController.ThrottleRadius, playerOneController.DialRadius,
+                MirrorRect(playerOneController.IdentityBounds), MirrorRect(playerOneController.StateWordBounds),
+                MirrorRect(playerOneController.StatusBounds), MirrorRect(playerOneController.InstructionBounds),
+                MirrorRect(playerOneController.HeatLabelBounds), MirrorRect(playerOneController.TiresLabelBounds),
+                MirrorRect(playerOneController.BrakeBounds), MirrorRect(playerOneController.DriveBounds),
+                MirrorRect(playerOneController.BoostBounds));
 
             return new RaceLayout(
                 new PlayerLayout(PlayerId.Player1, 0f,
                     new Rect(960f, 540f, 960f, 540f),
                     new Rect(1000f, 580f, 880f, 460f),
                     playerOneController,
-                    Target(playerOneRuntimeCenter), Target(playerOneTires), Target(playerOneCooling)),
+                    Target(playerOneTargets.CallPit), Target(playerOneTargets.Tires),
+                    Target(playerOneTargets.Cooling)),
                 new PlayerLayout(PlayerId.Player2, 180f,
                     new Rect(0f, 0f, 960f, 540f),
                     new Rect(40f, 40f, 880f, 460f),
                     playerTwoController,
-                    Target(playerTwoRuntimeCenter), Target(playerTwoTires), Target(playerTwoCooling)));
+                    Target(playerTwoTargets.CallPit), Target(playerTwoTargets.Tires),
+                    Target(playerTwoTargets.Cooling)));
         }
     }
 
