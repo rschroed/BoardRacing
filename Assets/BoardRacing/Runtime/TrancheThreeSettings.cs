@@ -24,13 +24,14 @@ namespace BoardRacing.Runtime
         [Min(.01f)] public float pitCallHoldSeconds = .75f;
 
         [Header("Crew service regions")]
-        // Explicit per-seat service centers around each corner cluster (wireframe-ui.md, issue #85).
-        // Tires sits between Call Pit and the corner; Cooling sits along the long edge.
-        public Vector2 playerOneTiresCenter = new Vector2(1620f, 310f);
-        public Vector2 playerOneCoolingCenter = new Vector2(1370f, 140f);
-        public Vector2 playerTwoTiresCenter = new Vector2(300f, 770f);
-        public Vector2 playerTwoCoolingCenter = new Vector2(550f, 940f);
-        public Vector2 serviceHalfSize = new Vector2(110f, 110f);
+        // Per-seat dial centers measured from frame 40:23 component 44:124 (wireframe-ui.md,
+        // issue #77 Round 2). The condition dial IS the service target, so the detection
+        // center is the dial center; the half-size is the Robot placement slop around it.
+        public Vector2 playerOneTiresCenter = new Vector2(1692f, 321f);
+        public Vector2 playerOneCoolingCenter = new Vector2(1590f, 212f);
+        public Vector2 playerTwoTiresCenter = new Vector2(228f, 759f);
+        public Vector2 playerTwoCoolingCenter = new Vector2(330f, 868f);
+        public Vector2 serviceHalfSize = new Vector2(50f, 50f);
 
         public ConditionRules ToConditionRules() => new ConditionRules(heatGainPerSecondAtFullThrottle,
             heatCoolingPerSecond, heatPenaltyThreshold, heatedMaximumSpeedScale, heatedAccelerationScale,

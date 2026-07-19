@@ -11,9 +11,10 @@ namespace BoardRacing.Runtime
         public bool preferBoardInputOnDevice = true;
         public float playerRegionBoundaryY = 540f;
         [Header("Pit action")]
-        // Call Pit centers against each seat's short board edge (wireframe-ui.md, issue #85).
-        public Vector2 playerOneServiceCenter = new Vector2(1790f, 430f);
-        public Vector2 playerTwoServiceCenter = new Vector2(130f, 650f);
+        // Call Pit circle centers against each seat's short board edge, measured from
+        // frame 40:23 component 44:124 (wireframe-ui.md, issue #77 Round 2).
+        public Vector2 playerOneServiceCenter = new Vector2(1832f, 398f);
+        public Vector2 playerTwoServiceCenter = new Vector2(88f, 682f);
         public Vector2 serviceHalfSize = new Vector2(180f, 150f);
         [Range(0f, 360f)] public float targetAngleDegrees = 0f;
         [Range(1f, 90f)] public float alignmentToleranceDegrees = 15f;

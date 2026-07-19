@@ -25,8 +25,8 @@ MonoBehaviour:
   pitEntrySeconds: 0.75
   pitExitSeconds: 0.75
   pitCallHoldSeconds: 0.75
-  playerOneTiresCenter: {x: 1620, y: 310}
-  playerOneCoolingCenter: {x: 1370, y: 140}
-  playerTwoTiresCenter: {x: 300, y: 770}
-  playerTwoCoolingCenter: {x: 550, y: 940}
-  serviceHalfSize: {x: 110, y: 110}
+  playerOneTiresCenter: {x: 1692, y: 321}
+  playerOneCoolingCenter: {x: 1590, y: 212}
+  playerTwoTiresCenter: {x: 228, y: 759}
+  playerTwoCoolingCenter: {x: 330, y: 868}
+  serviceHalfSize: {x: 50, y: 50}

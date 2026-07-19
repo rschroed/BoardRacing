@@ -25,48 +25,56 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void CornerControllerGeometryIsMirroredAndKeepsPlayerCopyOutOfActionTargets()
+        public void CornerControllerGeometryMatchesTheMeasuredSeatComponentAndMirrors()
         {
             RaceLayout layout = Layout();
 
             AssertMirrored(layout.PlayerOne.CornerBounds, layout.PlayerTwo.CornerBounds);
             AssertMirrored(layout.PlayerOne.SafeContentBounds, layout.PlayerTwo.SafeContentBounds);
-            Assert.That(layout.PlayerOne.Controller.Center,
-                Is.EqualTo(new Vector2(RaceLayout.ReferenceWidth, RaceLayout.ReferenceHeight)));
-            Assert.That(layout.PlayerTwo.Controller.Center, Is.EqualTo(Vector2.zero));
-            AssertMirrored(layout.PlayerOne.Controller.IdentityBounds,
-                layout.PlayerTwo.Controller.IdentityBounds);
-            AssertMirrored(layout.PlayerOne.Controller.StateWordBounds,
-                layout.PlayerTwo.Controller.StateWordBounds);
-            AssertMirrored(layout.PlayerOne.Controller.StatusBounds,
-                layout.PlayerTwo.Controller.StatusBounds);
-            AssertMirrored(layout.PlayerOne.Controller.InstructionBounds,
-                layout.PlayerTwo.Controller.InstructionBounds);
-            AssertMirrored(layout.PlayerOne.Controller.HeatLabelBounds,
-                layout.PlayerTwo.Controller.HeatLabelBounds);
-            AssertMirrored(layout.PlayerOne.Controller.TiresLabelBounds,
-                layout.PlayerTwo.Controller.TiresLabelBounds);
-            AssertMirrored(layout.PlayerOne.Controller.BrakeBounds,
-                layout.PlayerTwo.Controller.BrakeBounds);
-            AssertMirrored(layout.PlayerOne.Controller.DriveBounds,
-                layout.PlayerTwo.Controller.DriveBounds);
-            AssertMirrored(layout.PlayerOne.Controller.BoostBounds,
-                layout.PlayerTwo.Controller.BoostBounds);
+            CornerControllerLayout one = layout.PlayerOne.Controller;
+            CornerControllerLayout two = layout.PlayerTwo.Controller;
+            // Measured from frame 40:23, right-variant component 44:124 (issue #77 Round 2).
+            Assert.That(one.ArcCenter, Is.EqualTo(new Vector2(1863f, 1025f)));
+            Assert.That(one.ShipWellCenter, Is.EqualTo(new Vector2(1787f, 938f)));
+            Assert.That(two.ArcCenter, Is.EqualTo(new Vector2(57f, 55f)));
+            Assert.That(two.ShipWellCenter, Is.EqualTo(new Vector2(133f, 142f)));
+            Assert.That(one.ThrottleRadius, Is.EqualTo(250f));
+            Assert.That(one.SectorSweepDegrees, Is.EqualTo(32f));
+            Assert.That(one.SectorAngle(ThrottleStep.Brake), Is.EqualTo(190f));
+            Assert.That(one.SectorAngle(ThrottleStep.Drive), Is.EqualTo(226f));
+            Assert.That(one.SectorAngle(ThrottleStep.Boost), Is.EqualTo(260f));
+            foreach (ThrottleStep step in new[]
+                { ThrottleStep.Brake, ThrottleStep.Drive, ThrottleStep.Boost })
+            {
+                // Angles are shared; the opposite seat's 180° comes from RotationDegrees.
+                Assert.That(two.SectorAngle(step), Is.EqualTo(one.SectorAngle(step)));
+                AssertMirrored(one.SectorLabel(step).Bounds, two.SectorLabel(step).Bounds);
+                Assert.That(two.SectorLabel(step).RotationDegrees,
+                    Is.EqualTo(one.SectorLabel(step).RotationDegrees));
+                // Sector labels ride the arc band.
+                float distance = Vector2.Distance(one.SectorLabel(step).Bounds.center, one.ArcCenter);
+                Assert.That(distance, Is.InRange(one.ThrottleRadius - 62f, one.ThrottleRadius));
+            }
+            AssertMirrored(one.TiresLabel.Bounds, two.TiresLabel.Bounds);
+            AssertMirrored(one.HeatLabel.Bounds, two.HeatLabel.Bounds);
+            AssertMirrored(one.CallPitLabel.Bounds, two.CallPitLabel.Bounds);
             foreach (PlayerLayout player in new[] { layout.PlayerOne, layout.PlayerTwo })
             {
-                AssertContained(player.SafeContentBounds, player.Controller.StateWordBounds);
-                AssertContained(player.SafeContentBounds, player.Controller.StatusBounds);
-                AssertContained(player.SafeContentBounds, player.Controller.InstructionBounds);
-                foreach (Rect copy in new[] { player.Controller.StateWordBounds,
-                    player.Controller.StatusBounds, player.Controller.InstructionBounds })
-                {
-                    Assert.That(copy.Overlaps(player.CallPit), Is.False);
-                    Assert.That(copy.Overlaps(player.Tires), Is.False);
-                    Assert.That(copy.Overlaps(player.Cooling), Is.False);
-                }
-                // Dial labels are the in-target copy; they must sit inside their own zone.
-                AssertContained(player.Tires, player.Controller.TiresLabelBounds);
-                AssertContained(player.Cooling, player.Controller.HeatLabelBounds);
+                CornerControllerLayout controller = player.Controller;
+                // Dial labels ride each dial's rim; Call Pit's label sits inside its circle.
+                Assert.That(Vector2.Distance(controller.TiresLabel.Bounds.center,
+                    player.Tires.center), Is.LessThanOrEqualTo(70f));
+                Assert.That(Vector2.Distance(controller.HeatLabel.Bounds.center,
+                    player.Cooling.center), Is.LessThanOrEqualTo(70f));
+                Assert.That(controller.CallPitLabel.Bounds.center, Is.EqualTo(player.CallPit.center));
+                // The Ship's rotational footprint clears both dial rings.
+                foreach (Rect dial in new[] { player.Tires, player.Cooling })
+                    Assert.That(Vector2.Distance(controller.ShipWellCenter, dial.center),
+                        Is.GreaterThan(controller.ShipWellRadius + controller.DialRadius));
+                foreach (RotatedLabel label in new[] { controller.BrakeLabel, controller.DriveLabel,
+                    controller.BoostLabel, controller.TiresLabel, controller.HeatLabel,
+                    controller.CallPitLabel })
+                    AssertContained(layout.Canvas, label.Bounds);
             }
         }
 
@@ -88,12 +96,12 @@ namespace BoardRacing.Tests
         {
             RaceLayout layout = Layout();
 
-            Assert.That(layout.PlayerOne.CallPit, Is.EqualTo(new Rect(1680f, 540f, 220f, 220f)));
-            Assert.That(layout.PlayerOne.Tires, Is.EqualTo(new Rect(1510f, 660f, 220f, 220f)));
-            Assert.That(layout.PlayerOne.Cooling, Is.EqualTo(new Rect(1260f, 830f, 220f, 220f)));
-            Assert.That(layout.PlayerTwo.CallPit, Is.EqualTo(new Rect(20f, 320f, 220f, 220f)));
-            Assert.That(layout.PlayerTwo.Tires, Is.EqualTo(new Rect(190f, 200f, 220f, 220f)));
-            Assert.That(layout.PlayerTwo.Cooling, Is.EqualTo(new Rect(440f, 30f, 220f, 220f)));
+            Assert.That(layout.PlayerOne.CallPit, Is.EqualTo(new Rect(1782f, 632f, 100f, 100f)));
+            Assert.That(layout.PlayerOne.Tires, Is.EqualTo(new Rect(1642f, 709f, 100f, 100f)));
+            Assert.That(layout.PlayerOne.Cooling, Is.EqualTo(new Rect(1540f, 818f, 100f, 100f)));
+            Assert.That(layout.PlayerTwo.CallPit, Is.EqualTo(new Rect(38f, 348f, 100f, 100f)));
+            Assert.That(layout.PlayerTwo.Tires, Is.EqualTo(new Rect(178f, 271f, 100f, 100f)));
+            Assert.That(layout.PlayerTwo.Cooling, Is.EqualTo(new Rect(280f, 162f, 100f, 100f)));
             AssertMirrored(layout.PlayerOne.CallPit, layout.PlayerTwo.CallPit);
             AssertMirrored(layout.PlayerOne.Tires, layout.PlayerTwo.Tires);
             AssertMirrored(layout.PlayerOne.Cooling, layout.PlayerTwo.Cooling);
@@ -115,8 +123,8 @@ namespace BoardRacing.Tests
                 Assert.That(player.Tires.Overlaps(player.Cooling), Is.False);
             }
             // Call Pit hugs each seat's short board edge.
-            Assert.That(layout.PlayerOne.CallPit.xMax, Is.GreaterThanOrEqualTo(1900f));
-            Assert.That(layout.PlayerTwo.CallPit.xMin, Is.LessThanOrEqualTo(20f));
+            Assert.That(layout.PlayerOne.CallPit.xMax, Is.GreaterThanOrEqualTo(1880f));
+            Assert.That(layout.PlayerTwo.CallPit.xMin, Is.LessThanOrEqualTo(40f));
         }
 
         [Test]
@@ -126,12 +134,12 @@ namespace BoardRacing.Tests
             ServiceTargets playerTwo = PlayerTwoTargets();
             Assert.Throws<ArgumentException>(() => RaceLayout.Create(playerOne, playerTwo,
                 Vector2.zero));
-            var overlapping = new ServiceTargets(new Vector2(1790f, 430f),
-                new Vector2(1500f, 300f), new Vector2(1450f, 300f));
+            var overlapping = new ServiceTargets(new Vector2(1832f, 398f),
+                new Vector2(1692f, 321f), new Vector2(1650f, 321f));
             Assert.Throws<ArgumentException>(() => RaceLayout.Create(overlapping, playerTwo,
-                new Vector2(110f, 110f)));
+                new Vector2(50f, 50f)));
             Assert.Throws<ArgumentException>(() => RaceLayout.Create(playerOne, overlapping,
-                new Vector2(110f, 110f)));
+                new Vector2(50f, 50f)));
         }
 
         [Test]
@@ -252,15 +260,16 @@ namespace BoardRacing.Tests
                 Is.EqualTo(PlayerUiInstructionKind.RematchRelease));
         }
 
-        // Contract geometry from docs/gameplay/wireframe-ui.md (issue #85).
+        // Contract geometry from docs/gameplay/wireframe-ui.md (issue #77 Round 2, measured
+        // from frame 40:23 component 44:124).
         private static ServiceTargets PlayerOneTargets() => new ServiceTargets(
-            new Vector2(1790f, 430f), new Vector2(1620f, 310f), new Vector2(1370f, 140f));
+            new Vector2(1832f, 398f), new Vector2(1692f, 321f), new Vector2(1590f, 212f));
 
         private static ServiceTargets PlayerTwoTargets() => new ServiceTargets(
-            new Vector2(130f, 650f), new Vector2(300f, 770f), new Vector2(550f, 940f));
+            new Vector2(88f, 682f), new Vector2(228f, 759f), new Vector2(330f, 868f));
 
         private static RaceLayout Layout() => RaceLayout.Create(PlayerOneTargets(),
-            PlayerTwoTargets(), new Vector2(110f, 110f));
+            PlayerTwoTargets(), new Vector2(50f, 50f));
 
         private static RaceUiModel Build(RacePhase phase, RacerSnapshot playerOne, RacerSnapshot playerTwo,
             IReadOnlyList<PlayerControlSnapshot> controls,

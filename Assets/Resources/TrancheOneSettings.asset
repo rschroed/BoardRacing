@@ -15,8 +15,8 @@ MonoBehaviour:
   throttleHysteresisDegrees: 8
   preferBoardInputOnDevice: 1
   playerRegionBoundaryY: 540
-  playerOneServiceCenter: {x: 1790, y: 430}
-  playerTwoServiceCenter: {x: 130, y: 650}
+  playerOneServiceCenter: {x: 1832, y: 398}
+  playerTwoServiceCenter: {x: 88, y: 682}
   serviceHalfSize: {x: 180, y: 150}
   targetAngleDegrees: 0
   alignmentToleranceDegrees: 15

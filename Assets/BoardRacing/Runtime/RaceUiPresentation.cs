@@ -20,44 +20,69 @@ namespace BoardRacing.Runtime
         public Vector2 Cooling { get; }
     }
 
-    internal readonly struct CornerControllerLayout
+    internal readonly struct RotatedLabel
     {
-        public CornerControllerLayout(Vector2 center, float coreRadius, float throttleRadius,
-            float dialRadius, Rect identityBounds, Rect stateWordBounds, Rect statusBounds,
-            Rect instructionBounds, Rect heatLabelBounds, Rect tiresLabelBounds,
-            Rect brakeBounds, Rect driveBounds, Rect boostBounds)
+        public RotatedLabel(Rect bounds, float rotationDegrees)
         {
-            Center = center;
-            CoreRadius = coreRadius;
-            ThrottleRadius = throttleRadius;
-            DialRadius = dialRadius;
-            IdentityBounds = identityBounds;
-            StateWordBounds = stateWordBounds;
-            StatusBounds = statusBounds;
-            InstructionBounds = instructionBounds;
-            HeatLabelBounds = heatLabelBounds;
-            TiresLabelBounds = tiresLabelBounds;
-            BrakeBounds = brakeBounds;
-            DriveBounds = driveBounds;
-            BoostBounds = boostBounds;
+            Bounds = bounds;
+            RotationDegrees = rotationDegrees;
         }
 
-        public Vector2 Center { get; }
-        public float CoreRadius { get; }
-        public float ThrottleRadius { get; }
-        public float DialRadius { get; }
-        public Rect IdentityBounds { get; }
-        public Rect StateWordBounds { get; }
-        public Rect StatusBounds { get; }
-        public Rect InstructionBounds { get; }
-        public Rect HeatLabelBounds { get; }
-        public Rect TiresLabelBounds { get; }
-        public Rect BrakeBounds { get; }
-        public Rect DriveBounds { get; }
-        public Rect BoostBounds { get; }
+        public Rect Bounds { get; }
+        public float RotationDegrees { get; }
+    }
 
-        public Rect ThrottleBounds(ThrottleStep throttle) => throttle == ThrottleStep.Brake
-            ? BrakeBounds : throttle == ThrottleStep.Drive ? DriveBounds : BoostBounds;
+    // Seat cluster measured from the design authority (frame 40:23, right-variant
+    // component 44:124). Angles are IMGUI screen degrees (0 = +x, positive sweeps
+    // clockwise on screen); the opposite seat adds its 180° rotation at draw time.
+    internal readonly struct CornerControllerLayout
+    {
+        public CornerControllerLayout(Vector2 arcCenter, float throttleRadius,
+            float sectorSweepDegrees, float brakeAngle, float driveAngle, float boostAngle,
+            Vector2 shipWellCenter, float shipWellRadius, float dialRadius, float callPitRadius,
+            RotatedLabel brakeLabel, RotatedLabel driveLabel, RotatedLabel boostLabel,
+            RotatedLabel tiresLabel, RotatedLabel heatLabel, RotatedLabel callPitLabel)
+        {
+            ArcCenter = arcCenter;
+            ThrottleRadius = throttleRadius;
+            SectorSweepDegrees = sectorSweepDegrees;
+            BrakeAngle = brakeAngle;
+            DriveAngle = driveAngle;
+            BoostAngle = boostAngle;
+            ShipWellCenter = shipWellCenter;
+            ShipWellRadius = shipWellRadius;
+            DialRadius = dialRadius;
+            CallPitRadius = callPitRadius;
+            BrakeLabel = brakeLabel;
+            DriveLabel = driveLabel;
+            BoostLabel = boostLabel;
+            TiresLabel = tiresLabel;
+            HeatLabel = heatLabel;
+            CallPitLabel = callPitLabel;
+        }
+
+        public Vector2 ArcCenter { get; }
+        public float ThrottleRadius { get; }
+        public float SectorSweepDegrees { get; }
+        public float BrakeAngle { get; }
+        public float DriveAngle { get; }
+        public float BoostAngle { get; }
+        public Vector2 ShipWellCenter { get; }
+        public float ShipWellRadius { get; }
+        public float DialRadius { get; }
+        public float CallPitRadius { get; }
+        public RotatedLabel BrakeLabel { get; }
+        public RotatedLabel DriveLabel { get; }
+        public RotatedLabel BoostLabel { get; }
+        public RotatedLabel TiresLabel { get; }
+        public RotatedLabel HeatLabel { get; }
+        public RotatedLabel CallPitLabel { get; }
+
+        public float SectorAngle(ThrottleStep throttle) => throttle == ThrottleStep.Brake
+            ? BrakeAngle : throttle == ThrottleStep.Drive ? DriveAngle : BoostAngle;
+
+        public RotatedLabel SectorLabel(ThrottleStep throttle) => throttle == ThrottleStep.Brake
+            ? BrakeLabel : throttle == ThrottleStep.Drive ? DriveLabel : BoostLabel;
     }
 
     internal readonly struct PlayerLayout
@@ -128,29 +153,31 @@ namespace BoardRacing.Runtime
                 ReferenceHeight - rect.yMax, rect.width, rect.height);
             Vector2 MirrorPoint(Vector2 point) => new Vector2(ReferenceWidth - point.x,
                 ReferenceHeight - point.y);
+            RotatedLabel MirrorLabel(RotatedLabel label) =>
+                new RotatedLabel(MirrorRect(label.Bounds), label.RotationDegrees);
 
-            // Corner cluster per the approved frames (17:14 dial/arc treatment, 40:23 board):
-            // Ship well and throttle arc tuck into the corner; state word, status, and
-            // instruction occupy the safe content band clear of every Robot zone.
+            // Seat cluster measured from frame 40:23, right-variant component 44:124
+            // (issue #77 Round 2). Positions are IMGUI screen coordinates; label rotations
+            // ride the arc tangent. Sector angles stay unmirrored — the opposite seat's
+            // 180° rotation is applied at draw time via PlayerLayout.RotationDegrees.
             var playerOneController = new CornerControllerLayout(
-                new Vector2(ReferenceWidth, ReferenceHeight), 170f, 250f, 46f,
-                new Rect(1000f, 715f, 240f, 40f),
-                new Rect(1000f, 910f, 250f, 80f),
-                new Rect(1000f, 860f, 240f, 40f),
-                new Rect(1000f, 760f, 420f, 60f),
-                new Rect(1260f, 1000f, 220f, 26f),
-                new Rect(1510f, 830f, 220f, 26f),
-                new Rect(1616f, 1008f, 90f, 30f),
-                new Rect(1688f, 882f, 90f, 30f),
-                new Rect(1820f, 806f, 90f, 30f));
+                new Vector2(1863f, 1025f), 250f, 32f, 190f, 226f, 260f,
+                new Vector2(1787f, 938f), 138f, 46f, 59f,
+                new RotatedLabel(new Rect(1580f, 972f, 100f, 24f), -84f),
+                new RotatedLabel(new Rect(1653f, 847f, 100f, 24f), -49f),
+                new RotatedLabel(new Rect(1770f, 783f, 100f, 24f), -9f),
+                new RotatedLabel(new Rect(1620f, 695f, 90f, 24f), -30f),
+                new RotatedLabel(new Rect(1492f, 830f, 90f, 24f), -64f),
+                new RotatedLabel(new Rect(1772f, 670f, 120f, 24f), -60f));
             var playerTwoController = new CornerControllerLayout(
-                MirrorPoint(playerOneController.Center), playerOneController.CoreRadius,
-                playerOneController.ThrottleRadius, playerOneController.DialRadius,
-                MirrorRect(playerOneController.IdentityBounds), MirrorRect(playerOneController.StateWordBounds),
-                MirrorRect(playerOneController.StatusBounds), MirrorRect(playerOneController.InstructionBounds),
-                MirrorRect(playerOneController.HeatLabelBounds), MirrorRect(playerOneController.TiresLabelBounds),
-                MirrorRect(playerOneController.BrakeBounds), MirrorRect(playerOneController.DriveBounds),
-                MirrorRect(playerOneController.BoostBounds));
+                MirrorPoint(playerOneController.ArcCenter), playerOneController.ThrottleRadius,
+                playerOneController.SectorSweepDegrees, playerOneController.BrakeAngle,
+                playerOneController.DriveAngle, playerOneController.BoostAngle,
+                MirrorPoint(playerOneController.ShipWellCenter), playerOneController.ShipWellRadius,
+                playerOneController.DialRadius, playerOneController.CallPitRadius,
+                MirrorLabel(playerOneController.BrakeLabel), MirrorLabel(playerOneController.DriveLabel),
+                MirrorLabel(playerOneController.BoostLabel), MirrorLabel(playerOneController.TiresLabel),
+                MirrorLabel(playerOneController.HeatLabel), MirrorLabel(playerOneController.CallPitLabel));
 
             return new RaceLayout(
                 new PlayerLayout(PlayerId.Player1, 0f,
