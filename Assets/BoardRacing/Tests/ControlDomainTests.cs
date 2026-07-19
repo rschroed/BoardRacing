@@ -263,51 +263,94 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void CrewChoosesServiceOnlyWhenParkedAndSwitchingResetsProgress()
+        public void CrewServiceStirDrainsAndSwitchingDialsSwitchesService()
         {
             var adapter = StrategyAdapter();
             var tiresPit = Pit(PitService.None, PitPhase.InService);
-            var positioned = adapter.Update(StrategyControls(Crew(true, false, 100f, 100f, 0f)),
+            var primed = adapter.Update(StrategyControls(Crew(true, false, 115f, 100f, 0f)),
                 RacePhase.Racing, tiresPit, .1f);
-            Assert.That(positioned.SelectedService, Is.EqualTo(PitService.Tires));
-            Assert.That(positioned.ServiceAction.State, Is.EqualTo(PitActionState.Holding));
+            Assert.That(primed.SelectedService, Is.EqualTo(PitService.Tires));
+            Assert.That(primed.ServiceAction.State, Is.EqualTo(PitActionState.Stirring));
+            Assert.That(primed.ServiceDrain, Is.Zero);
 
-            var valid = StrategyControls(Crew(true, true, 100f, 100f, 0f));
-            var tireHold = adapter.Update(valid, RacePhase.Racing, tiresPit, .4f);
-            Assert.That(tireHold.SelectedService, Is.EqualTo(PitService.Tires));
-            Assert.That(tireHold.ServiceAction.Progress, Is.EqualTo(.5f).Within(.001f));
+            var halfway = adapter.Update(StrategyControls(Crew(true, true, 110.607f, 110.607f, 0f)),
+                RacePhase.Racing, tiresPit, .05f);
+            var quarterTurn = adapter.Update(StrategyControls(Crew(true, true, 100f, 115f, 0f)),
+                RacePhase.Racing, tiresPit, .05f);
+            Assert.That(quarterTurn.SelectedService, Is.EqualTo(PitService.Tires));
+            Assert.That(halfway.ServiceDrain + quarterTurn.ServiceDrain,
+                Is.EqualTo(.25f).Within(.001f));
 
-            var coolingHold = adapter.Update(StrategyControls(Crew(true, true, 300f, 100f, 0f)),
+            var still = adapter.Update(StrategyControls(Crew(true, true, 100f, 115f, 0f)),
                 RacePhase.Racing, tiresPit, .4f);
-            Assert.That(coolingHold.SelectedService, Is.EqualTo(PitService.Cooling));
-            Assert.That(coolingHold.ServiceAction.Progress, Is.EqualTo(.4f).Within(.001f));
-            Assert.That(coolingHold.ServiceAction.CompletedThisUpdate, Is.False);
+            Assert.That(still.ServiceDrain, Is.Zero);
+
+            var fuelPrimed = adapter.Update(StrategyControls(Crew(true, true, 315f, 100f, 0f)),
+                RacePhase.Racing, tiresPit, .1f);
+            Assert.That(fuelPrimed.SelectedService, Is.EqualTo(PitService.Fuel));
+            Assert.That(fuelPrimed.ServiceDrain, Is.Zero);
+            var fuelHalfway = adapter.Update(StrategyControls(Crew(true, true, 310.607f, 110.607f, 0f)),
+                RacePhase.Racing, tiresPit, .05f);
+            var fuelQuarter = adapter.Update(StrategyControls(Crew(true, true, 300f, 115f, 0f)),
+                RacePhase.Racing, tiresPit, .05f);
+            Assert.That(fuelHalfway.ServiceDrain + fuelQuarter.ServiceDrain,
+                Is.EqualTo(.25f).Within(.001f));
 
             var lost = adapter.Update(StrategyControls(PieceState.Missing), RacePhase.Racing, tiresPit, .2f);
             Assert.That(lost.ServiceAction.State, Is.EqualTo(PitActionState.Idle));
+            Assert.That(lost.ServiceDrain, Is.Zero);
 
-            Assert.That(adapter.Update(valid, RacePhase.Racing, tiresPit, .4f).ServiceAction.CompletedThisUpdate, Is.False);
-            Assert.That(adapter.Update(valid, RacePhase.Racing, tiresPit, .6f).ServiceAction.CompletedThisUpdate, Is.True);
-            Assert.That(adapter.Update(valid, RacePhase.Racing, tiresPit, 1f).ServiceAction.CompletedThisUpdate, Is.False);
+            // Returning after loss re-primes: the first sample back drains nothing.
+            Assert.That(adapter.Update(StrategyControls(Crew(true, true, 115f, 100f, 0f)),
+                RacePhase.Racing, tiresPit, .1f).ServiceDrain, Is.Zero);
+            float resumed = adapter.Update(StrategyControls(Crew(true, true, 110.607f, 110.607f, 0f)),
+                    RacePhase.Racing, tiresPit, .1f).ServiceDrain
+                + adapter.Update(StrategyControls(Crew(true, true, 100f, 115f, 0f)),
+                    RacePhase.Racing, tiresPit, .1f).ServiceDrain;
+            Assert.That(resumed, Is.EqualTo(.25f).Within(.001f));
 
-            adapter.Reset();
             var noRepairZone = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
                 RacePhase.Racing, tiresPit, 1f);
             Assert.That(noRepairZone.SelectedService, Is.EqualTo(PitService.None));
-            Assert.That(noRepairZone.ServiceAction.CompletedThisUpdate, Is.False);
+            Assert.That(noRepairZone.ServiceDrain, Is.Zero);
         }
 
         [Test]
-        public void ServiceIsPlacementOnlyAndIgnoresRobotOrientation()
+        public void ServiceIgnoresRobotOrientationEntirely()
         {
             var adapter = StrategyAdapter();
             var pit = Pit(PitService.None, PitPhase.InService);
-            var placed = adapter.Update(StrategyControls(Crew(true, false, 100f, 100f, 2.5f)),
+            var placed = adapter.Update(StrategyControls(Crew(true, false, 115f, 100f, 2.5f)),
                 RacePhase.Racing, pit, .4f);
             Assert.That(placed.SelectedService, Is.EqualTo(PitService.Tires));
-            Assert.That(placed.ServiceAction.State, Is.EqualTo(PitActionState.Holding));
-            Assert.That(adapter.Update(StrategyControls(Crew(true, true, 100f, 100f, 2.5f)),
-                RacePhase.Racing, pit, .7f).ServiceAction.CompletedThisUpdate, Is.True);
+            Assert.That(placed.ServiceAction.State, Is.EqualTo(PitActionState.Stirring));
+            var midStir = adapter.Update(StrategyControls(Crew(true, true, 110.607f, 110.607f, 1.2f)),
+                RacePhase.Racing, pit, .3f);
+            var stirred = adapter.Update(StrategyControls(Crew(true, true, 100f, 115f, 5.9f)),
+                RacePhase.Racing, pit, .7f);
+            Assert.That(midStir.ServiceDrain + stirred.ServiceDrain,
+                Is.EqualTo(.25f).Within(.001f));
+        }
+
+        [Test]
+        public void StirMachineAccumulatesAngularTravelAndRejectsNoiseAndTeleports()
+        {
+            var machine = new StirServiceMachine(new Vec2(100f, 100f), new Vec2(20f, 20f), 1f);
+            Assert.That(machine.Update(Crew(true, true, 500f, 500f, 0f)).State, Is.EqualTo(PitActionState.Idle));
+            Assert.That(machine.Update(Crew(true, true, 105f, 100f, 0f)).Drain, Is.Zero);
+            Assert.That(machine.Update(Crew(true, true, 105f, 100f, 0f)).State,
+                Is.EqualTo(PitActionState.Stirring));
+            machine.Update(Crew(true, true, 115f, 100f, 0f));
+            float forward = machine.Update(Crew(true, true, 110.607f, 110.607f, 0f)).Drain
+                + machine.Update(Crew(true, true, 100f, 115f, 0f)).Drain;
+            Assert.That(forward, Is.EqualTo(.25f).Within(.001f));
+            float backward = machine.Update(Crew(true, true, 110.607f, 110.607f, 0f)).Drain
+                + machine.Update(Crew(true, true, 115f, 100f, 0f)).Drain;
+            Assert.That(backward, Is.EqualTo(.25f).Within(.001f));
+            var teleport = machine.Update(Crew(true, true, 85f, 100f, 0f));
+            Assert.That(teleport.Drain, Is.EqualTo(1.5f / (2f * (float)Math.PI)).Within(.001f));
+            Assert.That(machine.Update(PieceState.Missing).State, Is.EqualTo(PitActionState.Canceled));
+            Assert.That(machine.Update(Crew(true, true, 115f, 100f, 0f)).Drain, Is.Zero);
         }
 
         [Test]
@@ -327,9 +370,12 @@ namespace BoardRacing.Tests
 
         private static PitActionMachine Machine() => new PitActionMachine(
             new Vec2(100f, 100f), new Vec2(20f, 20f), 0f, 0.2f, 1f);
+        // One stir turn = a full meter in tests, so a quarter turn drains .25 exactly.
+        // Tests stir in 45-degree steps: a 90-degree jump in one sample exceeds the
+        // teleport cap (MaximumStepRadians) and would be clamped.
         private static CrewStrategyAdapter StrategyAdapter() => new CrewStrategyAdapter(
             new Vec2(200f, 100f), new Vec2(100f, 100f), new Vec2(300f, 100f),
-            new Vec2(20f, 20f), 0f, .2f, 1f);
+            new Vec2(20f, 20f), 1f);
         private static PieceState Crew(bool present, bool touched, float x, float y, float angle) =>
             new PieceState(present, touched, 1, new Vec2(x, y), angle);
         private static RacerPitSnapshot Pit(PitService service, PitPhase phase) =>

@@ -102,43 +102,102 @@ namespace BoardRacing.Domain
         public void Reset() { held = 0f; latched = false; }
     }
 
+    /// <summary>
+    /// Converts circular Robot motion inside a service zone into meter drain.
+    /// The player stirs the Robot around the dial; accumulated angular travel
+    /// around the zone center drains the meter — direction does not matter.
+    /// </summary>
+    public sealed class StirServiceMachine
+    {
+        // Angle samples closer to the center than this are too noisy to trust,
+        // and a single-update jump larger than this cap is a contact teleport,
+        // not a stir; both would otherwise produce phantom progress.
+        public const float MinimumStirRadius = 12f;
+        private const float MaximumStepRadians = 1.5f;
+
+        private readonly Vec2 center, halfSize;
+        private readonly float fullStirRadians;
+        private bool hasPriorAngle;
+        private float priorAngle;
+
+        public StirServiceMachine(Vec2 center, Vec2 halfSize, float stirTurnsForFullService)
+        {
+            if (halfSize.X <= 0f || halfSize.Y <= 0f || stirTurnsForFullService <= 0f ||
+                float.IsNaN(stirTurnsForFullService) || float.IsInfinity(stirTurnsForFullService))
+                throw new ArgumentException("Stir service zones must be positive.");
+            this.center = center; this.halfSize = halfSize;
+            fullStirRadians = stirTurnsForFullService * 2f * (float)Math.PI;
+        }
+
+        /// <returns>State plus the fraction of a full meter drained by this update's motion.</returns>
+        public (PitActionState State, float Drain) Update(PieceState crew)
+        {
+            bool inZone = crew.Present && Math.Abs(crew.Position.X - center.X) <= halfSize.X &&
+                Math.Abs(crew.Position.Y - center.Y) <= halfSize.Y;
+            if (!inZone) { hasPriorAngle = false; return (crew.Present ? PitActionState.Idle : PitActionState.Canceled, 0f); }
+            float dx = crew.Position.X - center.X, dy = crew.Position.Y - center.Y;
+            if (Math.Sqrt(dx * dx + dy * dy) < MinimumStirRadius)
+            { hasPriorAngle = false; return (PitActionState.Stirring, 0f); }
+            float angle = (float)Math.Atan2(dy, dx);
+            float drain = 0f;
+            if (hasPriorAngle)
+            {
+                float step = Math.Abs(SignedAngleDelta(angle, priorAngle));
+                drain = Math.Min(step, MaximumStepRadians) / fullStirRadians;
+            }
+            priorAngle = angle; hasPriorAngle = true;
+            return (PitActionState.Stirring, drain);
+        }
+
+        public void Reset() { hasPriorAngle = false; }
+
+        private static float SignedAngleDelta(float a, float b)
+        {
+            float delta = (a - b) % (2f * (float)Math.PI);
+            if (delta > Math.PI) delta -= 2f * (float)Math.PI;
+            if (delta < -Math.PI) delta += 2f * (float)Math.PI;
+            return delta;
+        }
+    }
+
     public readonly struct CrewStrategyOutput
     {
         public CrewStrategyOutput(PitService selectedService, bool requestPit, PitCallState callState,
-            PitActionResult callAction, PitActionResult serviceAction)
+            PitActionResult callAction, PitActionResult serviceAction, float serviceDrain = 0f)
         {
             SelectedService = selectedService; RequestPit = requestPit;
             CallState = callState; CallAction = callAction; ServiceAction = serviceAction;
+            ServiceDrain = serviceDrain;
         }
         public PitService SelectedService { get; }
         public bool RequestPit { get; }
         public PitCallState CallState { get; }
         public PitActionResult CallAction { get; }
         public PitActionResult ServiceAction { get; }
+        public float ServiceDrain { get; }
     }
 
     public sealed class CrewStrategyAdapter
     {
-        private readonly Vec2 callCenter, tiresCenter, coolingCenter, halfSize;
-        private readonly PitActionMachine callAction, tiresAction, coolingAction;
+        private readonly Vec2 callCenter, tiresCenter, fuelCenter, halfSize;
+        private readonly PitActionMachine callAction;
+        private readonly StirServiceMachine tiresAction, fuelAction;
         private int contactId = -1;
         private bool wasInsideCall, callPlacementArmed, suppressNextObservedContact = true;
         private bool suppressServiceUntilPlacement;
 
-        public CrewStrategyAdapter(Vec2 callCenter, Vec2 tiresCenter, Vec2 coolingCenter, Vec2 halfSize,
-            float targetAngle, float alignmentTolerance, float holdDuration, float callHoldDuration = .75f)
+        public CrewStrategyAdapter(Vec2 callCenter, Vec2 tiresCenter, Vec2 fuelCenter, Vec2 halfSize,
+            float stirTurnsForFullService, float callHoldDuration = .75f)
         {
             if (halfSize.X <= 0f || halfSize.Y <= 0f) throw new ArgumentException("Crew service zones must be positive.");
             this.callCenter = callCenter; this.tiresCenter = tiresCenter;
-            this.coolingCenter = coolingCenter; this.halfSize = halfSize;
-            // All Robot pit actions are placement-only (issue #77 hardware review):
-            // the raw SDK Robot orientation has no player-visible meaning on the disc
-            // piece, so a full-circle tolerance makes any orientation count as aligned
-            // and placing the Robot in a zone goes straight to the hold.
-            const float anyOrientation = (float)Math.PI;
-            callAction = new PitActionMachine(callCenter, halfSize, targetAngle, anyOrientation, callHoldDuration);
-            tiresAction = new PitActionMachine(tiresCenter, halfSize, targetAngle, anyOrientation, holdDuration);
-            coolingAction = new PitActionMachine(coolingCenter, halfSize, targetAngle, anyOrientation, holdDuration);
+            this.fuelCenter = fuelCenter; this.halfSize = halfSize;
+            // Robot actions are placement-only (issue #77 hardware review): the raw SDK
+            // Robot orientation has no player-visible meaning on the disc piece. Call Pit
+            // holds after placement (full-circle tolerance); services drain by stirring.
+            callAction = new PitActionMachine(callCenter, halfSize, 0f, (float)Math.PI, callHoldDuration);
+            tiresAction = new StirServiceMachine(tiresCenter, halfSize, stirTurnsForFullService);
+            fuelAction = new StirServiceMachine(fuelCenter, halfSize, stirTurnsForFullService);
         }
 
         public CrewStrategyOutput Update(PlayerControlSnapshot controls, RacePhase racePhase,
@@ -184,23 +243,25 @@ namespace BoardRacing.Domain
                     return new CrewStrategyOutput(PitService.None, false,
                         PitCallState.Unavailable, default, default);
                 }
-                PitActionResult action;
+                PitActionState serviceState;
+                float drain;
                 if (service == PitService.Tires)
                 {
-                    coolingAction.Reset();
-                    action = tiresAction.Update(controls.Crew, deltaSeconds);
+                    fuelAction.Reset();
+                    (serviceState, drain) = tiresAction.Update(controls.Crew);
                 }
-                else if (service == PitService.Cooling)
+                else if (service == PitService.Fuel)
                 {
                     tiresAction.Reset();
-                    action = coolingAction.Update(controls.Crew, deltaSeconds);
+                    (serviceState, drain) = fuelAction.Update(controls.Crew);
                 }
                 else
                 {
                     ResetActions();
-                    action = default;
+                    (serviceState, drain) = (default, 0f);
                 }
-                return new CrewStrategyOutput(service, false, PitCallState.Unavailable, default, action);
+                return new CrewStrategyOutput(service, false, PitCallState.Unavailable, default,
+                    new PitActionResult(serviceState, 0f, false), drain);
             }
 
             ResetActions();
@@ -254,7 +315,7 @@ namespace BoardRacing.Domain
         private PitService ServiceAt(Vec2 position)
         {
             if (Inside(position, tiresCenter)) return PitService.Tires;
-            if (Inside(position, coolingCenter)) return PitService.Cooling;
+            if (Inside(position, fuelCenter)) return PitService.Fuel;
             return PitService.None;
         }
 
@@ -272,7 +333,7 @@ namespace BoardRacing.Domain
 
         private void ResetActions()
         {
-            tiresAction.Reset(); coolingAction.Reset();
+            tiresAction.Reset(); fuelAction.Reset();
         }
     }
 }

@@ -28,10 +28,10 @@ namespace BoardRacing.PlayModeTests
         // Player 2 is the exact 180° mirror of Player 1.
         private static readonly Vector2 P1CallPit = new Vector2(1832f, 398f);
         private static readonly Vector2 P1Tires = new Vector2(1692f, 321f);
-        private static readonly Vector2 P1Cooling = new Vector2(1590f, 212f);
+        private static readonly Vector2 P1Fuel = new Vector2(1590f, 212f);
         private static readonly Vector2 P2CallPit = new Vector2(88f, 682f);
         private static readonly Vector2 P2Tires = new Vector2(228f, 759f);
-        private static readonly Vector2 P2Cooling = new Vector2(330f, 868f);
+        private static readonly Vector2 P2Fuel = new Vector2(330f, 868f);
         // The reconciler removes Player 2's 180° seat rotation before mapping throttle,
         // so Player 2 reads Drive at raw 45° where Player 1 reads it at raw 225°.
         private const float P1DriveDegrees = 225f;
@@ -235,16 +235,27 @@ namespace BoardRacing.PlayModeTests
                 var p1Service = new RacerPitSnapshot(PitService.None, PitPhase.InService, 0f, 0, false);
                 var p2Service = new RacerPitSnapshot(PitService.None, PitPhase.InService, 0f, 0, false);
                 Call(p1Crew, "MoveTo", P1Tires);
-                Call(p2Crew, "MoveTo", P2Cooling);
+                Call(p2Crew, "MoveTo", P2Fuel);
                 Call(p1Crew, "Touch"); Call(p2Crew, "Touch");
                 yield return null;
                 touched = provider.ReadSnapshots();
                 var p1Action = p1Adapter.Update(Player(touched, PlayerId.Player1), RacePhase.Racing, p1Service, 1.6f);
                 var p2Action = p2Adapter.Update(Player(touched, PlayerId.Player2), RacePhase.Racing, p2Service, .5f);
                 Assert.That(p1Action.SelectedService, Is.EqualTo(PitService.Tires));
-                Assert.That(p1Action.ServiceAction.CompletedThisUpdate, Is.True);
-                Assert.That(p2Action.SelectedService, Is.EqualTo(PitService.Cooling));
-                Assert.That(p2Action.ServiceAction.State, Is.EqualTo(PitActionState.Holding));
+                Assert.That(p1Action.ServiceAction.State, Is.EqualTo(PitActionState.Stirring));
+                Assert.That(p2Action.SelectedService, Is.EqualTo(PitService.Fuel));
+                Assert.That(p2Action.ServiceAction.State, Is.EqualTo(PitActionState.Stirring));
+
+                // Circular Robot motion around the dial drains the meter.
+                Call(p1Crew, "MoveTo", P1Tires + new Vector2(20f, 0f));
+                yield return null;
+                p1Adapter.Update(Player(provider.ReadSnapshots(), PlayerId.Player1),
+                    RacePhase.Racing, p1Service, .1f);
+                Call(p1Crew, "MoveTo", P1Tires + new Vector2(0f, 20f));
+                yield return null;
+                var stirred = p1Adapter.Update(Player(provider.ReadSnapshots(), PlayerId.Player1),
+                    RacePhase.Racing, p1Service, .1f);
+                Assert.That(stirred.ServiceDrain, Is.GreaterThan(0f));
 
                 Call(p2Crew, "Cancel");
                 yield return null;
@@ -327,24 +338,26 @@ namespace BoardRacing.PlayModeTests
                 var p1Service = new RacerPitSnapshot(PitService.None, PitPhase.InService, 0f, 0, false);
                 var p2Service = new RacerPitSnapshot(PitService.None, PitPhase.InService, 0f, 0, false);
                 Call(p1Crew, "MoveTo", P1Tires);
-                Call(p2Crew, "MoveTo", P2Cooling);
+                Call(p2Crew, "MoveTo", P2Fuel);
                 Call(p1Crew, "Touch"); Call(p2Crew, "Touch");
                 yield return null;
                 active = provider.ReadSnapshots();
                 Assert.That(p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, p1Service, .5f)
-                    .ServiceAction.State, Is.EqualTo(PitActionState.Holding));
+                    .ServiceAction.State, Is.EqualTo(PitActionState.Stirring));
                 Assert.That(p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, p2Service, .5f)
-                    .ServiceAction.State, Is.EqualTo(PitActionState.Holding));
+                    .ServiceAction.State, Is.EqualTo(PitActionState.Stirring));
 
                 Call(p1Crew, "MoveTo", new Vector2(P1Tires.x, 810f));
                 yield return null;
                 var wrongRegion = provider.ReadSnapshots();
                 Assert.That(Player(wrongRegion, PlayerId.Player1).Warnings.HasFlag(InputWarning.WrongRegion), Is.True);
                 Assert.That(Player(wrongRegion, PlayerId.Player1).Throttle, Is.Not.EqualTo(ThrottleStep.Brake));
-                Assert.That(p1Adapter.Update(Player(wrongRegion, PlayerId.Player1), RacePhase.Racing, p1Service, .5f)
-                    .ServiceAction.Progress, Is.Zero);
+                var p1WrongRegion = p1Adapter.Update(Player(wrongRegion, PlayerId.Player1),
+                    RacePhase.Racing, p1Service, .5f);
+                Assert.That(p1WrongRegion.SelectedService, Is.EqualTo(PitService.None));
+                Assert.That(p1WrongRegion.ServiceDrain, Is.Zero);
                 Assert.That(p2Adapter.Update(Player(wrongRegion, PlayerId.Player2), RacePhase.Racing, p2Service, .5f)
-                    .ServiceAction.CompletedThisUpdate, Is.False);
+                    .SelectedService, Is.EqualTo(PitService.Fuel));
 
                 Call(p1Crew, "MoveTo", P1Tires);
                 Call(p2Crew, "Cancel");
@@ -352,29 +365,40 @@ namespace BoardRacing.PlayModeTests
                 var lost = provider.ReadSnapshots();
                 Assert.That(Player(lost, PlayerId.Player2).Crew.Present, Is.False);
                 Assert.That(Player(lost, PlayerId.Player2).Throttle, Is.Not.EqualTo(ThrottleStep.Brake));
-                Assert.That(p2Adapter.Update(Player(lost, PlayerId.Player2), RacePhase.Racing, p2Service, .5f)
-                    .ServiceAction.Progress, Is.Zero);
+                var p2Lost = p2Adapter.Update(Player(lost, PlayerId.Player2), RacePhase.Racing, p2Service, .5f);
+                Assert.That(p2Lost.SelectedService, Is.EqualTo(PitService.None));
+                Assert.That(p2Lost.ServiceDrain, Is.Zero);
 
-                var replacement = CreateContact("BoardArcadeRobotPurple", P2Cooling, true);
+                var replacement = CreateContact("BoardArcadeRobotPurple", P2Fuel, true);
                 yield return null;
                 var reacquired = provider.ReadSnapshots();
                 Assert.That(Player(reacquired, PlayerId.Player2).Crew.RequiresRelease, Is.True);
-                Assert.That(p2Adapter.Update(Player(reacquired, PlayerId.Player2), RacePhase.Racing, p2Service, 1.6f)
-                    .ServiceAction.CompletedThisUpdate, Is.True);
+                var replaced = p2Adapter.Update(Player(reacquired, PlayerId.Player2), RacePhase.Racing,
+                    p2Service, 1.6f);
+                Assert.That(replaced.ServiceAction.State, Is.EqualTo(PitActionState.Stirring));
+                Assert.That(replaced.ServiceDrain, Is.Zero);
                 Call(replacement, "Untouch");
                 yield return null;
                 var rearmed = provider.ReadSnapshots();
                 Assert.That(Player(rearmed, PlayerId.Player2).Crew.RequiresRelease, Is.False);
                 Assert.That(p2Adapter.Update(Player(rearmed, PlayerId.Player2), RacePhase.Racing, p2Service, .1f)
-                    .ServiceAction.State, Is.EqualTo(PitActionState.Completed));
+                    .ServiceAction.State, Is.EqualTo(PitActionState.Stirring));
 
                 Call(replacement, "Touch");
+                Call(p1Crew, "MoveTo", P1Tires + new Vector2(20f, 0f));
+                Call(replacement, "MoveTo", P2Fuel + new Vector2(20f, 0f));
+                yield return null;
+                active = provider.ReadSnapshots();
+                p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, p1Service, .1f);
+                p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, p2Service, .1f);
+                Call(p1Crew, "MoveTo", P1Tires + new Vector2(0f, 20f));
+                Call(replacement, "MoveTo", P2Fuel + new Vector2(0f, 20f));
                 yield return null;
                 active = provider.ReadSnapshots();
                 Assert.That(p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, p1Service, .4f)
-                    .ServiceAction.Progress, Is.GreaterThan(0f));
+                    .ServiceDrain, Is.GreaterThan(0f));
                 Assert.That(p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, p2Service, .4f)
-                    .ServiceAction.Progress, Is.GreaterThan(0f));
+                    .ServiceDrain, Is.GreaterThan(0f));
 
                 temporarySettings = ScriptableObject.CreateInstance<BoardInputSettings>();
                 BoardInput.settings = temporarySettings;
@@ -383,9 +407,9 @@ namespace BoardRacing.PlayModeTests
                 Assert.That(reset.All(x => x.Car.Present), Is.True);
                 Assert.That(reset.All(x => x.Car.RequiresRelease && x.Crew.RequiresRelease), Is.True);
                 Assert.That(p1Adapter.Update(Player(reset, PlayerId.Player1), RacePhase.Racing, p1Service, .5f)
-                    .ServiceAction.Progress, Is.Zero);
+                    .ServiceDrain, Is.Zero);
                 Assert.That(p2Adapter.Update(Player(reset, PlayerId.Player2), RacePhase.Racing, p2Service, .5f)
-                    .ServiceAction.Progress, Is.Zero);
+                    .ServiceDrain, Is.Zero);
 
                 Call(p1Car, "Untouch"); Call(p2Car, "Untouch");
                 Call(p1Crew, "Untouch"); Call(replacement, "Untouch");
@@ -399,30 +423,42 @@ namespace BoardRacing.PlayModeTests
                 p1Adapter.Update(Player(repositioning, PlayerId.Player1), RacePhase.Racing, p1Service, .1f);
                 p2Adapter.Update(Player(repositioning, PlayerId.Player2), RacePhase.Racing, p2Service, .1f);
                 Call(p1Crew, "MoveTo", P1Tires);
-                Call(replacement, "MoveTo", P2Cooling);
+                Call(replacement, "MoveTo", P2Fuel);
                 Call(p1Car, "Touch"); Call(p2Car, "Touch");
                 Call(p1Crew, "Touch"); Call(replacement, "Touch");
                 yield return null;
                 active = provider.ReadSnapshots();
                 Assert.That(active.All(x => x.Throttle != ThrottleStep.Brake), Is.True);
-                var p1Complete = p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing,
-                    p1Service, 1.6f).ServiceAction;
-                var p2Complete = p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing,
-                    p2Service, 1.6f).ServiceAction;
-                Assert.That(p1Complete.CompletedThisUpdate, Is.True);
-                Assert.That(p2Complete.CompletedThisUpdate, Is.True);
+                p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, p1Service, .1f);
+                p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, p2Service, .1f);
+                Call(p1Crew, "MoveTo", P1Tires + new Vector2(20f, 0f));
+                Call(replacement, "MoveTo", P2Fuel + new Vector2(20f, 0f));
+                yield return null;
+                active = provider.ReadSnapshots();
+                p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, p1Service, .1f);
+                p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, p2Service, .1f);
+                Call(p1Crew, "MoveTo", P1Tires + new Vector2(0f, 20f));
+                Call(replacement, "MoveTo", P2Fuel + new Vector2(0f, 20f));
+                yield return null;
+                active = provider.ReadSnapshots();
                 Assert.That(p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, p1Service, 1.6f)
-                    .ServiceAction.CompletedThisUpdate, Is.False);
+                    .ServiceDrain, Is.GreaterThan(0f));
                 Assert.That(p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, p2Service, 1.6f)
-                    .ServiceAction.CompletedThisUpdate, Is.False);
+                    .ServiceDrain, Is.GreaterThan(0f));
+                // A motionless Robot drains nothing further — completion is the
+                // simulation's meter reaching empty, not an adapter event.
+                Assert.That(p1Adapter.Update(Player(active, PlayerId.Player1), RacePhase.Racing, p1Service, 1.6f)
+                    .ServiceDrain, Is.Zero);
+                Assert.That(p2Adapter.Update(Player(active, PlayerId.Player2), RacePhase.Racing, p2Service, 1.6f)
+                    .ServiceDrain, Is.Zero);
             }
         }
 
         private static CrewStrategyAdapter AdapterFor(PlayerId id) => id == PlayerId.Player1
             ? new CrewStrategyAdapter(new Vec2(P1CallPit.x, P1CallPit.y), new Vec2(P1Tires.x, P1Tires.y),
-                new Vec2(P1Cooling.x, P1Cooling.y), new Vec2(50f, 50f), 0f, 15f * Mathf.Deg2Rad, 1.5f)
+                new Vec2(P1Fuel.x, P1Fuel.y), new Vec2(50f, 50f), 5f)
             : new CrewStrategyAdapter(new Vec2(P2CallPit.x, P2CallPit.y), new Vec2(P2Tires.x, P2Tires.y),
-                new Vec2(P2Cooling.x, P2Cooling.y), new Vec2(50f, 50f), 0f, 15f * Mathf.Deg2Rad, 1.5f);
+                new Vec2(P2Fuel.x, P2Fuel.y), new Vec2(50f, 50f), 5f);
 
         private UnityEngine.Object CreateContact(string iconName, Vector2 position, bool touched)
         {

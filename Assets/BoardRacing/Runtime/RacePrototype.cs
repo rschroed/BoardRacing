@@ -28,9 +28,10 @@ namespace BoardRacing.Runtime
         private const float TrackVerticalScale = .33f;
         private const float TrackWidth = 64f;
         // Zone/label palette from the design authority (frame 40:23): ghosted chrome,
-        // Heat's warm hue, Tires' green hue.
+        // Fuel's warm hue (the frame still labels this dial HEAT — Figma update pending
+        // the owner's Fuel decision, 2026-07-19), Tires' green hue.
         private static readonly Color GhostColor = new Color(.4f, .44f, .5f, .55f);
-        private static readonly Color HeatLabelColor = new Color(.95f, .55f, .2f);
+        private static readonly Color FuelLabelColor = new Color(.95f, .55f, .2f);
         private static readonly Color TiresLabelColor = new Color(.35f, .72f, .5f);
         private static readonly Vec2 PitEntry = new Vec2(650f, 455f);
         private static readonly Vec2 PlayerOnePitBox = new Vec2(820f, 455f);
@@ -76,19 +77,18 @@ namespace BoardRacing.Runtime
             crewAdapters[id] = new CrewStrategyAdapter(
                 new Vec2(targets.CallPit.x, targets.CallPit.y),
                 new Vec2(targets.Tires.x, targets.Tires.y),
-                new Vec2(targets.Cooling.x, targets.Cooling.y),
+                new Vec2(targets.Fuel.x, targets.Fuel.y),
                 new Vec2(strategySettings.serviceHalfSize.x, strategySettings.serviceHalfSize.y),
-                inputSettings.targetAngleDegrees * Mathf.Deg2Rad,
-                inputSettings.alignmentToleranceDegrees * Mathf.Deg2Rad, inputSettings.holdDurationSeconds,
+                strategySettings.serviceStirTurnsForFullService,
                 strategySettings.pitCallHoldSeconds);
             crewOutputs[id] = default;
         }
 
         private ServiceTargets ServiceTargetsFor(PlayerId id) => id == PlayerId.Player1
             ? new ServiceTargets(inputSettings.playerOneServiceCenter,
-                strategySettings.playerOneTiresCenter, strategySettings.playerOneCoolingCenter)
+                strategySettings.playerOneTiresCenter, strategySettings.playerOneFuelCenter)
             : new ServiceTargets(inputSettings.playerTwoServiceCenter,
-                strategySettings.playerTwoTiresCenter, strategySettings.playerTwoCoolingCenter);
+                strategySettings.playerTwoTiresCenter, strategySettings.playerTwoFuelCenter);
 
         private void OnDestroy()
         {
@@ -121,8 +121,7 @@ namespace BoardRacing.Runtime
                     bool rematchConfirming = simulation.Snapshot.Phase == RacePhase.Finished &&
                         control.Car.Present && control.Throttle == ThrottleStep.Brake;
                     return new RacerCommand(control.PlayerId, control.Throttle, control.Car.Present, rematchConfirming,
-                        crew.SelectedService, crew.RequestPit, crew.ServiceAction.Progress,
-                        crew.ServiceAction.CompletedThisUpdate);
+                        crew.SelectedService, crew.RequestPit, crew.ServiceDrain);
                 }).ToArray();
                 simulation.Step(step, commands); accumulator -= step;
             }
@@ -305,9 +304,9 @@ namespace BoardRacing.Runtime
             DrawConditionDial(model, PitService.Tires, playerLayout.Tires,
                 playerLayout.Controller.TiresLabel, "TIRES", TiresLabelColor, playerLayout,
                 accent, inService, model.Condition.TireWear, model.Condition.TireLevel);
-            DrawConditionDial(model, PitService.Cooling, playerLayout.Cooling,
-                playerLayout.Controller.HeatLabel, "HEAT", HeatLabelColor, playerLayout,
-                accent, inService, model.Condition.Heat, model.Condition.HeatLevel);
+            DrawConditionDial(model, PitService.Fuel, playerLayout.Fuel,
+                playerLayout.Controller.FuelLabel, "FUEL", FuelLabelColor, playerLayout,
+                accent, inService, model.Condition.FuelUsed, model.Condition.FuelLevel);
         }
 
         private void DrawCallPitZone(PlayerUiModel model, PlayerLayout layout, Color accent,
@@ -348,9 +347,9 @@ namespace BoardRacing.Runtime
                     level == ConditionVisualLevel.Normal ? labelColor : ConditionColor(level));
             DrawRotatedLabel(new Rect(center.x - dialRadius, center.y - 15f, dialRadius * 2f, 30f),
                 Mathf.RoundToInt(clamped * 100f).ToString(), layout.RotationDegrees, dialValue);
-            PitActionResult action = model.ServiceAction;
-            if (selected && action.State == PitActionState.Holding)
-                DrawArc(center, dialRadius + 12f, -90f, -90f + 360f * action.Progress, 6f, Color.white);
+            if (selected && model.ServiceAction.State == PitActionState.Stirring)
+                DrawArc(center, dialRadius + 12f, -90f, -90f + 360f * model.ServiceProgress,
+                    6f, Color.white);
             DrawRotatedLabel(label.Bounds, conditionName,
                 label.RotationDegrees + layout.RotationDegrees, zoneLabel, labelColor);
         }
@@ -413,15 +412,15 @@ namespace BoardRacing.Runtime
         private void DrawConditionCues(RacerSnapshot racer, float x, float y)
         {
             CarConditionVisualState visual = CarConditionVisualMapper.From(racer, simulation.Rules.Conditions);
-            DrawConditionCue(new Rect(x - 39f, y - 42f, 32f, 24f), "H", visual.HeatLevel, true);
+            DrawConditionCue(new Rect(x - 39f, y - 42f, 32f, 24f), "F", visual.FuelLevel, true);
             DrawConditionCue(new Rect(x + 7f, y - 42f, 32f, 24f), "T", visual.TireLevel, false);
         }
 
-        private void DrawConditionCue(Rect rect, string symbol, ConditionVisualLevel level, bool heat)
+        private void DrawConditionCue(Rect rect, string symbol, ConditionVisualLevel level, bool rounded)
         {
             Color color = ConditionColor(level);
             GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, 0,
-                heat ? rect.height * .5f : 2f);
+                rounded ? rect.height * .5f : 2f);
             GUI.Label(rect, symbol + (level == ConditionVisualLevel.Critical ? "!!" :
                 level == ConditionVisualLevel.Warning ? "!" : ""), cue);
         }
@@ -565,7 +564,7 @@ namespace BoardRacing.Runtime
         }
 
         private static string ServiceName(PitService service) =>
-            service == PitService.Tires ? "TIRES" : service == PitService.Cooling ? "COOLING" : "NO SERVICE";
+            service == PitService.Tires ? "TIRES" : service == PitService.Fuel ? "FUEL" : "NO SERVICE";
 
         private static string Ordinal(int place) => RaceUiModelBuilder.Ordinal(place);
     }

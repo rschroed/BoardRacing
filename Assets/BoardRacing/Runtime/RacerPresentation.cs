@@ -7,12 +7,12 @@ namespace BoardRacing.Runtime
 
     public readonly struct CarConditionVisualState
     {
-        public CarConditionVisualState(float heat, float tireWear,
-            ConditionVisualLevel heatLevel, ConditionVisualLevel tireLevel)
-        { Heat = heat; TireWear = tireWear; HeatLevel = heatLevel; TireLevel = tireLevel; }
-        public float Heat { get; }
+        public CarConditionVisualState(float fuelUsed, float tireWear,
+            ConditionVisualLevel fuelLevel, ConditionVisualLevel tireLevel)
+        { FuelUsed = fuelUsed; TireWear = tireWear; FuelLevel = fuelLevel; TireLevel = tireLevel; }
+        public float FuelUsed { get; }
         public float TireWear { get; }
-        public ConditionVisualLevel HeatLevel { get; }
+        public ConditionVisualLevel FuelLevel { get; }
         public ConditionVisualLevel TireLevel { get; }
     }
 
@@ -26,11 +26,19 @@ namespace BoardRacing.Runtime
         public static CarConditionVisualState From(RacerConditionSnapshot condition, ConditionRules rules)
         {
             if (!rules.Enabled)
-                return new CarConditionVisualState(condition.Heat, condition.TireWear,
+                return new CarConditionVisualState(condition.FuelUsed, condition.TireWear,
                     ConditionVisualLevel.Normal, ConditionVisualLevel.Normal);
-            return new CarConditionVisualState(condition.Heat, condition.TireWear,
-                Level(condition.Heat, rules.HeatPenaltyThreshold),
-                Level(condition.TireWear, rules.TirePenaltyThreshold));
+            return new CarConditionVisualState(condition.FuelUsed, condition.TireWear,
+                FuelLevel(condition, rules), Level(condition.TireWear, rules.TirePenaltyThreshold));
+        }
+
+        // Fuel is critical only once the tank is actually empty (the limp-mode
+        // penalty); the warning threshold is the reserve light.
+        private static ConditionVisualLevel FuelLevel(RacerConditionSnapshot condition, ConditionRules rules)
+        {
+            if (condition.FuelPenaltyActive) return ConditionVisualLevel.Critical;
+            if (condition.FuelUsed >= rules.FuelWarningThreshold) return ConditionVisualLevel.Warning;
+            return ConditionVisualLevel.Normal;
         }
 
         private static ConditionVisualLevel Level(float value, float criticalThreshold)

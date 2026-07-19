@@ -8,7 +8,7 @@ namespace BoardRacing.Domain
     public enum PieceRole { Car, Crew }
     public enum ThrottleStep { Brake = 0, Drive = 50, Boost = 100 }
     [Flags] public enum InputWarning { None = 0, UnassignedGlyph = 1, DuplicateGlyph = 2, WrongRegion = 4 }
-    public enum PitActionState { Idle, Positioned, Aligning, Holding, Completed, Canceled }
+    public enum PitActionState { Idle, Positioned, Aligning, Holding, Stirring, Completed, Canceled }
 
     public readonly struct Vec2
     {

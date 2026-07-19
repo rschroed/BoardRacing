@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7c3aaec9b41a44c5b70f7ca9acd4ba8a, type: 3}
   m_Name: TrancheThreeSettings
   m_EditorClassIdentifier: 
-  heatGainPerSecondAtFullThrottle: 0.045
-  heatCoolingPerSecond: 0.08
-  heatPenaltyThreshold: 0.7
-  heatedMaximumSpeedScale: 0.6
-  heatedAccelerationScale: 0.5
+  fuelBurnPerSecondAtDrive: 0.008
+  fuelBurnPerSecondAtBoost: 0.04
+  fuelWarningThreshold: 0.75
+  emptyMaximumSpeedScale: 0.35
+  emptyAccelerationScale: 0.5
   tireWearPerCorner: 0.015
   tireWearPerUnsafeSpeed: 0.08
   tirePenaltyThreshold: 0.6
@@ -26,7 +26,8 @@ MonoBehaviour:
   pitExitSeconds: 0.75
   pitCallHoldSeconds: 0.75
   playerOneTiresCenter: {x: 1692, y: 321}
-  playerOneCoolingCenter: {x: 1590, y: 212}
+  playerOneFuelCenter: {x: 1590, y: 212}
   playerTwoTiresCenter: {x: 228, y: 759}
-  playerTwoCoolingCenter: {x: 330, y: 868}
+  playerTwoFuelCenter: {x: 330, y: 868}
   serviceHalfSize: {x: 50, y: 50}
+  serviceStirTurnsForFullService: 5

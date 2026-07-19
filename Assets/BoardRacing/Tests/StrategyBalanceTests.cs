@@ -9,22 +9,23 @@ namespace BoardRacing.Tests
     public sealed class StrategyBalanceTests
     {
         private const float Step = 1f / 60f;
-        private const float ServiceHoldSeconds = 1.5f;
+        // Scripted crews stir steadily: a full meter drains in this many seconds.
+        private const float ServiceStirSecondsForFull = 5f;
 
         [Test]
         public void FirstPassStrategyMatrixProducesProfileDependentWinnersAndServiceValue()
         {
             var managed = RunDuel(BalanceRules(1),
                 Plan("early tires", ThrottleStep.Drive, PitService.Tires, 1),
-                Plan("later cooling", ThrottleStep.Drive, PitService.Cooling, 2));
+                Plan("later fuel", ThrottleStep.Drive, PitService.Fuel, 2));
             var sustained = RunDuel(BalanceRules(1),
                 Plan("early tires", ThrottleStep.Boost, PitService.Tires, 1),
-                Plan("later cooling", ThrottleStep.Boost, PitService.Cooling, 2));
-            var coolingValue = RunDuel(BalanceRules(0),
-                Plan("timed cooling", ThrottleStep.Boost, PitService.Cooling, 2),
+                Plan("later fuel", ThrottleStep.Boost, PitService.Fuel, 2));
+            var fuelValue = RunDuel(BalanceRules(0),
+                Plan("timed fuel", ThrottleStep.Boost, PitService.Fuel, 2),
                 Plan("no stop", ThrottleStep.Boost, PitService.None, 0));
-            var coolingCost = RunDuel(BalanceRules(0),
-                Plan("unneeded cooling", ThrottleStep.Drive, PitService.Cooling, 1),
+            var fuelCost = RunDuel(BalanceRules(0),
+                Plan("unneeded fuel", ThrottleStep.Drive, PitService.Fuel, 1),
                 Plan("no stop", ThrottleStep.Drive, PitService.None, 0));
             var tireTiming = RunDuel(BalanceRules(1),
                 Plan("early tires", ThrottleStep.Drive, PitService.Tires, 1),
@@ -32,14 +33,14 @@ namespace BoardRacing.Tests
 
             Write("managed", managed);
             Write("sustained", sustained);
-            Write("cooling value", coolingValue);
-            Write("cooling cost", coolingCost);
+            Write("fuel value", fuelValue);
+            Write("fuel cost", fuelCost);
             Write("tire timing", tireTiming);
 
             AssertValidCompletedDuel(managed, 1);
             AssertValidCompletedDuel(sustained, 1);
-            AssertValidCompletedDuel(coolingValue, 0);
-            AssertValidCompletedDuel(coolingCost, 0);
+            AssertValidCompletedDuel(fuelValue, 0);
+            AssertValidCompletedDuel(fuelCost, 0);
             AssertValidCompletedDuel(tireTiming, 1);
 
             Assert.That(managed.PlayerOne.FinishTime, Is.LessThan(managed.PlayerTwo.FinishTime - .5f));
@@ -49,17 +50,17 @@ namespace BoardRacing.Tests
 
             Assert.That(sustained.PlayerTwo.FinishTime, Is.LessThan(sustained.PlayerOne.FinishTime - 5f));
             Assert.That(sustained.PlayerTwo.FinalPlace, Is.EqualTo(1));
-            Assert.That(sustained.PlayerOne.PeakHeat, Is.EqualTo(1f));
-            Assert.That(sustained.PlayerTwo.PeakHeat, Is.EqualTo(1f));
+            Assert.That(sustained.PlayerOne.PeakFuelUsed, Is.EqualTo(1f));
+            Assert.That(sustained.PlayerTwo.PeakFuelUsed, Is.EqualTo(1f));
 
-            Assert.That(coolingValue.PlayerOne.FinishTime,
-                Is.LessThan(coolingValue.PlayerTwo.FinishTime - 3f));
-            Assert.That(coolingValue.PlayerOne.CompletedServices, Is.EqualTo(1));
-            Assert.That(coolingValue.PlayerTwo.CompletedServices, Is.Zero);
-            Assert.That(coolingValue.PlayerTwo.FirstPitEntryTime, Is.EqualTo(-1f));
+            Assert.That(fuelValue.PlayerOne.FinishTime,
+                Is.LessThan(fuelValue.PlayerTwo.FinishTime - 3f));
+            Assert.That(fuelValue.PlayerOne.CompletedServices, Is.EqualTo(1));
+            Assert.That(fuelValue.PlayerTwo.CompletedServices, Is.Zero);
+            Assert.That(fuelValue.PlayerTwo.FirstPitEntryTime, Is.EqualTo(-1f));
 
-            Assert.That(coolingCost.PlayerOne.FinishTime,
-                Is.GreaterThan(coolingCost.PlayerTwo.FinishTime + 2f));
+            Assert.That(fuelCost.PlayerOne.FinishTime,
+                Is.GreaterThan(fuelCost.PlayerTwo.FinishTime + 2f));
             Assert.That(tireTiming.PlayerOne.FinishTime, Is.LessThan(tireTiming.PlayerTwo.FinishTime - .1f));
             Assert.That(tireTiming.PlayerOne.FirstPitEntryTime,
                 Is.LessThan(tireTiming.PlayerTwo.FirstPitEntryTime - 30f));
@@ -69,7 +70,7 @@ namespace BoardRacing.Tests
         public void MandatoryStopCannotBeIgnoredByHoldingMaximumThrottle()
         {
             var duel = RunDuel(BalanceRules(1),
-                Plan("served cooling", ThrottleStep.Boost, PitService.Cooling, 2),
+                Plan("served fuel", ThrottleStep.Boost, PitService.Fuel, 2),
                 Plan("unserved full throttle", ThrottleStep.Boost, PitService.None, 0));
 
             Assert.That(duel.PlayerOne.Finished, Is.True);
@@ -88,10 +89,10 @@ namespace BoardRacing.Tests
         {
             var first = RunDuel(BalanceRules(1),
                 Plan("early tires", ThrottleStep.Drive, PitService.Tires, 1),
-                Plan("later cooling", ThrottleStep.Drive, PitService.Cooling, 2));
+                Plan("later fuel", ThrottleStep.Drive, PitService.Fuel, 2));
             var second = RunDuel(BalanceRules(1),
                 Plan("early tires", ThrottleStep.Drive, PitService.Tires, 1),
-                Plan("later cooling", ThrottleStep.Drive, PitService.Cooling, 2));
+                Plan("later fuel", ThrottleStep.Drive, PitService.Fuel, 2));
 
             AssertEquivalent(first.PlayerOne, second.PlayerOne);
             AssertEquivalent(first.PlayerTwo, second.PlayerTwo);
@@ -158,18 +159,15 @@ namespace BoardRacing.Tests
                 request = true;
             }
 
-            float progress = 0f;
-            bool complete = false;
+            float drain = 0f;
             if (racer.Pit.Phase == PitPhase.InService)
             {
                 selection = state.Plan.Service;
-                state.HoldSeconds += Step;
-                progress = Math.Min(1f, state.HoldSeconds / ServiceHoldSeconds);
-                complete = state.HoldSeconds >= ServiceHoldSeconds;
+                drain = Step / ServiceStirSecondsForFull;
             }
 
             return new RacerCommand(racer.PlayerId, state.Plan.Throttle, true, true,
-                selection, request, progress, complete);
+                selection, request, drain);
         }
 
         private static RacerCommand[] ReleasedCommands() => new[]
@@ -185,9 +183,9 @@ namespace BoardRacing.Tests
                 Assert.That(result.Finished, Is.True, result.Name);
                 Assert.That(result.CompletedServices, Is.GreaterThanOrEqualTo(requiredServices), result.Name);
                 Assert.That(result.InvalidTransitions, Is.Zero, result.Name);
-                Assert.That(result.PeakHeat, Is.InRange(0f, 1f), result.Name);
+                Assert.That(result.PeakFuelUsed, Is.InRange(0f, 1f), result.Name);
                 Assert.That(result.PeakTireWear, Is.InRange(0f, 1f), result.Name);
-                Assert.That(result.FinalHeat, Is.InRange(0f, 1f), result.Name);
+                Assert.That(result.FinalFuelUsed, Is.InRange(0f, 1f), result.Name);
                 Assert.That(result.FinalTireWear, Is.InRange(0f, 1f), result.Name);
             }
         }
@@ -200,9 +198,9 @@ namespace BoardRacing.Tests
             Assert.That(second.CompletedServices, Is.EqualTo(first.CompletedServices));
             Assert.That(second.Incidents, Is.EqualTo(first.Incidents));
             Assert.That(second.InvalidTransitions, Is.EqualTo(first.InvalidTransitions));
-            Assert.That(second.PeakHeat, Is.EqualTo(first.PeakHeat).Within(.0001f));
+            Assert.That(second.PeakFuelUsed, Is.EqualTo(first.PeakFuelUsed).Within(.0001f));
             Assert.That(second.PeakTireWear, Is.EqualTo(first.PeakTireWear).Within(.0001f));
-            Assert.That(second.FinalHeat, Is.EqualTo(first.FinalHeat).Within(.0001f));
+            Assert.That(second.FinalFuelUsed, Is.EqualTo(first.FinalFuelUsed).Within(.0001f));
             Assert.That(second.FinalTireWear, Is.EqualTo(first.FinalTireWear).Within(.0001f));
             Assert.That(second.FinalPlace, Is.EqualTo(first.FinalPlace));
             Assert.That(second.FinalDistance, Is.EqualTo(first.FinalDistance).Within(.0001f));
@@ -214,8 +212,8 @@ namespace BoardRacing.Tests
                 TestContext.WriteLine(label + " / " + result.Name + ": finish=" +
                     result.FinishTime.ToString("F2") + "s, service=" + result.FirstPitEntryTime.ToString("F2") +
                     "s, stops=" + result.CompletedServices + ", incidents=" + result.Incidents +
-                    ", peak heat=" + result.PeakHeat.ToString("F2") + ", peak wear=" +
-                    result.PeakTireWear.ToString("F2") + ", final heat=" + result.FinalHeat.ToString("F2") +
+                    ", peak fuel=" + result.PeakFuelUsed.ToString("F2") + ", peak wear=" +
+                    result.PeakTireWear.ToString("F2") + ", final fuel=" + result.FinalFuelUsed.ToString("F2") +
                     ", final wear=" + result.FinalTireWear.ToString("F2"));
         }
 
@@ -238,14 +236,13 @@ namespace BoardRacing.Tests
             private PitPhase priorPhase = PitPhase.OnTrack;
             private bool sawSnapshot;
             private bool finished;
-            private float finishTime = -1f, firstPitEntryTime = -1f, peakHeat, peakWear, finalHeat, finalWear;
+            private float finishTime = -1f, firstPitEntryTime = -1f, peakFuelUsed, peakWear, finalFuelUsed, finalWear;
             private float finalDistance;
             private int completedServices, incidents, invalidTransitions, finalPlace;
 
             public TraceState(StrategyPlan plan) { Plan = plan; }
             public StrategyPlan Plan { get; }
             public bool Requested { get; set; }
-            public float HoldSeconds { get; set; }
 
             public void Observe(RacerSnapshot racer, float elapsedSeconds)
             {
@@ -254,9 +251,9 @@ namespace BoardRacing.Tests
                 if (firstPitEntryTime < 0f && racer.Pit.Phase == PitPhase.Entering)
                     firstPitEntryTime = elapsedSeconds;
                 sawSnapshot = true; priorPhase = racer.Pit.Phase;
-                peakHeat = Math.Max(peakHeat, racer.Condition.Heat);
+                peakFuelUsed = Math.Max(peakFuelUsed, racer.Condition.FuelUsed);
                 peakWear = Math.Max(peakWear, racer.Condition.TireWear);
-                finalHeat = racer.Condition.Heat; finalWear = racer.Condition.TireWear;
+                finalFuelUsed = racer.Condition.FuelUsed; finalWear = racer.Condition.TireWear;
                 completedServices = racer.Pit.CompletedServices; incidents = racer.IncidentCount;
                 finished = racer.Finished; finishTime = racer.FinishTime;
                 finalPlace = racer.Place; finalDistance = racer.TotalDistance;
@@ -264,7 +261,7 @@ namespace BoardRacing.Tests
 
             public StrategyTraceResult Result(PlayerId id) => new StrategyTraceResult(id, Plan.Name, finished,
                 finishTime, firstPitEntryTime, completedServices, incidents, invalidTransitions,
-                peakHeat, peakWear, finalHeat, finalWear, finalPlace, finalDistance);
+                peakFuelUsed, peakWear, finalFuelUsed, finalWear, finalPlace, finalDistance);
 
             private static bool Allowed(PitPhase from, PitPhase to)
             {
@@ -289,13 +286,13 @@ namespace BoardRacing.Tests
         {
             public StrategyTraceResult(PlayerId playerId, string name, bool finished, float finishTime,
                 float firstPitEntryTime, int completedServices, int incidents, int invalidTransitions,
-                float peakHeat, float peakTireWear, float finalHeat, float finalTireWear,
+                float peakFuelUsed, float peakTireWear, float finalFuelUsed, float finalTireWear,
                 int finalPlace, float finalDistance)
             {
                 PlayerId = playerId; Name = name; Finished = finished; FinishTime = finishTime;
                 FirstPitEntryTime = firstPitEntryTime; CompletedServices = completedServices;
-                Incidents = incidents; InvalidTransitions = invalidTransitions; PeakHeat = peakHeat;
-                PeakTireWear = peakTireWear; FinalHeat = finalHeat; FinalTireWear = finalTireWear;
+                Incidents = incidents; InvalidTransitions = invalidTransitions; PeakFuelUsed = peakFuelUsed;
+                PeakTireWear = peakTireWear; FinalFuelUsed = finalFuelUsed; FinalTireWear = finalTireWear;
                 FinalPlace = finalPlace; FinalDistance = finalDistance;
             }
             public PlayerId PlayerId { get; }
@@ -306,9 +303,9 @@ namespace BoardRacing.Tests
             public int CompletedServices { get; }
             public int Incidents { get; }
             public int InvalidTransitions { get; }
-            public float PeakHeat { get; }
+            public float PeakFuelUsed { get; }
             public float PeakTireWear { get; }
-            public float FinalHeat { get; }
+            public float FinalFuelUsed { get; }
             public float FinalTireWear { get; }
             public int FinalPlace { get; }
             public float FinalDistance { get; }

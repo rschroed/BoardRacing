@@ -85,7 +85,7 @@ namespace BoardRacing.PlayModeTests
             race.SetInputProvider(provider);
 
             // From the Call Pit homes, steer each crew onto its condition dial:
-            // P1 Tires (1692, 321) needs left+down; P2 Cooling (330, 868) needs right+up.
+            // P1 Tires (1692, 321) needs left+down; P2 Fuel (330, 868) needs right+up.
             Press(keyboard.fKey);
             yield return new WaitForSecondsRealtime(.5f);
             Release(keyboard.fKey); yield return null;
@@ -147,9 +147,8 @@ namespace BoardRacing.PlayModeTests
             Assert.That(PumpUntil(race, update, 140f,
                 x => x.Racers.All(r => r.Pit.Phase == PitPhase.InService)), Is.True);
 
-            // Steer P2 to Cooling (330, 868) first and P1 to Tires (1692, 321) second so
-            // neither crew sits on its dial long enough (1.5 s) to complete before the
-            // selection assertions below.
+            // Steer P2 to Fuel (330, 868) first and P1 to Tires (1692, 321) second.
+            // Selection is placement-based; nothing completes until the Robots stir.
             Press(keyboard.kKey);
             yield return new WaitForSecondsRealtime(.85f);
             Release(keyboard.kKey, queueEventOnly: true); InputSystem.Update(); yield return null;
@@ -166,10 +165,19 @@ namespace BoardRacing.PlayModeTests
             Assert.That(race.GetRaceSnapshot().Racers.Single(x => x.PlayerId == PlayerId.Player1)
                 .Pit.SelectedService, Is.EqualTo(PitService.Tires));
             Assert.That(race.GetRaceSnapshot().Racers.Single(x => x.PlayerId == PlayerId.Player2)
-                .Pit.SelectedService, Is.EqualTo(PitService.Cooling));
+                .Pit.SelectedService, Is.EqualTo(PitService.Fuel));
 
-            bool servicesCompleted = PumpUntil(race, update, 5f,
-                x => x.Racers.All(r => r.Pit.CompletedServices == 1));
+            // Services drain by stirring: offset both Robots from their dial centers,
+            // then wiggle them vertically — every direction change sweeps an arc
+            // around the dial center and drains the selected meter.
+            HoldRaceKeys(race, update, .07f, keyboard.gKey, keyboard.kKey);
+            bool servicesCompleted = false;
+            for (int i = 0; i < 60 && !servicesCompleted; i++)
+            {
+                HoldRaceKeys(race, update, .1f, keyboard.tKey, keyboard.yKey);
+                HoldRaceKeys(race, update, .1f, keyboard.bKey, keyboard.nKey);
+                servicesCompleted = race.GetRaceSnapshot().Racers.All(r => r.Pit.CompletedServices == 1);
+            }
             var serviceSnapshot = race.GetRaceSnapshot();
             var serviceControls = provider.ReadSnapshots();
             Assert.That(servicesCompleted, Is.True, string.Join(" | ", serviceSnapshot.Racers.Select(x =>
@@ -189,7 +197,7 @@ namespace BoardRacing.PlayModeTests
 
             var rematch = race.GetRaceSnapshot();
             Assert.That(rematch.Phase == RacePhase.Grid || rematch.Phase == RacePhase.Countdown, Is.True);
-            Assert.That(rematch.Racers.All(x => x.Condition.Heat == 0f && x.Condition.TireWear == 0f &&
+            Assert.That(rematch.Racers.All(x => x.Condition.FuelUsed == 0f && x.Condition.TireWear == 0f &&
                 x.Pit.CompletedServices == 0 && x.Pit.Phase == PitPhase.OnTrack), Is.True);
         }
 
@@ -249,9 +257,26 @@ namespace BoardRacing.PlayModeTests
         private void HoldRaceKey(RacePrototype race, System.Reflection.MethodInfo update,
             ButtonControl button, float seconds)
         {
-            Press(button, queueEventOnly: true); InputSystem.Update();
+            HoldRaceKeys(race, update, seconds, button);
+        }
+
+        private void HoldRaceKeys(RacePrototype race, System.Reflection.MethodInfo update,
+            float seconds, params ButtonControl[] buttons)
+        {
+            // Process each press before queueing the next: InputTestFixture builds each
+            // event from the device's processed state, so back-to-back queued presses
+            // overwrite each other and only the last key would actually be held.
+            foreach (var button in buttons)
+            {
+                Press(button, queueEventOnly: true);
+                InputSystem.Update();
+            }
             PumpRace(race, update, seconds);
-            Release(button, queueEventOnly: true); InputSystem.Update();
+            foreach (var button in buttons)
+            {
+                Release(button, queueEventOnly: true);
+                InputSystem.Update();
+            }
             PumpRace(race, update, .05f);
         }
 

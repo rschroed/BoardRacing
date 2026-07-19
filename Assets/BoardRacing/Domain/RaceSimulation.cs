@@ -12,7 +12,7 @@ namespace BoardRacing.Domain
             public float Speed, Distance, FinishTime = -1f, Recovery;
             public int PriorSection, Incidents;
             public bool Finished, IncidentThisStep;
-            public float Heat, TireWear, ServiceProgress, PitTimer;
+            public float FuelUsed, TireWear, ServiceProgress, PitTimer;
             public PitService SelectedService;
             public PitPhase PitPhase;
             public int CompletedServices;
@@ -99,14 +99,14 @@ namespace BoardRacing.Domain
                 return;
             }
             float throttleFraction = command.DrivingPiecePresent ? (int)command.Throttle / 100f : 0f;
-            UpdateHeat(racer, throttleFraction, delta);
-            bool heatPenalty = HeatPenaltyActive(racer);
-            float maximumSpeed = rules.MaxSpeed * (heatPenalty ? rules.Conditions.HeatedMaximumSpeedScale : 1f);
+            BurnFuel(racer, command.DrivingPiecePresent ? command.Throttle : ThrottleStep.Brake, delta);
+            bool fuelPenalty = FuelPenaltyActive(racer);
+            float maximumSpeed = rules.MaxSpeed * (fuelPenalty ? rules.Conditions.EmptyMaximumSpeedScale : 1f);
             float target = maximumSpeed * throttleFraction;
             float rate;
             if (target > racer.Speed)
                 rate = rules.Acceleration * (racer.Recovery > 0f ? rules.RecoveryAccelerationScale : 1f) *
-                    (heatPenalty ? rules.Conditions.HeatedAccelerationScale : 1f);
+                    (fuelPenalty ? rules.Conditions.EmptyAccelerationScale : 1f);
             else rate = target <= 0f ? rules.Braking : rules.Drag;
             racer.Speed = MoveTowards(racer.Speed, target, rate * delta);
             racer.Recovery = Math.Max(0f, racer.Recovery - delta);
@@ -148,7 +148,6 @@ namespace BoardRacing.Domain
         private void AdvancePit(RacerState racer, RacerCommand command, float delta)
         {
             racer.Speed = 0f;
-            UpdateHeat(racer, 0f, delta);
             if (racer.PitPhase == PitPhase.Entering)
             {
                 racer.ServiceProgress = 0f;
@@ -161,11 +160,17 @@ namespace BoardRacing.Domain
             }
             if (racer.PitPhase == PitPhase.InService)
             {
-                racer.ServiceProgress = command.ServiceActionProgress;
-                if (command.CompleteService && racer.SelectedService != PitService.None)
+                if (racer.SelectedService == PitService.None) { racer.ServiceProgress = 0f; return; }
+                if (command.ServiceDrain > 0f)
                 {
-                    if (racer.SelectedService == PitService.Tires) racer.TireWear = 0f;
-                    else if (racer.SelectedService == PitService.Cooling) racer.Heat = 0f;
+                    if (racer.SelectedService == PitService.Tires)
+                        racer.TireWear = Math.Max(0f, racer.TireWear - command.ServiceDrain);
+                    else racer.FuelUsed = Math.Max(0f, racer.FuelUsed - command.ServiceDrain);
+                }
+                float meter = racer.SelectedService == PitService.Tires ? racer.TireWear : racer.FuelUsed;
+                racer.ServiceProgress = 1f - meter;
+                if (meter <= 0f && command.ServiceDrain > 0f)
+                {
                     racer.CompletedServices++;
                     racer.ServiceProgress = 1f; racer.PitPhase = PitPhase.Exiting; racer.PitTimer = 0f;
                 }
@@ -187,12 +192,12 @@ namespace BoardRacing.Domain
             racer.Distance = distance; racer.Finished = true; racer.FinishTime = finishTime; racer.Speed = 0f;
         }
 
-        private void UpdateHeat(RacerState racer, float throttleFraction, float delta)
+        private void BurnFuel(RacerState racer, ThrottleStep step, float delta)
         {
             if (!rules.Conditions.Enabled) return;
-            float change = throttleFraction * rules.Conditions.HeatGainPerSecondAtFullThrottle -
-                (1f - throttleFraction) * rules.Conditions.HeatCoolingPerSecond;
-            racer.Heat = Clamp01(racer.Heat + change * delta);
+            float burn = step == ThrottleStep.Boost ? rules.Conditions.FuelBurnPerSecondAtBoost
+                : step == ThrottleStep.Drive ? rules.Conditions.FuelBurnPerSecondAtDrive : 0f;
+            racer.FuelUsed = Clamp01(racer.FuelUsed + burn * delta);
         }
 
         private void AddCornerWear(RacerState racer, float baseSafeSpeed, float entrySpeed)
@@ -203,8 +208,8 @@ namespace BoardRacing.Domain
                 unsafeRatio * rules.Conditions.TireWearPerUnsafeSpeed);
         }
 
-        private bool HeatPenaltyActive(RacerState racer) =>
-            rules.Conditions.Enabled && racer.Heat >= rules.Conditions.HeatPenaltyThreshold;
+        private bool FuelPenaltyActive(RacerState racer) =>
+            rules.Conditions.Enabled && racer.FuelUsed >= 1f;
 
         private bool TirePenaltyActive(RacerState racer) =>
             rules.Conditions.Enabled && racer.TireWear >= rules.Conditions.TirePenaltyThreshold;
@@ -231,7 +236,7 @@ namespace BoardRacing.Domain
                 racer.Speed = racer.Distance = racer.Recovery = 0f; racer.FinishTime = -1f;
                 racer.Finished = racer.IncidentThisStep = false; racer.Incidents = 0;
                 racer.PriorSection = track.Sample(0f).SectionIndex;
-                racer.Heat = racer.TireWear = racer.ServiceProgress = racer.PitTimer = 0f;
+                racer.FuelUsed = racer.TireWear = racer.ServiceProgress = racer.PitTimer = 0f;
                 racer.SelectedService = PitService.None; racer.PitPhase = PitPhase.OnTrack;
                 racer.CompletedServices = 0;
             }
@@ -246,8 +251,8 @@ namespace BoardRacing.Domain
             {
                 int place = Array.IndexOf(ordered, racer) + 1;
                 float offset = close ? (racer.Id == PlayerId.Player1 ? -rules.PassingOffset : rules.PassingOffset) : 0f;
-                var condition = new RacerConditionSnapshot(racer.Heat, racer.TireWear,
-                    HeatPenaltyActive(racer), TirePenaltyActive(racer));
+                var condition = new RacerConditionSnapshot(racer.FuelUsed, racer.TireWear,
+                    FuelPenaltyActive(racer), TirePenaltyActive(racer));
                 float phaseProgress = racer.PitPhase == PitPhase.Entering
                     ? Clamp01(racer.PitTimer / rules.Pit.EntrySeconds)
                     : racer.PitPhase == PitPhase.Exiting

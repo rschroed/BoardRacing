@@ -8,16 +8,16 @@ namespace BoardRacing.Runtime
 {
     internal readonly struct ServiceTargets
     {
-        public ServiceTargets(Vector2 callPit, Vector2 tires, Vector2 cooling)
+        public ServiceTargets(Vector2 callPit, Vector2 tires, Vector2 fuel)
         {
             CallPit = callPit;
             Tires = tires;
-            Cooling = cooling;
+            Fuel = fuel;
         }
 
         public Vector2 CallPit { get; }
         public Vector2 Tires { get; }
-        public Vector2 Cooling { get; }
+        public Vector2 Fuel { get; }
     }
 
     internal readonly struct RotatedLabel
@@ -41,7 +41,7 @@ namespace BoardRacing.Runtime
             float sectorSweepDegrees, float brakeAngle, float driveAngle, float boostAngle,
             Vector2 shipWellCenter, float shipWellRadius, float dialRadius, float callPitRadius,
             RotatedLabel brakeLabel, RotatedLabel driveLabel, RotatedLabel boostLabel,
-            RotatedLabel tiresLabel, RotatedLabel heatLabel, RotatedLabel callPitLabel)
+            RotatedLabel tiresLabel, RotatedLabel fuelLabel, RotatedLabel callPitLabel)
         {
             ArcCenter = arcCenter;
             ThrottleRadius = throttleRadius;
@@ -57,7 +57,7 @@ namespace BoardRacing.Runtime
             DriveLabel = driveLabel;
             BoostLabel = boostLabel;
             TiresLabel = tiresLabel;
-            HeatLabel = heatLabel;
+            FuelLabel = fuelLabel;
             CallPitLabel = callPitLabel;
         }
 
@@ -75,7 +75,7 @@ namespace BoardRacing.Runtime
         public RotatedLabel DriveLabel { get; }
         public RotatedLabel BoostLabel { get; }
         public RotatedLabel TiresLabel { get; }
-        public RotatedLabel HeatLabel { get; }
+        public RotatedLabel FuelLabel { get; }
         public RotatedLabel CallPitLabel { get; }
 
         public float SectorAngle(ThrottleStep throttle) => throttle == ThrottleStep.Brake
@@ -88,7 +88,7 @@ namespace BoardRacing.Runtime
     internal readonly struct PlayerLayout
     {
         public PlayerLayout(PlayerId playerId, float rotationDegrees, Rect cornerBounds,
-            Rect safeContentBounds, CornerControllerLayout controller, Rect callPit, Rect tires, Rect cooling)
+            Rect safeContentBounds, CornerControllerLayout controller, Rect callPit, Rect tires, Rect fuel)
         {
             PlayerId = playerId;
             RotationDegrees = rotationDegrees;
@@ -97,7 +97,7 @@ namespace BoardRacing.Runtime
             Controller = controller;
             CallPit = callPit;
             Tires = tires;
-            Cooling = cooling;
+            Fuel = fuel;
         }
 
         public PlayerId PlayerId { get; }
@@ -108,7 +108,7 @@ namespace BoardRacing.Runtime
         public CornerControllerLayout Controller { get; }
         public Rect CallPit { get; }
         public Rect Tires { get; }
-        public Rect Cooling { get; }
+        public Rect Fuel { get; }
     }
 
     internal readonly struct RaceLayout
@@ -142,11 +142,11 @@ namespace BoardRacing.Runtime
                 ReferenceHeight - runtimeCenter.y - serviceHalfSize.y,
                 serviceHalfSize.x * 2f, serviceHalfSize.y * 2f);
 
-            if (Target(playerOneTargets.Tires).Overlaps(Target(playerOneTargets.Cooling)))
-                throw new ArgumentException("Tires and Cooling zones must not overlap.",
+            if (Target(playerOneTargets.Tires).Overlaps(Target(playerOneTargets.Fuel)))
+                throw new ArgumentException("Tires and Fuel zones must not overlap.",
                     nameof(playerOneTargets));
-            if (Target(playerTwoTargets.Tires).Overlaps(Target(playerTwoTargets.Cooling)))
-                throw new ArgumentException("Tires and Cooling zones must not overlap.",
+            if (Target(playerTwoTargets.Tires).Overlaps(Target(playerTwoTargets.Fuel)))
+                throw new ArgumentException("Tires and Fuel zones must not overlap.",
                     nameof(playerTwoTargets));
 
             Rect MirrorRect(Rect rect) => new Rect(ReferenceWidth - rect.xMax,
@@ -177,7 +177,7 @@ namespace BoardRacing.Runtime
                 playerOneController.DialRadius, playerOneController.CallPitRadius,
                 MirrorLabel(playerOneController.BrakeLabel), MirrorLabel(playerOneController.DriveLabel),
                 MirrorLabel(playerOneController.BoostLabel), MirrorLabel(playerOneController.TiresLabel),
-                MirrorLabel(playerOneController.HeatLabel), MirrorLabel(playerOneController.CallPitLabel));
+                MirrorLabel(playerOneController.FuelLabel), MirrorLabel(playerOneController.CallPitLabel));
 
             return new RaceLayout(
                 new PlayerLayout(PlayerId.Player1, 0f,
@@ -185,13 +185,13 @@ namespace BoardRacing.Runtime
                     new Rect(1000f, 580f, 880f, 460f),
                     playerOneController,
                     Target(playerOneTargets.CallPit), Target(playerOneTargets.Tires),
-                    Target(playerOneTargets.Cooling)),
+                    Target(playerOneTargets.Fuel)),
                 new PlayerLayout(PlayerId.Player2, 180f,
                     new Rect(0f, 0f, 960f, 540f),
                     new Rect(40f, 40f, 880f, 460f),
                     playerTwoController,
                     Target(playerTwoTargets.CallPit), Target(playerTwoTargets.Tires),
-                    Target(playerTwoTargets.Cooling)));
+                    Target(playerTwoTargets.Fuel)));
         }
     }
 
@@ -205,16 +205,15 @@ namespace BoardRacing.Runtime
         MoveRobotToPlayerRegion,
         ChooseService,
         PlaceInServiceZone,
-        HoldService,
-        ServiceComplete,
+        StirService,
         HoldPitCall,
         PitRequested,
         PitEntering,
         PitExiting,
         CornerRecovery,
-        HeatCritical,
+        FuelEmpty,
         TiresCritical,
-        HeatWarning,
+        FuelLow,
         TiresWarning,
         WaitForOtherRacer,
         RematchHold,
@@ -401,15 +400,15 @@ namespace BoardRacing.Runtime
             if (racer.RecoveryRemaining > 0f)
                 return new Instruction(PlayerUiInstructionKind.CornerRecovery,
                     "TOO FAST INTO CORNER · SPEED RECOVERING");
-            if (racer.Condition.HeatPenaltyActive)
-                return new Instruction(PlayerUiInstructionKind.HeatCritical,
-                    "HEAT CRITICAL · POWER LIMITED · COOL OR CALL PIT");
+            if (racer.Condition.FuelPenaltyActive)
+                return new Instruction(PlayerUiInstructionKind.FuelEmpty,
+                    "FUEL EMPTY · POWER LIMITED · CALL PIT TO REFUEL");
             if (racer.Condition.TirePenaltyActive)
                 return new Instruction(PlayerUiInstructionKind.TiresCritical,
                     "TIRES CRITICAL · CORNER GRIP LIMITED · CALL PIT");
-            if (condition.HeatLevel == ConditionVisualLevel.Warning)
-                return new Instruction(PlayerUiInstructionKind.HeatWarning,
-                    "HEAT WARNING · EASE OFF OR PREPARE COOLING");
+            if (condition.FuelLevel == ConditionVisualLevel.Warning)
+                return new Instruction(PlayerUiInstructionKind.FuelLow,
+                    "FUEL LOW · EASE OFF BOOST OR PLAN A PIT STOP");
             if (condition.TireLevel == ConditionVisualLevel.Warning)
                 return new Instruction(PlayerUiInstructionKind.TiresWarning,
                     "TIRES WARNING · PROTECT CORNER SPEED OR PREPARE TIRES");
@@ -422,22 +421,20 @@ namespace BoardRacing.Runtime
         {
             if (!control.Crew.Present)
                 return new Instruction(PlayerUiInstructionKind.PlaceRobotForService,
-                    "PLACE ROBOT IN TIRES OR COOLING · PROGRESS RESET");
+                    "PLACE ROBOT IN TIRES OR FUEL · PROGRESS RESET");
             if (control.Warnings.HasFlag(InputWarning.WrongRegion))
                 return new Instruction(PlayerUiInstructionKind.MoveRobotToPlayerRegion,
                     "MOVE ROBOT TO YOUR SERVICE ZONES · PROGRESS RESET");
             if (racer.Pit.SelectedService == PitService.None && crew.SelectedService == PitService.None)
                 return new Instruction(PlayerUiInstructionKind.ChooseService,
-                    "MOVE ROBOT TO TIRES OR COOLING · HOLD");
+                    "MOVE ROBOT TO TIRES OR FUEL · STIR IN CIRCLES");
             PitService selected = racer.Pit.SelectedService != PitService.None
                 ? racer.Pit.SelectedService : crew.SelectedService;
             string service = ServiceName(selected);
-            if (crew.ServiceAction.State == PitActionState.Holding)
-                return new Instruction(PlayerUiInstructionKind.HoldService,
-                    "HOLD ROBOT STEADY · " + Mathf.RoundToInt(crew.ServiceAction.Progress * 100f) + "%");
-            if (crew.ServiceAction.State == PitActionState.Completed)
-                return new Instruction(PlayerUiInstructionKind.ServiceComplete,
-                    service + " SERVICE COMPLETE ✓");
+            if (crew.ServiceAction.State == PitActionState.Stirring)
+                return new Instruction(PlayerUiInstructionKind.StirService,
+                    "STIR ROBOT IN CIRCLES · " + service + " " +
+                    Mathf.RoundToInt(racer.Pit.ServiceProgress * 100f) + "%");
             return new Instruction(PlayerUiInstructionKind.PlaceInServiceZone,
                 "PLACE ROBOT IN HIGHLIGHTED " + service + " ZONE");
         }
@@ -464,7 +461,7 @@ namespace BoardRacing.Runtime
         private static string Identity(PlayerId id) => id == PlayerId.Player1
             ? "▲ PLAYER 1 · ORANGE" : "● PLAYER 2 · PURPLE";
         internal static string ServiceName(PitService service) => service == PitService.Tires
-            ? "TIRES" : service == PitService.Cooling ? "COOLING" : "NO SERVICE";
+            ? "TIRES" : service == PitService.Fuel ? "FUEL" : "NO SERVICE";
         internal static string ThrottleName(ThrottleStep throttle) => throttle == ThrottleStep.Boost
             ? "BOOST" : throttle == ThrottleStep.Drive ? "DRIVE" : "BRAKE";
         internal static string Ordinal(int place) => place == 1 ? "1ST" : "2ND";
