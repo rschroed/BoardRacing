@@ -84,18 +84,28 @@ namespace BoardRacing.PlayModeTests
             var provider = new KeyboardInputProvider();
             race.SetInputProvider(provider);
 
+            // From the Call Pit homes, steer each crew onto its condition dial:
+            // P1 Tires (1692, 321) needs left+down; P2 Cooling (330, 868) needs right+up.
             Press(keyboard.fKey);
-            yield return new WaitForSecondsRealtime(.7f);
+            yield return new WaitForSecondsRealtime(.5f);
             Release(keyboard.fKey); yield return null;
-            Press(keyboard.hKey);
-            yield return new WaitForSecondsRealtime(.7f);
-            Release(keyboard.hKey); yield return null;
+            Press(keyboard.bKey);
+            yield return new WaitForSecondsRealtime(.28f);
+            Release(keyboard.bKey); yield return null;
+            Press(keyboard.kKey);
+            yield return new WaitForSecondsRealtime(.85f);
+            Release(keyboard.kKey); yield return null;
+            Press(keyboard.yKey);
+            yield return new WaitForSecondsRealtime(.65f);
+            Release(keyboard.yKey); yield return null;
 
             var positioned = provider.ReadSnapshots();
-            Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player1).Crew.Position.X,
-                Is.EqualTo(1135f).Within(20f));
-            Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player2).Crew.Position.X,
-                Is.EqualTo(405f).Within(20f));
+            var p1Crew = positioned.Single(x => x.PlayerId == PlayerId.Player1).Crew.Position;
+            var p2Crew = positioned.Single(x => x.PlayerId == PlayerId.Player2).Crew.Position;
+            Assert.That(p1Crew.X, Is.EqualTo(1692f).Within(50f));
+            Assert.That(p1Crew.Y, Is.EqualTo(321f).Within(50f));
+            Assert.That(p2Crew.X, Is.EqualTo(330f).Within(50f));
+            Assert.That(p2Crew.Y, Is.EqualTo(868f).Within(50f));
             race.SetInputProvider(new RaceScriptedProvider(false));
         }
 
@@ -116,9 +126,9 @@ namespace BoardRacing.PlayModeTests
             PumpRace(race, update, .05f);
             var positioned = provider.ReadSnapshots();
             Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player1).Crew.Position.X,
-                Is.InRange(1185f, 1465f));
+                Is.InRange(1782f, 1882f));
             Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player2).Crew.Position.X,
-                Is.InRange(455f, 735f));
+                Is.InRange(38f, 138f));
             Assert.That(race.GetCrewStrategy(PlayerId.Player1).CallState, Is.EqualTo(PitCallState.NeedsPlacement));
             Assert.That(race.GetCrewStrategy(PlayerId.Player2).CallState, Is.EqualTo(PitCallState.NeedsPlacement));
 
@@ -137,12 +147,21 @@ namespace BoardRacing.PlayModeTests
             Assert.That(PumpUntil(race, update, 140f,
                 x => x.Racers.All(r => r.Pit.Phase == PitPhase.InService)), Is.True);
 
+            // Steer P2 to Cooling (330, 868) first and P1 to Tires (1692, 321) second so
+            // neither crew sits on its dial long enough (1.5 s) to complete before the
+            // selection assertions below.
+            Press(keyboard.kKey);
+            yield return new WaitForSecondsRealtime(.85f);
+            Release(keyboard.kKey, queueEventOnly: true); InputSystem.Update(); yield return null;
+            Press(keyboard.yKey);
+            yield return new WaitForSecondsRealtime(.65f);
+            Release(keyboard.yKey, queueEventOnly: true); InputSystem.Update(); yield return null;
             Press(keyboard.fKey);
-            yield return new WaitForSecondsRealtime(.6f);
+            yield return new WaitForSecondsRealtime(.5f);
             Release(keyboard.fKey, queueEventOnly: true); InputSystem.Update(); yield return null;
-            Press(keyboard.hKey);
-            yield return new WaitForSecondsRealtime(.6f);
-            Release(keyboard.hKey, queueEventOnly: true); InputSystem.Update(); yield return null;
+            Press(keyboard.bKey);
+            yield return new WaitForSecondsRealtime(.28f);
+            Release(keyboard.bKey, queueEventOnly: true); InputSystem.Update(); yield return null;
             PumpRace(race, update, .05f);
             Assert.That(race.GetRaceSnapshot().Racers.Single(x => x.PlayerId == PlayerId.Player1)
                 .Pit.SelectedService, Is.EqualTo(PitService.Tires));
@@ -264,8 +283,8 @@ namespace BoardRacing.PlayModeTests
 
             public void SetCrews(bool present, bool touched, bool inZone)
             {
-                var p1Position = inZone ? new Vec2(1325f, 270f) : new Vec2(400f, 270f);
-                var p2Position = inZone ? new Vec2(595f, 810f) : new Vec2(1100f, 810f);
+                var p1Position = inZone ? new Vec2(1832f, 398f) : new Vec2(400f, 270f);
+                var p2Position = inZone ? new Vec2(88f, 682f) : new Vec2(1100f, 810f);
                 var p1Crew = present ? new PieceState(true, touched, 101, p1Position, 0f) : PieceState.Missing;
                 var p2Crew = present ? new PieceState(true, touched, 201, p2Position, 0f) : PieceState.Missing;
                 snapshots = new[]
@@ -301,8 +320,8 @@ namespace BoardRacing.PlayModeTests
             public bool AtCallPit { get; set; }
             public System.Collections.Generic.IReadOnlyList<PlayerControlSnapshot> ReadSnapshots() => new[]
             {
-                Snapshot(PlayerId.Player1, 101, AtCallPit ? new Vec2(1325f, 270f) : new Vec2(1000f, 270f)),
-                Snapshot(PlayerId.Player2, 201, AtCallPit ? new Vec2(595f, 810f) : new Vec2(1000f, 810f))
+                Snapshot(PlayerId.Player1, 101, AtCallPit ? new Vec2(1832f, 398f) : new Vec2(1000f, 270f)),
+                Snapshot(PlayerId.Player2, 201, AtCallPit ? new Vec2(88f, 682f) : new Vec2(1000f, 810f))
             };
 
             private PlayerControlSnapshot Snapshot(PlayerId id, int contactId, Vec2 position) =>

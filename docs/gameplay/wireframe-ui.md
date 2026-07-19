@@ -99,7 +99,7 @@ The presentation chooses one instruction per player using the first applicable c
    - A missing, wrong-region, or invalid Robot qualifies while calling the pit or while the car is parked for service.
    - A missing Robot during ordinary racing does not outrank an urgent race condition.
 2. Active service: choose a service, align, hold, recover lost progress, or acknowledge completion.
-3. Active pit lifecycle: Call Pit alignment/hold, confirmed request, entry, or exit.
+3. Active pit lifecycle: Call Pit placement/hold, confirmed request, entry, or exit.
 4. Corner-speed recovery.
 5. Critical condition.
 6. Warning condition.
@@ -121,12 +121,12 @@ The "dominant instruction" column below defines semantic priority in the UI mode
 | Warning | No global warning | Respond to the highest warning | Warning name and value remain visible on its condition read; other stable information does not move |
 | Critical | No global warning | Respond to the highest critical condition or active recovery | `CRITICAL` text plus value and non-color cue; any performance consequence is explicit |
 | Corner recovery | No global warning | Recover from the too-fast corner entry | Recovery state outranks condition advice; throttle and both conditions remain visible |
-| Call Pit — placement/alignment | No global message | Place or rotate the Robot in Call Pit | Full mechanical Call Pit boundary, owner, alignment requirement, and state cue |
+| Call Pit — placement | No global message | Place the Robot in Call Pit | Full mechanical Call Pit boundary, owner, and state cue |
 | Call Pit — holding | No global message | Hold the Robot steady | Hold percentage/progress inside the target; no duplicate progress sentence elsewhere |
 | Pit requested | Track and pit path remain primary | Expect entry at start/finish | `PIT CALLED` confirmation replaces Call Pit action; throttle, conditions, and race status remain visible |
 | Pit entering | Track and moving car remain primary | Wait while the car enters automatically | Throttle is visibly locked; entry state and progress are clear; service targets are not active early |
 | In service — choose | No global message | Move the Robot to Tires or Cooling | Call Pit ghosts in place; both service zones light up at their fixed dial positions; car parked and 0% progress are explicit |
-| In service — selected/alignment | No global message | Align the Robot in the selected service | Selected service uses text/shape/boundary emphasis; the other service remains available to switch |
+| In service — selected/holding | No global message | Hold the Robot in the selected service | Selected service uses text/shape/boundary emphasis; the other service remains available to switch |
 | In service — holding | No global message | Hold the Robot steady | Selected service and percentage are co-located with the physical target |
 | In service — progress reset | No global message | Return, realign, and restart the hold | Progress immediately reads 0%; the cause is named when known; switching services visibly selects the new service and restarts progress |
 | Service complete / pit exit | Track and moving car remain primary | Wait for automatic rejoin | Completion is explicit, the service zone returns to its ghosted dial state with the meter drained, stop status updates, and Ship control is visibly restored only after exit |
@@ -148,7 +148,7 @@ width = 2 × hx
 height = 2 × hy
 ```
 
-Detection centers are the **measured dial and circle centers from frame `40:23`, component `44:124`** (issue #77 Round 2): the condition dial is the service target, so the detection center is the dial center. The active race constructs Call Pit, Tires, and Cooling with `TrancheThreeSettings.serviceHalfSize = (50, 50)` — the Robot placement slop around each center, ±50 px on each axis. This was revised from `(110, 110)`: the measured dials sit only ≈148 px apart center-to-center, so 220 px square zones would overlap; a 100 px square around a 92 px dial still accepts the 90 px Robot disc anywhere the disc meaningfully covers the dial. The detection rectangle is *not* a rendered shape — the visible affordance is the dial ring (radius 46) or Call Pit circle (radius 59). The legacy `TrancheOneSettings.serviceHalfSize = (180, 150)` is not used by `RacePrototype` for these strategy targets and must not be used for their visuals.
+Detection centers are the **measured dial and circle centers from frame `40:23`, component `44:124`** (issue #77 Round 2): the condition dial is the service target, so the detection center is the dial center. The active race constructs Call Pit, Tires, and Cooling with `TrancheThreeSettings.serviceHalfSize = (50, 50)` — the Robot placement slop around each center, ±50 px on each axis. This was revised from `(110, 110)`: the measured dials sit only ≈148 px apart center-to-center, so 220 px square zones would overlap; a 100 px square around a 92 px dial still accepts the 90 px Robot disc anywhere the disc meaningfully covers the dial. The detection rectangle is *not* a rendered shape — the visible affordance is the dial ring (radius 46) or Call Pit circle (radius 59). `TrancheThreeSettings.serviceHalfSize` is the single authoritative slop value: the legacy `TrancheOneSettings.serviceHalfSize` field was removed, and `ControlLab` reads the Tranche Three value like the active race.
 
 | Target | Runtime center | Visible shape | IMGUI detection rectangle |
 | --- | --- | --- | --- |
@@ -182,11 +182,15 @@ Additional immovable mechanical constraints:
 | Constraint | Runtime value |
 | --- | ---: |
 | Player-region boundary | `y = 540` in runtime coordinates |
-| Target orientation | `0°` |
-| Alignment tolerance | `±15°` |
+| Robot action activation (Call Pit, Tires, Cooling) | placement only — no orientation gate |
 | Call Pit hold | `0.75 s` |
 | Tires/Cooling hold | `1.5 s` |
 | Rematch hold | `1.0 s` with both Ships at Brake |
+| Throttle stops (raw Ship orientation, Player 1) | Brake `275°` · Drive `225°` · Boost `175°` |
+
+The throttle stops are **hardware-measured** (issue #77 hardware review, 2026-07-19): each value is the raw SDK orientation with the Ship's nose pointing at the center of the rendered wedge. Sector selection picks the nearest stop, with switch boundaries at the midpoints (`250°`, `200°`) plus the configured hysteresis, so an off-center Ship reads stably. Player 2 applies its 180° seat rotation before the comparison. The values live in `TrancheOneSettings`; re-measure them if the corner cluster geometry ever moves.
+
+All Robot actions are **placement-only** (issue #77 hardware review, 2026-07-19): placing the Robot inside a target starts its hold at any orientation — there is no rotate-to-0° step anywhere. The raw SDK Robot orientation has no player-visible meaning on the disc piece, so the earlier `0° ± 15°` alignment gate could not be performed deliberately on hardware. Call Pit additionally requires a fresh placement (a Robot parked inside the circle does not re-trigger).
 
 Placement invariants every target satisfies (numerically checked in issue #77 Round 2 and enforced by the presentation tests):
 

@@ -2,27 +2,50 @@ using System;
 
 namespace BoardRacing.Domain
 {
+    // Raw Ship orientations (Player 1 frame) at which the nose points at each rendered
+    // throttle wedge. Hardware-measured against frame 40:23's corner cluster; the values
+    // live in TrancheOneSettings so recalibration never requires a domain change.
+    public readonly struct ThrottleStops
+    {
+        public ThrottleStops(float brakeRadians, float driveRadians, float boostRadians)
+        { Brake = brakeRadians; Drive = driveRadians; Boost = boostRadians; }
+        public float Brake { get; }
+        public float Drive { get; }
+        public float Boost { get; }
+    }
+
     public sealed class CoarseThrottleMapper
     {
         private readonly float hysteresis;
         private readonly float orientationOffset;
+        private readonly float[] stopCenters;
         private int previousSector = -1;
-        public CoarseThrottleMapper(float hysteresisRadians, float orientationOffsetRadians = 0f)
-        { hysteresis = Math.Max(0f, hysteresisRadians); orientationOffset = orientationOffsetRadians; }
+        public CoarseThrottleMapper(float hysteresisRadians, ThrottleStops stops,
+            float orientationOffsetRadians = 0f)
+        {
+            hysteresis = Math.Max(0f, hysteresisRadians);
+            orientationOffset = orientationOffsetRadians;
+            stopCenters = new[] { stops.Brake, stops.Drive, stops.Boost };
+        }
         public void Reset() { previousSector = -1; }
 
         public ThrottleStep Map(bool present, float radians)
         {
             if (!present) { Reset(); return ThrottleStep.Brake; }
-            float sectorAngle = (float)(Math.PI * 2d / 3d);
             float angle = Normalize(radians - orientationOffset);
-            int nearest = (int)Math.Floor((angle + sectorAngle * .5f) / sectorAngle) % 3;
-            if (previousSector >= 0 && nearest != previousSector)
+            int nearest = 0;
+            float nearestDistance = float.MaxValue;
+            for (int i = 0; i < stopCenters.Length; i++)
             {
-                float previousCenter = previousSector * sectorAngle;
-                if (AngularDistance(angle, previousCenter) < sectorAngle * .5f + hysteresis)
-                    nearest = previousSector;
+                float distance = AngularDistance(angle, stopCenters[i]);
+                if (distance < nearestDistance) { nearestDistance = distance; nearest = i; }
             }
+            // Leaving the previous stop requires rotating the hysteresis margin past the
+            // midpoint boundary (where the two distances differ by twice the rotation),
+            // so a slightly off-center Ship cannot flicker between wedges.
+            if (previousSector >= 0 && nearest != previousSector &&
+                AngularDistance(angle, stopCenters[previousSector]) - nearestDistance < hysteresis * 2f)
+                nearest = previousSector;
             previousSector = nearest;
             return nearest == 0 ? ThrottleStep.Brake : nearest == 1 ? ThrottleStep.Drive : ThrottleStep.Boost;
         }
@@ -108,9 +131,14 @@ namespace BoardRacing.Domain
             if (halfSize.X <= 0f || halfSize.Y <= 0f) throw new ArgumentException("Crew service zones must be positive.");
             this.callCenter = callCenter; this.tiresCenter = tiresCenter;
             this.coolingCenter = coolingCenter; this.halfSize = halfSize;
-            callAction = new PitActionMachine(callCenter, halfSize, targetAngle, alignmentTolerance, callHoldDuration);
-            tiresAction = new PitActionMachine(tiresCenter, halfSize, targetAngle, alignmentTolerance, holdDuration);
-            coolingAction = new PitActionMachine(coolingCenter, halfSize, targetAngle, alignmentTolerance, holdDuration);
+            // All Robot pit actions are placement-only (issue #77 hardware review):
+            // the raw SDK Robot orientation has no player-visible meaning on the disc
+            // piece, so a full-circle tolerance makes any orientation count as aligned
+            // and placing the Robot in a zone goes straight to the hold.
+            const float anyOrientation = (float)Math.PI;
+            callAction = new PitActionMachine(callCenter, halfSize, targetAngle, anyOrientation, callHoldDuration);
+            tiresAction = new PitActionMachine(tiresCenter, halfSize, targetAngle, anyOrientation, holdDuration);
+            coolingAction = new PitActionMachine(coolingCenter, halfSize, targetAngle, anyOrientation, holdDuration);
         }
 
         public CrewStrategyOutput Update(PlayerControlSnapshot controls, RacePhase racePhase,

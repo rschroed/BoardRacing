@@ -204,10 +204,9 @@ namespace BoardRacing.Runtime
         PlaceRobotForService,
         MoveRobotToPlayerRegion,
         ChooseService,
-        AlignService,
+        PlaceInServiceZone,
         HoldService,
         ServiceComplete,
-        AlignPitCall,
         HoldPitCall,
         PitRequested,
         PitEntering,
@@ -396,9 +395,6 @@ namespace BoardRacing.Runtime
             if (racer.Pit.Phase == PitPhase.Requested)
                 return new Instruction(PlayerUiInstructionKind.PitRequested,
                     "PIT CALLED · ENTER AT START / FINISH");
-            if (crew.CallState == PitCallState.Aligning)
-                return new Instruction(PlayerUiInstructionKind.AlignPitCall,
-                    "ROTATE PIT ROBOT TO 0° TO CALL");
             if (crew.CallState == PitCallState.Holding)
                 return new Instruction(PlayerUiInstructionKind.HoldPitCall,
                     "HOLD PIT ROBOT STEADY · " + Mathf.RoundToInt(crew.CallAction.Progress * 100f) + "%");
@@ -432,21 +428,17 @@ namespace BoardRacing.Runtime
                     "MOVE ROBOT TO YOUR SERVICE ZONES · PROGRESS RESET");
             if (racer.Pit.SelectedService == PitService.None && crew.SelectedService == PitService.None)
                 return new Instruction(PlayerUiInstructionKind.ChooseService,
-                    "MOVE ROBOT TO TIRES OR COOLING · ALIGN + HOLD");
+                    "MOVE ROBOT TO TIRES OR COOLING · HOLD");
             PitService selected = racer.Pit.SelectedService != PitService.None
                 ? racer.Pit.SelectedService : crew.SelectedService;
             string service = ServiceName(selected);
-            if (crew.ServiceAction.State == PitActionState.Positioned ||
-                crew.ServiceAction.State == PitActionState.Aligning)
-                return new Instruction(PlayerUiInstructionKind.AlignService,
-                    "ROTATE ROBOT TO 0° IN " + service + " · HOLD STARTS WHEN ALIGNED");
             if (crew.ServiceAction.State == PitActionState.Holding)
                 return new Instruction(PlayerUiInstructionKind.HoldService,
                     "HOLD ROBOT STEADY · " + Mathf.RoundToInt(crew.ServiceAction.Progress * 100f) + "%");
             if (crew.ServiceAction.State == PitActionState.Completed)
                 return new Instruction(PlayerUiInstructionKind.ServiceComplete,
                     service + " SERVICE COMPLETE ✓");
-            return new Instruction(PlayerUiInstructionKind.AlignService,
+            return new Instruction(PlayerUiInstructionKind.PlaceInServiceZone,
                 "PLACE ROBOT IN HIGHLIGHTED " + service + " ZONE");
         }
 

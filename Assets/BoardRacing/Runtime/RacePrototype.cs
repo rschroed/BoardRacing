@@ -40,19 +40,22 @@ namespace BoardRacing.Runtime
         private static readonly Vec2 PitReturnLane = new Vec2(360f, 405f);
         private static readonly Vec2 PitMergeApproach = new Vec2(390f, 438f);
 
+#if !BOARDRACING_CONTROL_LAB
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
             if (FindObjectOfType<RacePrototype>() == null)
                 new GameObject("Board Racing Race Prototype").AddComponent<RacePrototype>();
         }
+#endif
 
         private void Awake()
         {
             inputSettings = Resources.Load<TrancheOneSettings>("TrancheOneSettings") ?? TrancheOneSettings.Defaults();
             raceSettings = Resources.Load<TrancheTwoSettings>("TrancheTwoSettings") ?? TrancheTwoSettings.Defaults();
             strategySettings = Resources.Load<TrancheThreeSettings>("TrancheThreeSettings") ?? TrancheThreeSettings.Defaults();
-            boardProvider = new BoardContactInputProvider(inputSettings.throttleHysteresisDegrees * Mathf.Deg2Rad,
+            boardProvider = new BoardContactInputProvider(inputSettings.ToThrottleStops(),
+                inputSettings.throttleHysteresisDegrees * Mathf.Deg2Rad,
                 inputSettings.playerRegionBoundaryY);
             fallbackProvider = new KeyboardInputProvider();
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -201,6 +204,14 @@ namespace BoardRacing.Runtime
             DrawCornerController(ui.PlayerTwo, layout.PlayerTwo, new Color(.48f, .28f, .72f));
             DrawCornerController(ui.PlayerOne, layout.PlayerOne, new Color(.92f, .39f, .12f));
             DrawCenterMessage(ui, layout);
+            // Development builds only: raw Ship orientation per seat so the throttle
+            // mapper can be calibrated against the rendered wedges on real hardware
+            // (issue #77 hardware review). Never present in release builds.
+            if (Debug.isDebugBuild)
+            {
+                DrawRawAngleReadout(layout.PlayerOne);
+                DrawRawAngleReadout(layout.PlayerTwo);
+            }
 #if UNITY_EDITOR
             GUI.Label(new Rect(1500, 8, 412, 24),
                 (activeProvider == boardProvider ? "BOARD INPUT" : "KEYBOARD FALLBACK") + " · F1 provider", small);
@@ -209,6 +220,18 @@ namespace BoardRacing.Runtime
                 : "PREVIEW: " + ((RaceUiPreviewScenario)previewScenarioIndex) + " · F2 next", small);
 #endif
             GUI.matrix = original;
+        }
+
+        private void DrawRawAngleReadout(PlayerLayout layout)
+        {
+            PlayerControlSnapshot control = controls.FirstOrDefault(x => x.PlayerId == layout.PlayerId);
+            string Reading(PieceState piece) => piece.Present
+                ? Mathf.RoundToInt(Mathf.Repeat(piece.OrientationRadians * Mathf.Rad2Deg, 360f)) + "°"
+                : "—";
+            string text = (layout.PlayerId == PlayerId.Player1 ? "▲ SHIP RAW " : "● SHIP RAW ") +
+                Reading(control.Car) + " · ROBOT " + Reading(control.Crew);
+            Rect bounds = layout.Opposite ? new Rect(530f, 6f, 360f, 30f) : new Rect(1030f, 1044f, 360f, 30f);
+            DrawRotatedLabel(bounds, text, layout.RotationDegrees, small, Color.white);
         }
 
         private void DrawTrack()
@@ -428,10 +451,14 @@ namespace BoardRacing.Runtime
         {
             CornerControllerLayout controller = layout.Controller;
             // The footprint ring marks the Ship's resting well; the rotated glyph stands in
-            // for the physical piece on desktop (the real Ship covers it on the table).
+            // for the physical piece on desktop only. On Board hardware the real Ship sits on
+            // the well, and a solid rect drawn underneath it shows through around any
+            // misalignment (issue #77 Round 2 hardware review).
             DrawArc(controller.ShipWellCenter, controller.ShipWellRadius, 0f, 360f, 3f,
                 model.ShipPresent ? new Color(accent.r, accent.g, accent.b, .8f) : GhostColor);
+#if UNITY_EDITOR
             DrawShipGlyph(controller, layout, accent, model.ShipPresent);
+#endif
 
             bool throttleLive = model.PitPhase == PitPhase.OnTrack ||
                 model.PitPhase == PitPhase.Requested;

@@ -27,43 +27,55 @@ namespace BoardRacing.Tests
             Assert.That(errors.Any(x => x.Contains("missing")), Is.True);
         }
 
-        [TestCase(0f, ThrottleStep.Brake)]
-        [TestCase(2.0943951f, ThrottleStep.Drive)]
-        [TestCase(4.1887902f, ThrottleStep.Boost)]
-        [TestCase(-0.01f, ThrottleStep.Brake)]
-        [TestCase(6.273185f, ThrottleStep.Brake)]
-        public void ThrottleMapsSectorsAndWraparound(float angle, ThrottleStep expected)
+        // Stop centers are the hardware-measured raw orientations with the nose pointing
+        // at each rendered wedge (Brake 275°, Drive 225°, Boost 175°; #77 hardware review).
+        [TestCase(275f, ThrottleStep.Brake)]
+        [TestCase(225f, ThrottleStep.Drive)]
+        [TestCase(175f, ThrottleStep.Boost)]
+        [TestCase(285f, ThrottleStep.Brake)]
+        [TestCase(242f, ThrottleStep.Drive)]
+        [TestCase(205f, ThrottleStep.Drive)]
+        [TestCase(150f, ThrottleStep.Boost)]
+        [TestCase(-85f, ThrottleStep.Brake)]
+        [TestCase(350f, ThrottleStep.Brake)]
+        [TestCase(90f, ThrottleStep.Boost)]
+        public void ThrottleMapsMeasuredStopsAndWraparound(float degrees, ThrottleStep expected)
         {
-            Assert.That(new CoarseThrottleMapper(0.1f).Map(true, angle), Is.EqualTo(expected));
+            Assert.That(Mapper().Map(true, Deg(degrees)), Is.EqualTo(expected));
         }
 
         [Test]
         public void ThrottleFailsSafeAndReacquiresFromZero()
         {
-            var mapper = new CoarseThrottleMapper(0.1f);
-            Assert.That(mapper.Map(true, 2.1f), Is.EqualTo(ThrottleStep.Drive));
-            Assert.That(mapper.Map(false, 2.1f), Is.EqualTo(ThrottleStep.Brake));
-            Assert.That(mapper.Map(true, 2.1f), Is.EqualTo(ThrottleStep.Drive));
+            var mapper = Mapper();
+            Assert.That(mapper.Map(true, DriveRaw), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(mapper.Map(false, DriveRaw), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(mapper.Map(true, DriveRaw), Is.EqualTo(ThrottleStep.Drive));
         }
 
         [Test]
         public void HysteresisPreventsBoundaryFlicker()
         {
-            var mapper = new CoarseThrottleMapper(0.2f);
-            Assert.That(mapper.Map(true, 0f), Is.EqualTo(ThrottleStep.Brake));
-            Assert.That(mapper.Map(true, (float)Math.PI / 3f + 0.05f), Is.EqualTo(ThrottleStep.Brake));
-            Assert.That(mapper.Map(true, (float)Math.PI / 3f + 0.25f), Is.EqualTo(ThrottleStep.Drive));
+            // Brake/Drive midpoint sits at 250°; with 0.1 rad hysteresis a switch needs
+            // ≈5.7° of rotation past the midpoint, in either direction.
+            var mapper = Mapper();
+            Assert.That(mapper.Map(true, Deg(225f)), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(mapper.Map(true, Deg(252f)), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(mapper.Map(true, Deg(258f)), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(mapper.Map(true, Deg(252f)), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(mapper.Map(true, Deg(242f)), Is.EqualTo(ThrottleStep.Drive));
         }
 
         [Test]
         public void OppositePlayerOrientationUsesTheSamePlayerRelativeStops()
         {
-            var playerOne = new CoarseThrottleMapper(.1f);
-            var playerTwo = new CoarseThrottleMapper(.1f, (float)Math.PI);
-            Assert.That(playerOne.Map(true, 0f), Is.EqualTo(ThrottleStep.Brake));
-            Assert.That(playerTwo.Map(true, (float)Math.PI), Is.EqualTo(ThrottleStep.Brake));
-            Assert.That(playerOne.Map(true, 2f * (float)Math.PI / 3f), Is.EqualTo(ThrottleStep.Drive));
-            Assert.That(playerTwo.Map(true, 5f * (float)Math.PI / 3f), Is.EqualTo(ThrottleStep.Drive));
+            var playerOne = Mapper();
+            var playerTwo = Mapper((float)Math.PI);
+            Assert.That(playerOne.Map(true, Deg(275f)), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(playerTwo.Map(true, Deg(95f)), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(playerOne.Map(true, Deg(225f)), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(playerTwo.Map(true, Deg(45f)), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(playerTwo.Map(true, Deg(355f)), Is.EqualTo(ThrottleStep.Boost));
         }
 
         [Test]
@@ -94,11 +106,11 @@ namespace BoardRacing.Tests
         public void NewContactTouchStateDoesNotGateThrottle()
         {
             var reconciler = Reconciler();
-            var waiting = Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1);
+            var waiting = Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, DriveRaw) }), PlayerId.Player1);
             Assert.That(waiting.Throttle, Is.EqualTo(ThrottleStep.Drive));
             Assert.That(waiting.Car.RequiresRelease, Is.True);
-            reconciler.Reconcile(new[] { Contact(10, 7, false, 100f, RawContactPhase.Stationary, 2.1f) });
-            var rearmed = Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1);
+            reconciler.Reconcile(new[] { Contact(10, 7, false, 100f, RawContactPhase.Stationary, DriveRaw) });
+            var rearmed = Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, DriveRaw) }), PlayerId.Player1);
             Assert.That(rearmed.Throttle, Is.EqualTo(ThrottleStep.Drive));
             Assert.That(rearmed.Car.RequiresRelease, Is.False);
         }
@@ -121,7 +133,7 @@ namespace BoardRacing.Tests
         {
             var reconciler = Reconciler();
             ArmCar(reconciler, 10);
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(11, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1).Throttle,
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(11, 7, true, 100f, RawContactPhase.Stationary, DriveRaw) }), PlayerId.Player1).Throttle,
                 Is.EqualTo(ThrottleStep.Drive));
         }
 
@@ -175,7 +187,7 @@ namespace BoardRacing.Tests
             var reconciler = Reconciler();
             ArmCar(reconciler, 10);
             reconciler.ResetAll();
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1).Throttle,
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(10, 7, true, 100f, RawContactPhase.Stationary, DriveRaw) }), PlayerId.Player1).Throttle,
                 Is.EqualTo(ThrottleStep.Drive));
         }
 
@@ -228,11 +240,11 @@ namespace BoardRacing.Tests
             Assert.That(gated.RequestPit, Is.False);
 
             adapter.Update(StrategyControls(Crew(true, false, 400f, 100f, 0f)), RacePhase.Racing, pit, .1f);
-            var misaligned = new PieceState(true, true, 2, new Vec2(200f, 100f), 1f, true);
-            Assert.That(adapter.Update(StrategyControls(misaligned), RacePhase.Racing, pit, .1f).CallState,
-                Is.EqualTo(PitCallState.Aligning));
-            var aligned = new PieceState(true, true, 2, new Vec2(200f, 100f), 0f, true);
-            Assert.That(adapter.Update(StrategyControls(aligned), RacePhase.Racing, pit, .8f).RequestPit, Is.True);
+            var rotatedAnyWhichWay = new PieceState(true, true, 2, new Vec2(200f, 100f), 1f, true);
+            Assert.That(adapter.Update(StrategyControls(rotatedAnyWhichWay), RacePhase.Racing, pit, .1f).CallState,
+                Is.EqualTo(PitCallState.Holding));
+            Assert.That(adapter.Update(StrategyControls(rotatedAnyWhichWay), RacePhase.Racing, pit, .8f).RequestPit,
+                Is.True);
 
             var wrongRegion = adapter.Update(StrategyControls(Crew(true, false, 200f, 100f, 0f),
                 InputWarning.WrongRegion), RacePhase.Racing, pit, .1f);
@@ -286,6 +298,19 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void ServiceIsPlacementOnlyAndIgnoresRobotOrientation()
+        {
+            var adapter = StrategyAdapter();
+            var pit = Pit(PitService.None, PitPhase.InService);
+            var placed = adapter.Update(StrategyControls(Crew(true, false, 100f, 100f, 2.5f)),
+                RacePhase.Racing, pit, .4f);
+            Assert.That(placed.SelectedService, Is.EqualTo(PitService.Tires));
+            Assert.That(placed.ServiceAction.State, Is.EqualTo(PitActionState.Holding));
+            Assert.That(adapter.Update(StrategyControls(Crew(true, true, 100f, 100f, 2.5f)),
+                RacePhase.Racing, pit, .7f).ServiceAction.CompletedThisUpdate, Is.True);
+        }
+
+        [Test]
         public void TwoCrewAdaptersRemainIndependent()
         {
             var p1 = StrategyAdapter(); var p2 = StrategyAdapter();
@@ -313,8 +338,14 @@ namespace BoardRacing.Tests
             InputWarning warning = InputWarning.None) =>
             new PlayerControlSnapshot(PlayerId.Player1, ThrottleStep.Brake, PieceState.Missing, crew, warning);
 
+        private const float DriveRaw = 225f * (float)Math.PI / 180f;
+        private static float Deg(float degrees) => degrees * (float)Math.PI / 180f;
+        private static ThrottleStops Stops() => new ThrottleStops(Deg(275f), Deg(225f), Deg(175f));
+        private static CoarseThrottleMapper Mapper(float orientationOffset = 0f) =>
+            new CoarseThrottleMapper(.1f, Stops(), orientationOffset);
+
         private static ContactSnapshotReconciler Reconciler() =>
-            new ContactSnapshotReconciler(TrancheOneAssignments.All, 0.1f, 540f);
+            new ContactSnapshotReconciler(TrancheOneAssignments.All, Stops(), 0.1f, 540f);
 
         private static RawPieceContact Contact(int contactId, int glyphId, bool touched, float y,
             RawContactPhase phase = RawContactPhase.Stationary, float angle = 0f) =>
@@ -325,8 +356,8 @@ namespace BoardRacing.Tests
 
         private static void ArmCar(ContactSnapshotReconciler reconciler, int contactId)
         {
-            reconciler.Reconcile(new[] { Contact(contactId, 7, false, 100f, RawContactPhase.Stationary, 2.1f) });
-            Assert.That(Player(reconciler.Reconcile(new[] { Contact(contactId, 7, true, 100f, RawContactPhase.Stationary, 2.1f) }), PlayerId.Player1).Throttle,
+            reconciler.Reconcile(new[] { Contact(contactId, 7, false, 100f, RawContactPhase.Stationary, DriveRaw) });
+            Assert.That(Player(reconciler.Reconcile(new[] { Contact(contactId, 7, true, 100f, RawContactPhase.Stationary, DriveRaw) }), PlayerId.Player1).Throttle,
                 Is.EqualTo(ThrottleStep.Drive));
         }
     }

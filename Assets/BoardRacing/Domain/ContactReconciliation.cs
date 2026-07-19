@@ -37,15 +37,17 @@ namespace BoardRacing.Domain
         private readonly float playerRegionBoundaryY;
 
         public ContactSnapshotReconciler(IEnumerable<PieceAssignment> assignments,
-            float throttleHysteresisRadians, float playerRegionBoundaryY)
+            ThrottleStops throttleStops, float throttleHysteresisRadians, float playerRegionBoundaryY)
         {
             var all = assignments.ToArray();
             var errors = TrancheOneAssignments.Validate(all);
             if (errors.Length > 0) throw new ArgumentException(string.Join(" ", errors), nameof(assignments));
             this.assignments = all.ToDictionary(x => x.GlyphId);
+            // Player 2's seat is the 180° rotation of Player 1's, so the same measured
+            // stops apply after removing the seat rotation from the raw orientation.
             throttleMappers = Enum.GetValues(typeof(PlayerId)).Cast<PlayerId>()
                 .ToDictionary(x => x, id => new CoarseThrottleMapper(throttleHysteresisRadians,
-                    id == PlayerId.Player1 ? 0f : (float)Math.PI));
+                    throttleStops, id == PlayerId.Player1 ? 0f : (float)Math.PI));
             this.playerRegionBoundaryY = playerRegionBoundaryY;
         }
 
