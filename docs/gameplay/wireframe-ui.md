@@ -7,14 +7,14 @@ Final fonts, art, effects, animation, audio, player setup, profiles, AI, tutoria
 ## Design direction and authority
 
 - Figma file: [Board Racing](https://www.figma.com/design/6lRFxoVugQBKedYIh8OiLl/Board-Racing) — this file supersedes the earlier Tranche 4 Wireframes file (`6UK6Kgvfamg4UU0UpkChlg`), which is retained only as history.
-- Owner-approved named frames (recorded in issue #75, revised in issue #85):
-  - Throttle treatment — frame `17:14`: Ship tucked into the corner as the needle; arc and `BRAKE / DRIVE / BOOST` labels fan toward the track; a large state word carries legibility.
+- Owner-approved named frames (recorded in issue #75, revised in issue #85 and in the issue #77 Round 1 review):
+  - Throttle treatment — frame `17:14`: Ship tucked into the corner as the needle; arc and `BRAKE / DRIVE / BOOST` labels fan toward the track. Its separate large state word is superseded by frame `40:23`, where the lit sector's fill and accent label carry the throttle read.
   - Condition dials — frame `35:2`: two fixed-size round dials (Tires, Heat), fuller = worse; the same dial doubles as the parked repair target.
-  - Full four-seat board — frame `40:23`: four corner seats around the central race area; Call Pit against each seat's short edge; two diagonal seats active in Tranche 4.
+  - Full four-seat board — frame `40:23`: four corner seats around the central race area; Call Pit against each seat's short edge; two diagonal seats active in Tranche 4. **This frame is the measured source for seat-cluster geometry** — the right-side seat is component `44:124`, the left-side seat is component `44:229`.
 - Reference frame: 1920×1080.
 - Owner decision: use Corner Controllers as the primary layout and information-architecture direction, then refine it through full-resolution implementation captures.
 
-The frames are an architectural reference, not a pixel specification. They establish diagonal player ownership, a central race area, the corner throttle-arc-with-state-word treatment, dial-style condition meters that double as repair targets, and short-edge Robot targets. Approximate Figma positions and copy do not override the runtime geometry fixed in this contract or later owner-reviewed code captures.
+Round 1 of issue #77 established that "architectural reference" was too loose: a port that moved only the detection centers while keeping older chrome (square zone panels, caption bars, a per-seat text column) did not reflect the approved design. As of Round 2, seat-cluster positions, sizes, and label transforms in this contract are **measured from the `40:23` components** and the rendered treatment must match the frame's vocabulary: outline circles, rim dials, and a fan arc — no zone panels and no per-seat copy. Wireframe stroke construction (IMGUI scalloped arcs) may approximate Figma's smooth strokes; positions may not drift.
 
 ## Current UI audit
 
@@ -45,20 +45,21 @@ For Tranche 4:
 
 Each active corner owns:
 
-- Player identity using both color and shape: Orange/triangle or Purple/circle.
+- Player identity through its accent color and board position (each player faces their own seat).
 - A stable player-relative `BRAKE / DRIVE / BOOST` orientation map.
-- An unmistakable current throttle state that does not depend on color alone.
-- Heat and tire condition, each with value and named severity.
-- Compact lap, place, and mandatory-stop status.
-- Exactly one dominant instruction.
+- An unmistakable current throttle state: the lit sector's fill plus its accent label.
+- Heat and tire condition as dial fill values.
 - The player's currently active Robot action regions.
 
-Two treatment decisions are now fixed by owner approval (issue #85, frames `17:14` and `35:2`):
+**Per-seat status and instruction text was removed by owner decision (issue #77 Round 2, 2026-07-18).** Frame `40:23` renders seats with no lap counter, no mandatory-stop line, no instruction sentence, and no separate state word; the seats show exactly what the frame shows. The dominant-instruction model (below) still governs *semantic priority* — which zone lights, emphasizes, or rings — and remains fully computed and tested in the UI model. If playtests (issue #79) show that lap/stop-required information is missed during play, its home gets designed in Figma first and then ported.
 
-- **Throttle** is a corner arc plus an explicit state word. The physical Ship is the needle: it rests in the corner and its rotation selects the lit sector. The large `BRAKE / DRIVE / BOOST` state word, not the arc alone, carries legibility.
-- **Condition meters are fixed-size round dials** (Tires and Heat) that fill as the condition worsens — fuller = worse, empty = healthy. Each dial sits at its service target's center and **doubles as the parked repair target**: when the car is parked, the same dial becomes the active Tires/Cooling zone, the Robot seats on it, a hold-progress ring fills around it, and completing service drains the meter. Dials do not move or resize between states. A critical red-flash treatment and a repair animation are deliberately deferred.
+Treatment decisions fixed by owner approval (issue #85 and the issue #77 Round 1 review):
 
-Exact arc radius, band thickness, safe-edge inset, type sizing, and copy line breaks remain review decisions in Issue #77.
+- **Throttle** is a fan arc around the Ship well. The physical Ship is the needle: it rests on the corner diagonal and its rotation selects the lit sector. The lit sector renders as a deep accent wedge with its label riding the arc tangent; unlit sectors are thin quiet bands. There is no separate state word.
+- **Condition meters are fixed-size round dials** (Tires and Heat) that fill as the condition worsens — fuller = worse, empty = healthy. Dials are freestanding rings — no zone panel around them. Each dial **doubles as the parked repair target**: when the car is parked, a target ring surrounds the dial, the Robot seats on it, a hold-progress ring fills, and completing service drains the meter. Dials do not move or resize between states. A critical red-flash treatment and a repair animation are deliberately deferred.
+- **Call Pit is an outline circle** with its tilted label inside — no panel, no embedded copy. Ghosted before the race starts and while parked; accent-lit while available; white with a hold-progress ring while holding or requested.
+
+Stroke fidelity, exact type sizing, and state-emphasis weights remain review decisions in Issue #77.
 
 ### Shared center
 
@@ -85,7 +86,9 @@ Every player state follows this order:
 5. **Conditions** — heat and tires with normalized value and Normal, Warning, or Critical severity.
 6. **Secondary explanation** — only when it adds information and does not restate the dominant instruction.
 
-Identity, active control state, race status, and both condition values remain stable enough to find at a glance. The dominant instruction changes with context.
+Identity, active control state, and both condition values remain stable enough to find at a glance. The dominant instruction changes with context.
+
+As of the issue #77 Round 2 owner decision, this hierarchy is expressed **spatially, not textually**, at the seats: the dominant instruction manifests as which zone is lit, emphasized, or ringed (and, for missing pieces, as the dimmed Ship well), not as a rendered sentence. Race status (lap, place, mandatory stop) has no per-seat rendering this tranche. The UI model retains all instruction and status strings — tests verify their priority, and shared center overlays still use their copy where the state table permits.
 
 ## Dominant-instruction priority
 
@@ -105,6 +108,8 @@ The presentation chooses one instruction per player using the first applicable c
 When heat and tires have the same severity, Heat wins the instruction tie for deterministic behavior; both condition reads remain visible. A higher severity always outranks a lower one. Progress and selection may also appear inside the active physical target, but the corner must not repeat the same sentence.
 
 ## State contract
+
+The "dominant instruction" column below defines semantic priority in the UI model. At the seats it renders as zone lighting, emphasis, and progress rings — not text (issue #77 Round 2 owner decision). Copy in this table survives only in the model, in tests, and in permitted shared-center overlays.
 
 | State | Shared center | Player's dominant instruction | Stable player information and affordances |
 | --- | --- | --- | --- |
@@ -143,20 +148,34 @@ width = 2 × hx
 height = 2 × hy
 ```
 
-The active race constructs Call Pit, Tires, and Cooling with `TrancheThreeSettings.serviceHalfSize = (110, 110)` — square 220×220 zones. This half-size was revised from `(140, 120)` in issue #85: the dial-as-target design centers a 92 px dial in each zone, the Robot disc is 90 px (±65 px placement slack remains), and three 280×240 zones cannot fit the short-edge arrangement around the corner cluster without Tires/Cooling overlap. The legacy `TrancheOneSettings.serviceHalfSize = (180, 150)` is not used by `RacePrototype` for these strategy targets and must not be used for their visuals.
+Detection centers are the **measured dial and circle centers from frame `40:23`, component `44:124`** (issue #77 Round 2): the condition dial is the service target, so the detection center is the dial center. The active race constructs Call Pit, Tires, and Cooling with `TrancheThreeSettings.serviceHalfSize = (50, 50)` — the Robot placement slop around each center, ±50 px on each axis. This was revised from `(110, 110)`: the measured dials sit only ≈148 px apart center-to-center, so 220 px square zones would overlap; a 100 px square around a 92 px dial still accepts the 90 px Robot disc anywhere the disc meaningfully covers the dial. The detection rectangle is *not* a rendered shape — the visible affordance is the dial ring (radius 46) or Call Pit circle (radius 59). The legacy `TrancheOneSettings.serviceHalfSize = (180, 150)` is not used by `RacePrototype` for these strategy targets and must not be used for their visuals.
 
-Targets are placed per seat around the corner cluster (issue #85, validated against every constraint below): Call Pit against the seat's short edge near the player-region boundary, Tires between Call Pit and the corner cluster, and Cooling along the long edge beyond the throttle arc. Tires and Cooling centers are explicit settings values, no longer derived from a horizontal offset off Call Pit.
-
-| Target | Runtime center | IMGUI rectangle |
-| --- | --- | --- |
-| Orange Call Pit | `(1790, 430)` | `x 1680, y 540, w 220, h 220` |
-| Orange Tires | `(1620, 310)` | `x 1510, y 660, w 220, h 220` |
-| Orange Cooling | `(1370, 140)` | `x 1260, y 830, w 220, h 220` |
-| Purple Call Pit | `(130, 650)` | `x 20, y 320, w 220, h 220` |
-| Purple Tires | `(300, 770)` | `x 190, y 200, w 220, h 220` |
-| Purple Cooling | `(550, 940)` | `x 440, y 30, w 220, h 220` |
+| Target | Runtime center | Visible shape | IMGUI detection rectangle |
+| --- | --- | --- | --- |
+| Orange Call Pit | `(1832, 398)` | circle r 59 | `x 1782, y 632, w 100, h 100` |
+| Orange Tires | `(1692, 321)` | dial r 46 | `x 1642, y 709, w 100, h 100` |
+| Orange Cooling (Heat dial) | `(1590, 212)` | dial r 46 | `x 1540, y 818, w 100, h 100` |
+| Purple Call Pit | `(88, 682)` | circle r 59 | `x 38, y 348, w 100, h 100` |
+| Purple Tires | `(228, 759)` | dial r 46 | `x 178, y 271, w 100, h 100` |
+| Purple Cooling (Heat dial) | `(330, 868)` | dial r 46 | `x 280, y 162, w 100, h 100` |
 
 Purple targets are the exact 180° mirror of Orange (`x → 1920 − x`, `y → 1080 − y`).
+
+The rest of the seat cluster is fixed by the same measurement (IMGUI coordinates, Orange seat; Purple is the 180° mirror with label rotations offset by the seat's 180°):
+
+| Element | Value |
+| --- | --- |
+| Throttle arc center / radius | `(1863, 1025)` / `250` |
+| Sector center angles (IMGUI degrees) | Brake `190`, Drive `226`, Boost `260`; sweep `32` per sector |
+| Ship well center / footprint radius | `(1787, 938)` / `138` |
+| BRAKE label center / rotation | `(1630, 984)` / `−84°` |
+| DRIVE label center / rotation | `(1703, 859)` / `−49°` |
+| BOOST label center / rotation | `(1820, 795)` / `−9°` |
+| TIRES label center / rotation | `(1665, 707)` / `−30°` |
+| HEAT label center / rotation | `(1537, 842)` / `−64°` |
+| CALL PIT label center / rotation | `(1832, 682)` / `−60°` |
+
+The two currently inactive seats (lower-left, upper-right) use the left-side variant, component `44:229`; its geometry gets measured and recorded here when those seats activate.
 
 Additional immovable mechanical constraints:
 
@@ -169,16 +188,17 @@ Additional immovable mechanical constraints:
 | Tires/Cooling hold | `1.5 s` |
 | Rematch hold | `1.0 s` with both Ships at Brake |
 
-Placement invariants every target satisfies (numerically checked in issue #85):
+Placement invariants every target satisfies (numerically checked in issue #77 Round 2 and enforced by the presentation tests):
 
-- Every zone rectangle lies fully on the board and fully inside its player's region half.
-- Tires and Cooling zones do not overlap one another.
-- Every zone clears the seat's corner cluster (throttle arc band reach ≈ 272 px from the corner point).
-- Call Pit's outer edge sits within 20 px of its short board edge.
+- Every detection rectangle lies fully on the board and fully inside its player's region half.
+- Tires and Cooling detection rectangles do not overlap one another (they clear by 2 px on the x axis — `RaceLayout.Create` rejects any drift into overlap).
+- Both dials clear the Ship's rotational footprint (well radius 138 + dial radius 46; measured clearances ≈ 19 px and 25 px).
+- Every dial and Call Pit circle clears the throttle arc band.
+- Call Pit's circle edge sits within ≈ 30 px of its short board edge.
 
-Call Pit is active before service; Tires and Cooling are active only while parked. Therefore, approximate overlap between the Call Pit rectangle and a service rectangle is not simultaneous interactive ambiguity. Tires and Cooling do not overlap one another.
+Call Pit is active before service; Tires and Cooling are active only while parked. Therefore, approximate proximity between Call Pit and a service target is not simultaneous interactive ambiguity. Tires and Cooling do not overlap one another.
 
-The entire active mechanical boundary must be visible. An inner label or quieter fill may improve legibility, but it may not imply a smaller target. The established centers, half-sizes, orientation, tolerance, hold behavior, activation rules, and player-region behavior do not change in Tranche 4.
+The visible ring must honestly mark the target: the dial or circle is the affordance the Robot seats on, and the ±50 px detection slop is centered on it. The established centers, half-sizes, orientation, tolerance, hold behavior, activation rules, and player-region behavior do not change in Tranche 4.
 
 These physical targets overlap part of the central track envelope. Implementation must preserve the exact targets while ensuring their treatment does not erase cars, pit movement, or start/finish information. This is a capture-review problem, not permission to move the regions.
 
@@ -201,21 +221,21 @@ Fixed by this contract:
 - Central ownership by the race and brief global overlays only.
 - Per-player information hierarchy and dominant-instruction priority.
 - Stable throttle/condition grouping in each corner.
-- Throttle treatment: corner arc plus explicit state word, with the Ship as the needle (frame `17:14`).
-- Meter construction: fixed-size round dials, fuller = worse, dial doubles as the parked repair target (frame `35:2`).
-- Full state inventory and semantic copy purpose.
-- Exact physical action geometry and mechanics (issue #85 revision).
+- Throttle treatment: fan arc with the Ship as the needle; the lit sector's fill and label are the state read — no separate state word (frame `40:23`, superseding `17:14`'s state word).
+- Meter construction: fixed-size freestanding round dials, fuller = worse, dial doubles as the parked repair target (frames `35:2`, `40:23`).
+- No per-seat status or instruction copy (issue #77 Round 2 owner decision); instruction priority renders as zone emphasis.
+- Full state inventory and semantic priority in the UI model.
+- Exact physical action geometry, seat-cluster geometry, and mechanics (measured from `40:23` components).
 - Opposite-edge orientation and non-color redundancy.
 
-Resolved through the three owner-reviewed capture rounds in Issue #77:
+Resolved through the remaining owner-reviewed capture rounds in Issue #77:
 
-- Exact arc radius, band thickness, and dial sizing.
-- Exact placement of lap/place/stop, the state word, and the dominant instruction.
-- Safe-edge inset, line breaks, and type sizing within IMGUI.
-- Normal, warning, critical, missing-Piece, active, and finished visual variants.
-- How to reduce target fill/obstruction while retaining the full boundary.
+- Stroke fidelity of arcs and rings within IMGUI (scalloped wireframe strokes versus smooth).
+- Weights and emphasis of lit / ghost / selected / holding states.
+- Whether the dial's severity read needs a non-color cue at the dial itself (the car-side `H!!`/`T!!` cues currently carry the non-color channel).
+- Type sizing within IMGUI.
 - Exact duration and treatment of brief global transition messages.
-- (Deferred beyond Tranche 4: critical red-flash and repair animation.)
+- (Deferred beyond Tranche 4: critical red-flash and repair animation; a designed home for lap/stop status if playtests miss it.)
 
 No code-review decision may move a physical target, add a second dominant instruction, populate inactive corners, or reduce the central race to accommodate player chrome.
 
