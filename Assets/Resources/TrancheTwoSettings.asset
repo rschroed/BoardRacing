@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   preferBoardInputOnDevice: 1
   fixedStepSeconds: 0.016666668
-  laps: 5
+  laps: 6
   countdownSeconds: 3
   maximumSpeed: 360
   acceleration: 220

@@ -10,7 +10,8 @@ namespace BoardRacing.Domain
         {
             public PlayerId Id;
             public float Speed, Distance, FinishTime = -1f, Recovery;
-            public int PriorSection, Incidents;
+            public TrackSectionKind PriorKind;
+            public int Incidents;
             public bool Finished, IncidentThisStep;
             public float FuelUsed, TireWear, ServiceProgress, PitTimer;
             public PitService SelectedService;
@@ -32,8 +33,8 @@ namespace BoardRacing.Domain
             this.rules = rules;
             racers = new[]
             {
-                new RacerState { Id = PlayerId.Player1, PriorSection = track.Sample(0f).SectionIndex },
-                new RacerState { Id = PlayerId.Player2, PriorSection = track.Sample(0f).SectionIndex }
+                new RacerState { Id = PlayerId.Player1, PriorKind = track.Sample(0f).Kind },
+                new RacerState { Id = PlayerId.Player2, PriorKind = track.Sample(0f).Kind }
             };
             snapshot = BuildSnapshot();
         }
@@ -142,7 +143,12 @@ namespace BoardRacing.Domain
             racer.Recovery = Math.Max(0f, racer.Recovery - delta);
 
             var before = track.Sample(racer.Distance);
-            bool enteringCorner = before.Kind == TrackSectionKind.Corner && racer.PriorSection != before.SectionIndex;
+            // A designed corner is a fan of short chord segments (TrackCatalog), so
+            // corner entry is the straight-to-corner boundary — never the chord
+            // seams inside one arc. Scrub and wear charge once per corner, matching
+            // the single-segment corners the model was tuned on. (Assumes arcs are
+            // always separated by straights, which the catalog geometry tests pin.)
+            bool enteringCorner = before.Kind == TrackSectionKind.Corner && racer.PriorKind != TrackSectionKind.Corner;
             float cornerEntrySpeed = racer.Speed;
             float effectiveSafeSpeed = before.SafeSpeed;
             if (before.Kind == TrackSectionKind.Corner && rules.Conditions.Enabled)
@@ -155,7 +161,7 @@ namespace BoardRacing.Domain
                 racer.Incidents++;
             }
             if (enteringCorner) AddCornerWear(racer, before.SafeSpeed, cornerEntrySpeed);
-            racer.PriorSection = before.SectionIndex;
+            racer.PriorKind = before.Kind;
 
             float prior = racer.Distance;
             racer.Distance += racer.Speed * delta;
@@ -233,7 +239,7 @@ namespace BoardRacing.Domain
             // The pit lane rejoins the track where it physically ends, not back at
             // the start/finish line the car entered from.
             racer.Distance += rules.Pit.ExitRejoinDistance;
-            racer.PriorSection = track.Sample(racer.Distance).SectionIndex;
+            racer.PriorKind = track.Sample(racer.Distance).Kind;
         }
 
         private static void FinishRacer(RacerState racer, float distance, float finishTime)
@@ -297,7 +303,7 @@ namespace BoardRacing.Domain
             {
                 racer.Speed = racer.Distance = racer.Recovery = 0f; racer.FinishTime = -1f;
                 racer.Finished = racer.IncidentThisStep = false; racer.Incidents = 0;
-                racer.PriorSection = track.Sample(0f).SectionIndex;
+                racer.PriorKind = track.Sample(0f).Kind;
                 racer.FuelUsed = racer.TireWear = racer.ServiceProgress = racer.PitTimer = 0f;
                 racer.SelectedService = PitService.None; racer.PitPhase = PitPhase.OnTrack;
                 racer.CompletedServices = 0;

@@ -29,7 +29,6 @@ namespace BoardRacing.Runtime
         public static bool SuppressEditorDiagnostics;
 #endif
 
-        private const float TrackVerticalScale = .33f;
         private const float TrackWidth = 64f;
         // Zone/label palette from the design authority (frame 40:23): ghosted chrome,
         // Fuel's warm hue (the frame still labels this dial HEAT — Figma update pending
@@ -37,13 +36,16 @@ namespace BoardRacing.Runtime
         private static readonly Color GhostColor = new Color(.4f, .44f, .5f, .55f);
         private static readonly Color FuelLabelColor = new Color(.95f, .55f, .2f);
         private static readonly Color TiresLabelColor = new Color(.35f, .72f, .5f);
-        private static readonly Vec2 PitEntry = new Vec2(650f, 455f);
-        private static readonly Vec2 PlayerOnePitBox = new Vec2(820f, 455f);
-        private static readonly Vec2 PlayerTwoPitBox = new Vec2(1100f, 455f);
-        private static readonly Vec2 PitExit = new Vec2(1370f, 455f);
+        // Pit complex re-derived from the Wedge top straight (issue #88): entry
+        // ramps off the start/finish line, the lane parallels the straight inside
+        // the loop, and the exit rejoins the straight at pitExitRejoinDistance.
+        private static readonly Vec2 PitEntry = new Vec2(680f, 455f);
+        private static readonly Vec2 PlayerOnePitBox = new Vec2(860f, 455f);
+        private static readonly Vec2 PlayerTwoPitBox = new Vec2(1120f, 455f);
+        private static readonly Vec2 PitExit = new Vec2(1353f, 455f);
         // The lane blends onto the track just before the rejoin sample — no return
         // trip: the simulation resumes the car where the pit lane physically ends.
-        private static readonly Vec2 PitMergeApproach = new Vec2(1300f, 452f);
+        private static readonly Vec2 PitMergeApproach = new Vec2(1283f, 452f);
         // Shared geometry for the pause and race-finished overlays in 1920×1080 GUI
         // space. The button rect doubles as the touch hit-target polled in Update:
         // the project runs the new Input System only, so IMGUI never receives
@@ -74,7 +76,7 @@ namespace BoardRacing.Runtime
 #endif
             foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) CreateCrewAdapter(id);
             AttachResetSource(activeProvider);
-            simulation = new RaceSimulation(TrackDefinition.Placeholder(raceSettings.cornerSafeSpeed),
+            simulation = new RaceSimulation(TrackCatalog.Wedge(raceSettings.cornerSafeSpeed),
                 raceSettings.ToRules(strategySettings.requiredServiceCount, strategySettings.ToConditionRules(),
                     strategySettings.ToPitRules()));
         }
@@ -282,20 +284,17 @@ namespace BoardRacing.Runtime
             foreach (var segment in simulation.Track.Segments)
             {
                 Color color = segment.Kind == TrackSectionKind.Corner ? new Color(.22f, .28f, .36f) : new Color(.16f, .2f, .27f);
-                DrawLine(ProjectTrack(segment.Start), ProjectTrack(segment.End), TrackWidth, color);
-                DrawLine(ProjectTrack(segment.Start), ProjectTrack(segment.End), 3f, new Color(.55f, .62f, .7f, .5f));
+                DrawLine(segment.Start, segment.End, TrackWidth, color);
+                DrawLine(segment.Start, segment.End, 3f, new Color(.55f, .62f, .7f, .5f));
             }
-            Vec2 line = ProjectTrack(simulation.Track.Sample(0f).Position);
+            Vec2 line = simulation.Track.Sample(0f).Position;
             GUI.DrawTexture(new Rect(line.X - 12, line.Y - 28, 24, 56), Texture2D.whiteTexture,
                 ScaleMode.StretchToFill, true, 0, Color.white, 0, 0);
         }
 
-        private static Vec2 ProjectTrack(Vec2 point) =>
-            new Vec2(point.X, 540f + (point.Y - 540f) * TrackVerticalScale);
-
         private void DrawPitLane()
         {
-            Vec2 start = ProjectTrack(simulation.Track.Sample(0f).Position);
+            Vec2 start = simulation.Track.Sample(0f).Position;
             DrawLine(start, PitEntry, 30f, new Color(.08f, .11f, .15f));
             DrawLine(PitEntry, PitExit, 30f, new Color(.08f, .11f, .15f));
             DrawPitMergeLane(30f, new Color(.08f, .11f, .15f));
@@ -445,15 +444,14 @@ namespace BoardRacing.Runtime
         }
 
         private PitLanePresentationLayout PitLayout() => new PitLanePresentationLayout(
-            ProjectTrack(simulation.Track.Sample(0f).Position), PitEntry, PlayerOnePitBox,
+            simulation.Track.Sample(0f).Position, PitEntry, PlayerOnePitBox,
             PlayerTwoPitBox, PitExit, PitMergeApproach,
-            ProjectTrack(simulation.Track.Sample(strategySettings.pitExitRejoinDistance).Position));
+            simulation.Track.Sample(strategySettings.pitExitRejoinDistance).Position);
 
         private void CarPose(RacerSnapshot racer, out Vector2 position, out Vector2 tangent)
         {
-            Vec2 trackPosition = ProjectTrack(racer.Track.Position);
-            var trackTangent = new Vec2(racer.Track.Tangent.X, racer.Track.Tangent.Y * TrackVerticalScale);
-            CarPresentationPose pose = PitLanePresentationMapper.From(racer, trackPosition, trackTangent, PitLayout());
+            CarPresentationPose pose = PitLanePresentationMapper.From(racer, racer.Track.Position,
+                racer.Track.Tangent, PitLayout());
             position = new Vector2(pose.Position.X, pose.Position.Y);
             tangent = new Vector2(pose.Tangent.X, pose.Tangent.Y);
         }

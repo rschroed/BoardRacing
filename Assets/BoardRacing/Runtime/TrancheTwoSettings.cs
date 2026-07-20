@@ -8,7 +8,10 @@ namespace BoardRacing.Runtime
     {
         public bool preferBoardInputOnDevice = true;
         public float fixedStepSeconds = 1f / 60f;
-        public int laps = 5;
+        // 6 laps × the Wedge's 2628 perimeter ≈ the placeholder's 5 × 3508 race
+        // distance, keeping race duration roughly where the owner tuned it, with
+        // the tight hairpin adding scrub time per lap (issue #88).
+        public int laps = 6;
         public float countdownSeconds = 3f;
         public float maximumSpeed = 360f;
         public float acceleration = 220f;
