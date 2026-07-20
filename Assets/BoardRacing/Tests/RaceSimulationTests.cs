@@ -554,6 +554,24 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void AFinalLapPitCallLosesToTheFinishLineWhenNoServiceIsRequired()
+        {
+            // Production config (issue #92): no mandatory stop. A pit call pending at
+            // the final line must not eat the finish (issue #95) — the racer
+            // classifies at the line and the call expires with the race.
+            var simulation = StartedPitSimulation(1, 12f, requiredServiceCount: 0);
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                PitService.None, true) });
+            Assert.That(Player(simulation, PlayerId.Player1).Pit.Phase,
+                Is.EqualTo(PitPhase.Requested));
+            AdvanceUntilFinished(simulation, PlayerId.Player1);
+            var finished = Player(simulation, PlayerId.Player1);
+            Assert.That(finished.Finished, Is.True);
+            Assert.That(finished.TotalDistance, Is.EqualTo(simulation.Track.Length).Within(.001f));
+            Assert.That(finished.Pit.Phase, Is.EqualTo(PitPhase.OnTrack));
+        }
+
+        [Test]
         public void LateFinishAtTheLineTakesPriorityOverTheRejoinHop()
         {
             var simulation = StartedPitSimulation(1, 12f);
@@ -796,7 +814,8 @@ namespace BoardRacing.Tests
             new RacerCommand(PlayerId.Player2, ThrottleStep.Brake, false, false)
         };
 
-        private static RaceSimulation StartedPitSimulation(int laps, float exitRejoinDistance = 0f)
+        private static RaceSimulation StartedPitSimulation(int laps, float exitRejoinDistance = 0f,
+            int requiredServiceCount = 1)
         {
             var track = new TrackDefinition(new[]
             {
@@ -805,7 +824,7 @@ namespace BoardRacing.Tests
             });
             var conditions = new ConditionRules(.1f, .2f, .8f, .8f, .8f, .2f, .2f, .2f, .8f);
             var rules = new RaceRules(laps, 0f, 100f, 1000f, 100f, 100f, .5f, .2f, .5f,
-                5f, 1f, 1f, 1, conditions, new PitRules(.2f, .2f, exitRejoinDistance));
+                5f, 1f, 1f, requiredServiceCount, conditions, new PitRules(.2f, .2f, exitRejoinDistance));
             return StartedSimulation(track, rules);
         }
 
