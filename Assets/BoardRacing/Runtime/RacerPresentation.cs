@@ -7,12 +7,12 @@ namespace BoardRacing.Runtime
 
     public readonly struct CarConditionVisualState
     {
-        public CarConditionVisualState(float heat, float tireWear,
-            ConditionVisualLevel heatLevel, ConditionVisualLevel tireLevel)
-        { Heat = heat; TireWear = tireWear; HeatLevel = heatLevel; TireLevel = tireLevel; }
-        public float Heat { get; }
+        public CarConditionVisualState(float fuelUsed, float tireWear,
+            ConditionVisualLevel fuelLevel, ConditionVisualLevel tireLevel)
+        { FuelUsed = fuelUsed; TireWear = tireWear; FuelLevel = fuelLevel; TireLevel = tireLevel; }
+        public float FuelUsed { get; }
         public float TireWear { get; }
-        public ConditionVisualLevel HeatLevel { get; }
+        public ConditionVisualLevel FuelLevel { get; }
         public ConditionVisualLevel TireLevel { get; }
     }
 
@@ -26,11 +26,19 @@ namespace BoardRacing.Runtime
         public static CarConditionVisualState From(RacerConditionSnapshot condition, ConditionRules rules)
         {
             if (!rules.Enabled)
-                return new CarConditionVisualState(condition.Heat, condition.TireWear,
+                return new CarConditionVisualState(condition.FuelUsed, condition.TireWear,
                     ConditionVisualLevel.Normal, ConditionVisualLevel.Normal);
-            return new CarConditionVisualState(condition.Heat, condition.TireWear,
-                Level(condition.Heat, rules.HeatPenaltyThreshold),
-                Level(condition.TireWear, rules.TirePenaltyThreshold));
+            return new CarConditionVisualState(condition.FuelUsed, condition.TireWear,
+                FuelLevel(condition, rules), Level(condition.TireWear, rules.TirePenaltyThreshold));
+        }
+
+        // Fuel is critical only once the tank is actually empty (the limp-mode
+        // penalty); the warning threshold is the reserve light.
+        private static ConditionVisualLevel FuelLevel(RacerConditionSnapshot condition, ConditionRules rules)
+        {
+            if (condition.FuelPenaltyActive) return ConditionVisualLevel.Critical;
+            if (condition.FuelUsed >= rules.FuelWarningThreshold) return ConditionVisualLevel.Warning;
+            return ConditionVisualLevel.Normal;
         }
 
         private static ConditionVisualLevel Level(float value, float criticalThreshold)
@@ -44,20 +52,22 @@ namespace BoardRacing.Runtime
     public readonly struct PitLanePresentationLayout
     {
         public PitLanePresentationLayout(Vec2 pitLine, Vec2 entry, Vec2 playerOneBox,
-            Vec2 playerTwoBox, Vec2 exit, Vec2 returnBend, Vec2 returnLane, Vec2 mergeApproach)
+            Vec2 playerTwoBox, Vec2 exit, Vec2 mergeApproach, Vec2 exitRejoin)
         {
             PitLine = pitLine; Entry = entry; PlayerOneBox = playerOneBox;
-            PlayerTwoBox = playerTwoBox; Exit = exit; ReturnBend = returnBend;
-            ReturnLane = returnLane; MergeApproach = mergeApproach;
+            PlayerTwoBox = playerTwoBox; Exit = exit;
+            MergeApproach = mergeApproach; ExitRejoin = exitRejoin;
         }
         public Vec2 PitLine { get; }
         public Vec2 Entry { get; }
         public Vec2 PlayerOneBox { get; }
         public Vec2 PlayerTwoBox { get; }
         public Vec2 Exit { get; }
-        public Vec2 ReturnBend { get; }
-        public Vec2 ReturnLane { get; }
         public Vec2 MergeApproach { get; }
+        // Where the pit lane physically meets the track again — the simulation
+        // resumes the car at the matching track distance, so the exit animation
+        // is a short forward merge instead of a return trip to the start line.
+        public Vec2 ExitRejoin { get; }
         public Vec2 Box(PlayerId playerId) => playerId == PlayerId.Player1 ? PlayerOneBox : PlayerTwoBox;
     }
 
@@ -89,8 +99,7 @@ namespace BoardRacing.Runtime
         public static CarPresentationPose ExitPose(PlayerId playerId, float progress, bool finished,
             PitLanePresentationLayout layout) => AlongSpline(new[]
             {
-                layout.Box(playerId), layout.Exit, layout.ReturnBend,
-                layout.ReturnLane, layout.MergeApproach, layout.PitLine
+                layout.Box(playerId), layout.MergeApproach, layout.ExitRejoin
             }, progress, finished);
 
         private static CarPresentationPose AlongSpline(Vec2[] points, float progress, bool finished)

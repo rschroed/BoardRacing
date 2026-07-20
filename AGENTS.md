@@ -218,7 +218,7 @@ Do not imply simulator or hardware coverage when only editor controls were teste
 
 Before handing off a change:
 
-- Run relevant automated tests.
+- Run relevant automated tests. The EditMode gate alone is not sufficient for input or geometry changes: the Board SDK simulator integration tests live in the PlayMode suite (`Assets/BoardRacing/PlayModeTests`) and only run with `-runTests -testPlatform PlayMode`. Run both suites in batch mode (`Unity -batchmode -runTests -projectPath <project> -testPlatform EditMode|PlayMode -testResults <xml> -logFile <log>`) when a change touches piece input, seat geometry, or the settings assets they read.
 - Confirm contact-loss behavior fails safe.
 - Check top-down readability at 1920×1080.
 - Check simultaneous input when the change touches Piece behavior.

@@ -13,11 +13,13 @@ MonoBehaviour:
   m_Name: TrancheOneSettings
   m_EditorClassIdentifier: 
   throttleHysteresisDegrees: 8
+  throttleBrakeDegrees: 275
+  throttleDriveDegrees: 225
+  throttleBoostDegrees: 175
   preferBoardInputOnDevice: 1
   playerRegionBoundaryY: 540
-  playerOneServiceCenter: {x: 1325, y: 270}
-  playerTwoServiceCenter: {x: 595, y: 810}
-  serviceHalfSize: {x: 180, y: 150}
+  playerOneServiceCenter: {x: 1832, y: 398}
+  playerTwoServiceCenter: {x: 88, y: 682}
   targetAngleDegrees: 0
   alignmentToleranceDegrees: 15
   holdDurationSeconds: 1.5

@@ -49,7 +49,13 @@ namespace BoardRacing.Runtime
             bool awaitingRelease = false;
             RacerSnapshot playerOne = Racer(PlayerId.Player1, track.Sample(540f), place: 1);
             RacerSnapshot playerTwo = Racer(PlayerId.Player2, track.Sample(1080f), place: 2);
-            var crew = new Dictionary<PlayerId, CrewStrategyOutput>();
+            var crew = new Dictionary<PlayerId, CrewStrategyOutput>
+            {
+                [PlayerId.Player1] = new CrewStrategyOutput(PitService.None, false,
+                    PitCallState.NeedsPlacement, default, default),
+                [PlayerId.Player2] = new CrewStrategyOutput(PitService.None, false,
+                    PitCallState.NeedsPlacement, default, default)
+            };
 
             switch (scenario)
             {
@@ -64,11 +70,11 @@ namespace BoardRacing.Runtime
                     break;
                 case RaceUiPreviewScenario.Warning:
                     playerOne = Racer(PlayerId.Player1, track.Sample(540f), place: 1,
-                        heat: conditionRules.HeatPenaltyThreshold * .65f);
+                        fuelUsed: Math.Min(.99f, conditionRules.FuelWarningThreshold + .1f));
                     break;
                 case RaceUiPreviewScenario.Critical:
                     playerOne = Racer(PlayerId.Player1, track.Sample(540f), place: 1,
-                        heat: .9f, heatCritical: true);
+                        fuelUsed: 1f, fuelEmpty: true);
                     break;
                 case RaceUiPreviewScenario.PitCallHolding:
                     crew[PlayerId.Player1] = new CrewStrategyOutput(PitService.None, false,
@@ -77,10 +83,10 @@ namespace BoardRacing.Runtime
                 case RaceUiPreviewScenario.InService:
                     playerOne = Racer(PlayerId.Player1, track.Sample(0f), place: 1,
                         pitPhase: PitPhase.InService, selectedService: PitService.Tires,
-                        serviceProgress: .55f);
+                        serviceProgress: .55f, tireWear: .45f);
                     crew[PlayerId.Player1] = new CrewStrategyOutput(PitService.Tires, false,
-                        PitCallState.Unavailable, default,
-                        new PitActionResult(PitActionState.Holding, .55f, false));
+                        PitCallState.NeedsPlacement, default,
+                        new PitActionResult(PitActionState.Stirring, 0f, false), .002f);
                     break;
                 case RaceUiPreviewScenario.SplitFinish:
                     playerOne = Racer(PlayerId.Player1, track.Sample(0f), place: 1,
@@ -124,11 +130,11 @@ namespace BoardRacing.Runtime
 
         private static RacerSnapshot Racer(PlayerId id, TrackSample track, int place,
             PitPhase pitPhase = PitPhase.OnTrack, PitService selectedService = PitService.None,
-            float serviceProgress = 0f, float heat = .2f, float tireWear = .2f,
-            bool heatCritical = false, bool tireCritical = false, bool finished = false,
+            float serviceProgress = 0f, float fuelUsed = .2f, float tireWear = .2f,
+            bool fuelEmpty = false, bool tireCritical = false, bool finished = false,
             bool finishEligible = false)
         {
-            var condition = new RacerConditionSnapshot(heat, tireWear, heatCritical, tireCritical);
+            var condition = new RacerConditionSnapshot(fuelUsed, tireWear, fuelEmpty, tireCritical);
             var pit = new RacerPitSnapshot(selectedService, pitPhase, serviceProgress,
                 finishEligible ? 1 : 0, finishEligible, 0f);
             return new RacerSnapshot(id, finished ? 0f : 100f, 100f, 2, place, finished,

@@ -22,18 +22,73 @@ namespace BoardRacing.Tests
             AssertContained(layout.PlayerTwo.CornerBounds, layout.PlayerTwo.SafeContentBounds);
             AssertContained(layout.Canvas, layout.SharedRaceBounds);
             AssertContained(layout.SharedRaceBounds, layout.CenterOverlayBounds);
-            Assert.That(layout.SharedRaceBounds.Overlaps(layout.PlayerOne.DraftContextBounds), Is.False);
-            Assert.That(layout.SharedRaceBounds.Overlaps(layout.PlayerTwo.DraftContextBounds), Is.False);
         }
 
         [Test]
-        public void DraftContextBoundsRemainMirroredWithoutClaimingFinalCornerPlacement()
+        public void CornerControllerGeometryMatchesTheMeasuredSeatComponentAndMirrors()
         {
             RaceLayout layout = Layout();
 
-            AssertMirrored(layout.PlayerOne.DraftContextBounds, layout.PlayerTwo.DraftContextBounds);
             AssertMirrored(layout.PlayerOne.CornerBounds, layout.PlayerTwo.CornerBounds);
             AssertMirrored(layout.PlayerOne.SafeContentBounds, layout.PlayerTwo.SafeContentBounds);
+            CornerControllerLayout one = layout.PlayerOne.Controller;
+            CornerControllerLayout two = layout.PlayerTwo.Controller;
+            // Measured from frame 40:23, right-variant component 44:124 (issue #77 Round 2).
+            Assert.That(one.ArcCenter, Is.EqualTo(new Vector2(1863f, 1025f)));
+            Assert.That(one.ShipWellCenter, Is.EqualTo(new Vector2(1787f, 938f)));
+            Assert.That(two.ArcCenter, Is.EqualTo(new Vector2(57f, 55f)));
+            Assert.That(two.ShipWellCenter, Is.EqualTo(new Vector2(133f, 142f)));
+            Assert.That(one.ThrottleRadius, Is.EqualTo(250f));
+            Assert.That(one.SectorSweepDegrees, Is.EqualTo(32f));
+            Assert.That(one.SectorAngle(ThrottleStep.Brake), Is.EqualTo(190f));
+            Assert.That(one.SectorAngle(ThrottleStep.Drive), Is.EqualTo(226f));
+            Assert.That(one.SectorAngle(ThrottleStep.Boost), Is.EqualTo(260f));
+            foreach (ThrottleStep step in new[]
+                { ThrottleStep.Brake, ThrottleStep.Drive, ThrottleStep.Boost })
+            {
+                // Angles are shared; the opposite seat's 180° comes from RotationDegrees.
+                Assert.That(two.SectorAngle(step), Is.EqualTo(one.SectorAngle(step)));
+                AssertMirrored(one.SectorLabel(step).Bounds, two.SectorLabel(step).Bounds);
+                Assert.That(two.SectorLabel(step).RotationDegrees,
+                    Is.EqualTo(one.SectorLabel(step).RotationDegrees));
+                // Sector labels ride the arc band.
+                float distance = Vector2.Distance(one.SectorLabel(step).Bounds.center, one.ArcCenter);
+                Assert.That(distance, Is.InRange(one.ThrottleRadius - 62f, one.ThrottleRadius));
+            }
+            AssertMirrored(one.TiresLabel.Bounds, two.TiresLabel.Bounds);
+            AssertMirrored(one.FuelLabel.Bounds, two.FuelLabel.Bounds);
+            AssertMirrored(one.CallPitLabel.Bounds, two.CallPitLabel.Bounds);
+            foreach (PlayerLayout player in new[] { layout.PlayerOne, layout.PlayerTwo })
+            {
+                CornerControllerLayout controller = player.Controller;
+                // Dial labels ride each dial's rim; Call Pit's label sits inside its circle.
+                Assert.That(Vector2.Distance(controller.TiresLabel.Bounds.center,
+                    player.Tires.center), Is.LessThanOrEqualTo(70f));
+                Assert.That(Vector2.Distance(controller.FuelLabel.Bounds.center,
+                    player.Fuel.center), Is.LessThanOrEqualTo(70f));
+                Assert.That(controller.CallPitLabel.Bounds.center, Is.EqualTo(player.CallPit.center));
+                // The Ship's rotational footprint clears both dial rings.
+                foreach (Rect dial in new[] { player.Tires, player.Fuel })
+                    Assert.That(Vector2.Distance(controller.ShipWellCenter, dial.center),
+                        Is.GreaterThan(controller.ShipWellRadius + controller.DialRadius));
+                foreach (RotatedLabel label in new[] { controller.BrakeLabel, controller.DriveLabel,
+                    controller.BoostLabel, controller.TiresLabel, controller.FuelLabel,
+                    controller.CallPitLabel })
+                    AssertContained(layout.Canvas, label.Bounds);
+            }
+        }
+
+        [Test]
+        public void StableRacingUsesSpatialThrottleGuideAndOneCompactInstruction()
+        {
+            RaceUiModel model = Build(RacePhase.Racing, Racer(PlayerId.Player1),
+                Racer(PlayerId.Player2), Controls());
+
+            Assert.That(model.PlayerOne.Status, Is.EqualTo("LAP 3 / 5 · 1ST · STOP REQUIRED"));
+            Assert.That(model.PlayerOne.Status, Does.Not.Contain("DRIVE"));
+            Assert.That(model.PlayerOne.PrimaryInstruction,
+                Is.EqualTo("DRIVE WITH SHIP · ROBOT CAN CALL PIT"));
+            AssertSingleInstruction(model.PlayerOne);
         }
 
         [Test]
@@ -41,24 +96,50 @@ namespace BoardRacing.Tests
         {
             RaceLayout layout = Layout();
 
-            Assert.That(layout.PlayerOne.CallPit, Is.EqualTo(new Rect(1185f, 690f, 280f, 240f)));
-            Assert.That(layout.PlayerOne.Tires, Is.EqualTo(new Rect(995f, 690f, 280f, 240f)));
-            Assert.That(layout.PlayerOne.Cooling, Is.EqualTo(new Rect(1375f, 690f, 280f, 240f)));
-            Assert.That(layout.PlayerTwo.CallPit, Is.EqualTo(new Rect(455f, 150f, 280f, 240f)));
-            Assert.That(layout.PlayerTwo.Tires, Is.EqualTo(new Rect(645f, 150f, 280f, 240f)));
-            Assert.That(layout.PlayerTwo.Cooling, Is.EqualTo(new Rect(265f, 150f, 280f, 240f)));
+            Assert.That(layout.PlayerOne.CallPit, Is.EqualTo(new Rect(1782f, 632f, 100f, 100f)));
+            Assert.That(layout.PlayerOne.Tires, Is.EqualTo(new Rect(1642f, 709f, 100f, 100f)));
+            Assert.That(layout.PlayerOne.Fuel, Is.EqualTo(new Rect(1540f, 818f, 100f, 100f)));
+            Assert.That(layout.PlayerTwo.CallPit, Is.EqualTo(new Rect(38f, 348f, 100f, 100f)));
+            Assert.That(layout.PlayerTwo.Tires, Is.EqualTo(new Rect(178f, 271f, 100f, 100f)));
+            Assert.That(layout.PlayerTwo.Fuel, Is.EqualTo(new Rect(280f, 162f, 100f, 100f)));
             AssertMirrored(layout.PlayerOne.CallPit, layout.PlayerTwo.CallPit);
             AssertMirrored(layout.PlayerOne.Tires, layout.PlayerTwo.Tires);
-            AssertMirrored(layout.PlayerOne.Cooling, layout.PlayerTwo.Cooling);
+            AssertMirrored(layout.PlayerOne.Fuel, layout.PlayerTwo.Fuel);
+        }
+
+        [Test]
+        public void ShortEdgeTargetsStayOnBoardInsideEachPlayersRegionAndApart()
+        {
+            RaceLayout layout = Layout();
+
+            foreach (PlayerLayout player in new[] { layout.PlayerOne, layout.PlayerTwo })
+            {
+                foreach (Rect zone in new[] { player.CallPit, player.Tires, player.Fuel })
+                {
+                    AssertContained(layout.Canvas, zone);
+                    AssertContained(player.CornerBounds.y > 0f
+                        ? new Rect(0f, 540f, 1920f, 540f) : new Rect(0f, 0f, 1920f, 540f), zone);
+                }
+                Assert.That(player.Tires.Overlaps(player.Fuel), Is.False);
+            }
+            // Call Pit hugs each seat's short board edge.
+            Assert.That(layout.PlayerOne.CallPit.xMax, Is.GreaterThanOrEqualTo(1880f));
+            Assert.That(layout.PlayerTwo.CallPit.xMin, Is.LessThanOrEqualTo(40f));
         }
 
         [Test]
         public void LayoutRejectsInvalidTargetGeometry()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => RaceLayout.Create(
-                new Vector2(1325f, 270f), new Vector2(595f, 810f), -1f, new Vector2(140f, 120f)));
-            Assert.Throws<ArgumentException>(() => RaceLayout.Create(
-                new Vector2(1325f, 270f), new Vector2(595f, 810f), 190f, Vector2.zero));
+            ServiceTargets playerOne = PlayerOneTargets();
+            ServiceTargets playerTwo = PlayerTwoTargets();
+            Assert.Throws<ArgumentException>(() => RaceLayout.Create(playerOne, playerTwo,
+                Vector2.zero));
+            var overlapping = new ServiceTargets(new Vector2(1832f, 398f),
+                new Vector2(1692f, 321f), new Vector2(1650f, 321f));
+            Assert.Throws<ArgumentException>(() => RaceLayout.Create(overlapping, playerTwo,
+                new Vector2(50f, 50f)));
+            Assert.Throws<ArgumentException>(() => RaceLayout.Create(playerOne, overlapping,
+                new Vector2(50f, 50f)));
         }
 
         [Test]
@@ -74,7 +155,7 @@ namespace BoardRacing.Tests
         [Test]
         public void ActiveServiceOutranksCriticalConditionAndNamesOneAction()
         {
-            RacerSnapshot playerOne = Racer(PlayerId.Player1, PitPhase.InService, heatCritical: true,
+            RacerSnapshot playerOne = Racer(PlayerId.Player1, PitPhase.InService, fuelEmpty: true,
                 service: PitService.Tires, serviceProgress: .62f);
             RaceUiModel model = Build(RacePhase.Racing, playerOne, Racer(PlayerId.Player2),
                 Controls(playerOneCrewPresent: false));
@@ -82,14 +163,14 @@ namespace BoardRacing.Tests
             Assert.That(model.PlayerOne.Status, Is.EqualTo("CAR PARKED · TIRES · 62%"));
             Assert.That(model.PlayerOne.PrimaryInstructionKind,
                 Is.EqualTo(PlayerUiInstructionKind.PlaceRobotForService));
-            Assert.That(model.PlayerOne.PrimaryInstruction, Does.Not.Contain("HEAT CRITICAL"));
+            Assert.That(model.PlayerOne.PrimaryInstruction, Does.Not.Contain("FUEL EMPTY"));
             AssertSingleInstruction(model.PlayerOne);
         }
 
         [Test]
         public void ActivePitCallOutranksRecoveryAndCriticalConditions()
         {
-            RacerSnapshot playerOne = Racer(PlayerId.Player1, recovery: .8f, heatCritical: true);
+            RacerSnapshot playerOne = Racer(PlayerId.Player1, recovery: .8f, fuelEmpty: true);
             var crew = new Dictionary<PlayerId, CrewStrategyOutput>
             {
                 [PlayerId.Player1] = new CrewStrategyOutput(PitService.None, false, PitCallState.Holding,
@@ -104,7 +185,7 @@ namespace BoardRacing.Tests
         [Test]
         public void RecoveryOutranksCriticalConditionsDuringRacing()
         {
-            RacerSnapshot playerOne = Racer(PlayerId.Player1, recovery: .8f, heatCritical: true);
+            RacerSnapshot playerOne = Racer(PlayerId.Player1, recovery: .8f, fuelEmpty: true);
             RaceUiModel model = Build(RacePhase.Racing, playerOne, Racer(PlayerId.Player2), Controls());
 
             Assert.That(model.PlayerOne.PrimaryInstructionKind,
@@ -112,12 +193,12 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void HeatWinsDeterministicTieWhenBothConditionsHaveSameSeverity()
+        public void FuelWinsDeterministicTieWhenBothConditionsHaveSameSeverity()
         {
-            RacerSnapshot playerOne = Racer(PlayerId.Player1, heatCritical: true, tireCritical: true);
+            RacerSnapshot playerOne = Racer(PlayerId.Player1, fuelEmpty: true, tireCritical: true);
             RaceUiModel model = Build(RacePhase.Racing, playerOne, Racer(PlayerId.Player2), Controls());
 
-            Assert.That(model.PlayerOne.PrimaryInstructionKind, Is.EqualTo(PlayerUiInstructionKind.HeatCritical));
+            Assert.That(model.PlayerOne.PrimaryInstructionKind, Is.EqualTo(PlayerUiInstructionKind.FuelEmpty));
             Assert.That(model.PlayerOne.Condition.TireLevel, Is.EqualTo(ConditionVisualLevel.Critical));
         }
 
@@ -161,13 +242,13 @@ namespace BoardRacing.Tests
 
             Assert.That(RaceUiPreviewFixtures.Create(RaceUiPreviewScenario.Warning, track,
                     ConditionRules.Defaults, 5).Ui.PlayerOne.PrimaryInstructionKind,
-                Is.EqualTo(PlayerUiInstructionKind.HeatWarning));
+                Is.EqualTo(PlayerUiInstructionKind.FuelLow));
             Assert.That(RaceUiPreviewFixtures.Create(RaceUiPreviewScenario.Critical, track,
                     ConditionRules.Defaults, 5).Ui.PlayerOne.PrimaryInstructionKind,
-                Is.EqualTo(PlayerUiInstructionKind.HeatCritical));
+                Is.EqualTo(PlayerUiInstructionKind.FuelEmpty));
             Assert.That(RaceUiPreviewFixtures.Create(RaceUiPreviewScenario.InService, track,
                     ConditionRules.Defaults, 5).Ui.PlayerOne.PrimaryInstructionKind,
-                Is.EqualTo(PlayerUiInstructionKind.HoldService));
+                Is.EqualTo(PlayerUiInstructionKind.StirService));
             Assert.That(RaceUiPreviewFixtures.Create(RaceUiPreviewScenario.SplitFinish, track,
                     ConditionRules.Defaults, 5).Ui.CenterMessageKind,
                 Is.EqualTo(CenterMessageKind.SplitFinish));
@@ -179,8 +260,16 @@ namespace BoardRacing.Tests
                 Is.EqualTo(PlayerUiInstructionKind.RematchRelease));
         }
 
-        private static RaceLayout Layout() => RaceLayout.Create(new Vector2(1325f, 270f),
-            new Vector2(595f, 810f), 190f, new Vector2(140f, 120f));
+        // Contract geometry from docs/gameplay/wireframe-ui.md (issue #77 Round 2, measured
+        // from frame 40:23 component 44:124).
+        private static ServiceTargets PlayerOneTargets() => new ServiceTargets(
+            new Vector2(1832f, 398f), new Vector2(1692f, 321f), new Vector2(1590f, 212f));
+
+        private static ServiceTargets PlayerTwoTargets() => new ServiceTargets(
+            new Vector2(88f, 682f), new Vector2(228f, 759f), new Vector2(330f, 868f));
+
+        private static RaceLayout Layout() => RaceLayout.Create(PlayerOneTargets(),
+            PlayerTwoTargets(), new Vector2(50f, 50f));
 
         private static RaceUiModel Build(RacePhase phase, RacerSnapshot playerOne, RacerSnapshot playerTwo,
             IReadOnlyList<PlayerControlSnapshot> controls,
@@ -209,14 +298,14 @@ namespace BoardRacing.Tests
         }
 
         private static RacerSnapshot Racer(PlayerId id, PitPhase pitPhase = PitPhase.OnTrack,
-            float recovery = 0f, bool heatCritical = false, bool tireCritical = false,
+            float recovery = 0f, bool fuelEmpty = false, bool tireCritical = false,
             PitService service = PitService.None, float serviceProgress = 0f,
-            bool finished = false, int place = 1, float heat = .2f, float tireWear = .2f)
+            bool finished = false, int place = 1, float fuelUsed = .2f, float tireWear = .2f)
         {
             var track = new TrackSample(new Vec2(960f, 540f), new Vec2(1f, 0f), 0,
                 TrackSectionKind.Straight, float.PositiveInfinity);
-            var condition = new RacerConditionSnapshot(heatCritical ? .9f : heat,
-                tireCritical ? .9f : tireWear, heatCritical, tireCritical);
+            var condition = new RacerConditionSnapshot(fuelEmpty ? .9f : fuelUsed,
+                tireCritical ? .9f : tireWear, fuelEmpty, tireCritical);
             var pit = new RacerPitSnapshot(service, pitPhase, serviceProgress, finished ? 1 : 0,
                 finished, 0f);
             return new RacerSnapshot(id, 100f, 100f, 2, place, finished, finished ? 20f : -1f,

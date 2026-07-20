@@ -138,9 +138,9 @@ namespace BoardRacing.Tests
             var simulation = new RaceSimulation(TrackDefinition.Placeholder(), RaceRules.TrancheThreeDefaults);
             foreach (var racer in simulation.Snapshot.Racers)
             {
-                Assert.That(racer.Condition.Heat, Is.Zero);
+                Assert.That(racer.Condition.FuelUsed, Is.Zero);
                 Assert.That(racer.Condition.TireWear, Is.Zero);
-                Assert.That(racer.Condition.HeatPenaltyActive, Is.False);
+                Assert.That(racer.Condition.FuelPenaltyActive, Is.False);
                 Assert.That(racer.Condition.TirePenaltyActive, Is.False);
                 Assert.That(racer.Pit.SelectedService, Is.EqualTo(PitService.None));
                 Assert.That(racer.Pit.Phase, Is.EqualTo(PitPhase.OnTrack));
@@ -158,7 +158,7 @@ namespace BoardRacing.Tests
             simulation.Step(1f / 60f, new[]
             {
                 StrategyCommand(PlayerId.Player1, PitService.Tires, true),
-                StrategyCommand(PlayerId.Player2, PitService.Cooling, false)
+                StrategyCommand(PlayerId.Player2, PitService.Fuel, false)
             });
 
             var p1 = Player(simulation, PlayerId.Player1);
@@ -173,7 +173,7 @@ namespace BoardRacing.Tests
             Assert.That(Player(simulation, PlayerId.Player2).Pit.Phase, Is.EqualTo(PitPhase.Requested));
 
             simulation = StartedSimulation(RaceRules.TrancheThreeDefaults);
-            simulation.Step(1f / 60f, new[] { StrategyCommand(PlayerId.Player1, PitService.Cooling, false) });
+            simulation.Step(1f / 60f, new[] { StrategyCommand(PlayerId.Player1, PitService.Fuel, false) });
             Assert.That(Player(simulation, PlayerId.Player1).Pit.SelectedService, Is.EqualTo(PitService.None));
             Assert.That(Player(simulation, PlayerId.Player2).Pit.Phase, Is.EqualTo(PitPhase.OnTrack));
         }
@@ -188,7 +188,7 @@ namespace BoardRacing.Tests
                 var commands = new[]
                 {
                     StrategyCommand(PlayerId.Player1, i < 60 ? PitService.Tires : PitService.None, i == 60),
-                    StrategyCommand(PlayerId.Player2, i < 90 ? PitService.Cooling : PitService.None, i == 90)
+                    StrategyCommand(PlayerId.Player2, i < 90 ? PitService.Fuel : PitService.None, i == 90)
                 };
                 first.Step(1f / 60f, commands);
                 second.Step(1f / 60f, commands);
@@ -198,7 +198,7 @@ namespace BoardRacing.Tests
             {
                 var a = Player(first, id); var b = Player(second, id);
                 Assert.That(a.TotalDistance, Is.EqualTo(b.TotalDistance));
-                Assert.That(a.Condition.Heat, Is.EqualTo(b.Condition.Heat));
+                Assert.That(a.Condition.FuelUsed, Is.EqualTo(b.Condition.FuelUsed));
                 Assert.That(a.Condition.TireWear, Is.EqualTo(b.Condition.TireWear));
                 Assert.That(a.Pit.SelectedService, Is.EqualTo(b.Pit.SelectedService));
                 Assert.That(a.Pit.Phase, Is.EqualTo(b.Pit.Phase));
@@ -211,7 +211,7 @@ namespace BoardRacing.Tests
         public void StrategyContractsRejectInvalidValues()
         {
             Assert.Throws<ArgumentException>(() => new RacerCommand(PlayerId.Player1, ThrottleStep.Brake, true, false,
-                PitService.Tires, false, 1.1f, false));
+                PitService.Tires, false, 1.1f));
             Assert.Throws<ArgumentException>(() => new RacerConditionSnapshot(-.01f, 0f, false, false));
             Assert.Throws<ArgumentException>(() => new RacerPitSnapshot(PitService.None, PitPhase.OnTrack, 0f, -1, false));
             Assert.Throws<ArgumentException>(() => new RacerPitSnapshot(
@@ -222,41 +222,49 @@ namespace BoardRacing.Tests
                 .35f, 180f, 38f, 1f));
             Assert.Throws<ArgumentException>(() => new ConditionRules(.1f, .1f, .7f, 0f, .5f, .01f, .1f, .6f, .75f));
             Assert.Throws<ArgumentException>(() => new PitRules(0f, .5f));
+            Assert.Throws<ArgumentException>(() => new PitRules(.5f, .5f, -1f));
             Assert.Throws<ArgumentException>(() => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f,
                 .35f, 180f, 38f, 1f, 1, ConditionRules.Defaults));
         }
 
         [Test]
-        public void HeatRisesWithThrottleAndCoolsWhenReleasedOrMissing()
+        public void FuelBurnsFasterAtBoostAndNeverRecovers()
         {
             var simulation = StartedSimulation(RaceRules.TrancheThreeDefaults);
             for (int i = 0; i < 300; i++)
                 simulation.Step(1f / 60f, Commands(ThrottleStep.Boost, true));
-            float hot = Player(simulation, PlayerId.Player1).Condition.Heat;
-            Assert.That(hot, Is.GreaterThan(.2f));
+            float boosted = Player(simulation, PlayerId.Player1).Condition.FuelUsed;
+            Assert.That(boosted, Is.GreaterThan(.15f));
 
             for (int i = 0; i < 60; i++)
                 simulation.Step(1f / 60f, Commands(ThrottleStep.Brake, false));
-            float cooled = Player(simulation, PlayerId.Player1).Condition.Heat;
-            Assert.That(cooled, Is.LessThan(hot));
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.FuelUsed, Is.EqualTo(boosted));
 
             for (int i = 0; i < 60; i++) simulation.Step(1f / 60f, Array.Empty<RacerCommand>());
-            Assert.That(Player(simulation, PlayerId.Player1).Condition.Heat, Is.LessThan(cooled));
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.FuelUsed, Is.EqualTo(boosted));
+
+            var driveSimulation = StartedSimulation(RaceRules.TrancheThreeDefaults);
+            for (int i = 0; i < 300; i++)
+                driveSimulation.Step(1f / 60f, Commands(ThrottleStep.Drive, true));
+            float driven = Player(driveSimulation, PlayerId.Player1).Condition.FuelUsed;
+            Assert.That(driven, Is.GreaterThan(0f));
+            Assert.That(driven, Is.LessThan(boosted));
         }
 
         [Test]
-        public void HeatPenaltyLimitsPerformanceWithoutRequestingPit()
+        public void EmptyTankLimitsPerformanceWithoutRequestingPit()
         {
             var simulation = StartedSimulation(LongConditionRules());
             int guard = 0;
-            while (!Player(simulation, PlayerId.Player1).Condition.HeatPenaltyActive && guard++ < 5000)
+            while (!Player(simulation, PlayerId.Player1).Condition.FuelPenaltyActive && guard++ < 5000)
                 simulation.Step(1f / 60f, Commands(ThrottleStep.Boost, true));
             Assert.That(guard, Is.LessThan(5000));
             for (int i = 0; i < 240; i++) simulation.Step(1f / 60f, Commands(ThrottleStep.Boost, true));
 
             var racer = Player(simulation, PlayerId.Player1);
             Assert.That(racer.Speed, Is.LessThanOrEqualTo(
-                LongConditionRules().MaxSpeed * LongConditionRules().Conditions.HeatedMaximumSpeedScale + .01f));
+                LongConditionRules().MaxSpeed * LongConditionRules().Conditions.EmptyMaximumSpeedScale + .01f));
+            Assert.That(racer.Speed, Is.GreaterThan(0f));
             Assert.That(racer.Pit.Phase, Is.EqualTo(PitPhase.OnTrack));
             Assert.That(racer.Pit.SelectedService, Is.EqualTo(PitService.None));
         }
@@ -321,8 +329,8 @@ namespace BoardRacing.Tests
                 new RacerCommand(PlayerId.Player2, ThrottleStep.Brake, true, false)
             };
             for (int i = 0; i < 300; i++) simulation.Step(1f / 60f, p1FullP2Off);
-            Assert.That(Player(simulation, PlayerId.Player1).Condition.Heat, Is.GreaterThan(0f));
-            Assert.That(Player(simulation, PlayerId.Player2).Condition.Heat, Is.Zero);
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.FuelUsed, Is.GreaterThan(0f));
+            Assert.That(Player(simulation, PlayerId.Player2).Condition.FuelUsed, Is.Zero);
             Assert.That(Player(simulation, PlayerId.Player2).Condition.TireWear, Is.Zero);
         }
 
@@ -360,7 +368,11 @@ namespace BoardRacing.Tests
                 AdvanceUntilPitPhase(simulation, PlayerId.Player1, PitPhase.InService);
                 Assert.That(Player(simulation, PlayerId.Player1).Pit.PhaseProgress, Is.Zero);
                 simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
-                    PitService.Tires, false, 1f, true) });
+                    PitService.Tires, false, 1f) });
+                // The finished service leaves the car parked; only Leave Pit exits.
+                Assert.That(Player(simulation, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.InService));
+                simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                    requestExit: true) });
                 Assert.That(Player(simulation, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.Exiting));
                 Assert.That(Player(simulation, PlayerId.Player1).Pit.PhaseProgress, Is.Zero);
                 simulation.Step(.1f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost) });
@@ -374,45 +386,57 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void TiresAndCoolingAffectOnlyTheirConditionAndCannotDoubleComplete()
+        public void TiresAndFuelDrainOnlyTheirMeterAndCannotDoubleComplete()
         {
             var tires = StartedPitSimulation(3);
             BuildConditions(tires);
             Assert.That(Player(tires, PlayerId.Player1).Condition.TireWear, Is.GreaterThan(0f));
             RequestAndAdvanceToService(tires, PlayerId.Player1, PitService.Tires);
-            float heatAtTireService = Player(tires, PlayerId.Player1).Condition.Heat;
-            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.None, false, .6f) });
-            Assert.That(Player(tires, PlayerId.Player1).Pit.ServiceProgress, Is.EqualTo(.6f));
-            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Cooling, false, .2f) });
-            Assert.That(Player(tires, PlayerId.Player1).Pit.SelectedService, Is.EqualTo(PitService.Cooling));
-            Assert.That(Player(tires, PlayerId.Player1).Pit.ServiceProgress, Is.EqualTo(.2f));
-            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Tires, false, .3f) });
-            Assert.That(Player(tires, PlayerId.Player1).Pit.SelectedService, Is.EqualTo(PitService.Tires));
-            tires.Step(.01f, Array.Empty<RacerCommand>());
-            Assert.That(Player(tires, PlayerId.Player1).Pit.ServiceProgress, Is.Zero);
-            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.None, false, 1f, true) });
-            Assert.That(Player(tires, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.Exiting));
+            float fuelAtService = Player(tires, PlayerId.Player1).Condition.FuelUsed;
+            float wearAtService = Player(tires, PlayerId.Player1).Condition.TireWear;
+            Assert.That(fuelAtService, Is.GreaterThan(0f));
+
+            // A partial stir drains only the selected meter; progress is the drained fraction.
+            float partial = Math.Min(.1f, wearAtService * .5f);
+            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.None, false, partial) });
+            float wearAfterPartial = Player(tires, PlayerId.Player1).Condition.TireWear;
+            Assert.That(wearAfterPartial, Is.EqualTo(wearAtService - partial).Within(.0001f));
+            Assert.That(Player(tires, PlayerId.Player1).Pit.ServiceProgress,
+                Is.EqualTo(1f - wearAfterPartial).Within(.0001f));
+            Assert.That(Player(tires, PlayerId.Player1).Condition.FuelUsed, Is.EqualTo(fuelAtService));
+            Assert.That(Player(tires, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.InService));
+
+            // Switching to the Fuel dial drains fuel instead; partial repairs persist.
+            float refuel = Math.Min(.05f, fuelAtService * .5f);
+            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Fuel, false, refuel) });
+            Assert.That(Player(tires, PlayerId.Player1).Pit.SelectedService, Is.EqualTo(PitService.Fuel));
+            Assert.That(Player(tires, PlayerId.Player1).Condition.FuelUsed,
+                Is.EqualTo(fuelAtService - refuel).Within(.0001f));
+            Assert.That(Player(tires, PlayerId.Player1).Condition.TireWear, Is.EqualTo(wearAfterPartial));
+
+            // Draining the tire meter to zero counts the service and keeps the car parked.
+            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Tires, false, 1f) });
+            Assert.That(Player(tires, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.InService));
             Assert.That(Player(tires, PlayerId.Player1).Condition.TireWear, Is.Zero);
-            Assert.That(Player(tires, PlayerId.Player1).Condition.Heat, Is.GreaterThan(0f));
-            Assert.That(Player(tires, PlayerId.Player1).Condition.Heat, Is.LessThan(heatAtTireService));
+            Assert.That(Player(tires, PlayerId.Player1).Condition.FuelUsed,
+                Is.EqualTo(fuelAtService - refuel).Within(.0001f));
             Assert.That(Player(tires, PlayerId.Player1).Pit.CompletedServices, Is.EqualTo(1));
-            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.None, false, 1f, true) });
+            // Stirring the already-empty meter cannot count the service again.
+            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Tires, false, 1f) });
             Assert.That(Player(tires, PlayerId.Player1).Pit.CompletedServices, Is.EqualTo(1));
+            // Finishing the fuel meter in the same parked stop counts a second service.
+            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Fuel, false, 1f) });
+            Assert.That(Player(tires, PlayerId.Player1).Pit.CompletedServices, Is.EqualTo(2));
+            Assert.That(Player(tires, PlayerId.Player1).Condition.FuelUsed, Is.Zero);
+            Assert.That(Player(tires, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.InService));
+
+            // Only Leave Pit ends the stop.
+            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, requestExit: true) });
+            Assert.That(Player(tires, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.Exiting));
             AdvanceUntilPitPhase(tires, PlayerId.Player1, PitPhase.OnTrack);
             Assert.That(Player(tires, PlayerId.Player1).Pit.SelectedService, Is.EqualTo(PitService.None));
-            Assert.That(Player(tires, PlayerId.Player1).Pit.FinishEligible, Is.True);
-            RequestAndAdvanceToService(tires, PlayerId.Player1, PitService.Cooling);
-            tires.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.None, false, 1f, true) });
             Assert.That(Player(tires, PlayerId.Player1).Pit.CompletedServices, Is.EqualTo(2));
-            Assert.That(Player(tires, PlayerId.Player1).Condition.Heat, Is.Zero);
-
-            var cooling = StartedPitSimulation(3);
-            BuildConditions(cooling);
-            RequestAndAdvanceToService(cooling, PlayerId.Player1, PitService.Cooling);
-            float wearAtCoolingService = Player(cooling, PlayerId.Player1).Condition.TireWear;
-            cooling.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.None, false, 1f, true) });
-            Assert.That(Player(cooling, PlayerId.Player1).Condition.Heat, Is.Zero);
-            Assert.That(Player(cooling, PlayerId.Player1).Condition.TireWear, Is.EqualTo(wearAtCoolingService));
+            Assert.That(Player(tires, PlayerId.Player1).Pit.FinishEligible, Is.True);
         }
 
         [Test]
@@ -427,8 +451,9 @@ namespace BoardRacing.Tests
             Assert.That(unserved.Pit.FinishEligible, Is.False);
             Assert.That(unserved.CompletedLaps, Is.EqualTo(1));
 
-            RequestAndAdvanceToService(simulation, PlayerId.Player1, PitService.Cooling);
-            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.None, false, 1f, true) });
+            RequestAndAdvanceToService(simulation, PlayerId.Player1, PitService.Fuel);
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.None, false, 1f) });
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost, requestExit: true) });
             AdvanceUntilFinished(simulation, PlayerId.Player1);
             Assert.That(Player(simulation, PlayerId.Player1).Finished, Is.True);
             Assert.That(Player(simulation, PlayerId.Player1).Pit.CompletedServices, Is.EqualTo(1));
@@ -456,14 +481,89 @@ namespace BoardRacing.Tests
 
             simulation.Step(.01f, new[]
             {
-                PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Tires, false, 1f, true),
-                PitCommand(PlayerId.Player2, ThrottleStep.Boost, PitService.Cooling, false, .5f, false)
+                PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Tires, false, 1f),
+                PitCommand(PlayerId.Player2, ThrottleStep.Boost, PitService.Fuel, false, 0f)
+            });
+            Assert.That(Player(simulation, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.InService));
+            Assert.That(Player(simulation, PlayerId.Player1).Pit.CompletedServices, Is.EqualTo(1));
+            Assert.That(Player(simulation, PlayerId.Player2).Pit.CompletedServices, Is.Zero);
+            Assert.That(Player(simulation, PlayerId.Player2).Pit.SelectedService, Is.EqualTo(PitService.Fuel));
+            Assert.That(Player(simulation, PlayerId.Player2).Pit.ServiceProgress,
+                Is.EqualTo(1f - Player(simulation, PlayerId.Player2).Condition.FuelUsed).Within(.0001f));
+
+            // One player's Leave Pit request never moves the other car.
+            simulation.Step(.01f, new[]
+            {
+                PitCommand(PlayerId.Player1, ThrottleStep.Boost, requestExit: true),
+                PitCommand(PlayerId.Player2, ThrottleStep.Boost, PitService.Fuel)
             });
             Assert.That(Player(simulation, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.Exiting));
-            Assert.That(Player(simulation, PlayerId.Player1).Pit.CompletedServices, Is.EqualTo(1));
             Assert.That(Player(simulation, PlayerId.Player2).Pit.Phase, Is.EqualTo(PitPhase.InService));
-            Assert.That(Player(simulation, PlayerId.Player2).Pit.CompletedServices, Is.Zero);
-            Assert.That(Player(simulation, PlayerId.Player2).Pit.ServiceProgress, Is.EqualTo(.5f));
+        }
+
+        [Test]
+        public void LeavePitExitsMidServiceAndKeepsPartialMeters()
+        {
+            var simulation = StartedPitSimulation(3);
+            BuildConditions(simulation);
+            RequestAndAdvanceToService(simulation, PlayerId.Player1, PitService.Fuel);
+            float fuelAtService = Player(simulation, PlayerId.Player1).Condition.FuelUsed;
+            float refuel = fuelAtService * .5f;
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                PitService.Fuel, false, refuel) });
+            Assert.That(Player(simulation, PlayerId.Player1).Pit.CompletedServices, Is.Zero);
+
+            // Leaving mid-refuel is allowed: no service credit, the partial fuel is kept.
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                requestExit: true) });
+            Assert.That(Player(simulation, PlayerId.Player1).Pit.Phase, Is.EqualTo(PitPhase.Exiting));
+            Assert.That(Player(simulation, PlayerId.Player1).Pit.SelectedService, Is.EqualTo(PitService.None));
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.FuelUsed,
+                Is.EqualTo(fuelAtService - refuel).Within(.0001f));
+            AdvanceUntilPitPhase(simulation, PlayerId.Player1, PitPhase.OnTrack);
+            Assert.That(Player(simulation, PlayerId.Player1).Pit.CompletedServices, Is.Zero);
+            Assert.That(Player(simulation, PlayerId.Player1).Pit.FinishEligible, Is.False);
+        }
+
+        [Test]
+        public void PitExitRejoinsAheadAtTheLaneEndWithoutLapCreditOrCornerWear()
+        {
+            // Rejoin distance 12 lands the car inside the corner section of the
+            // 20-unit test track — the hop must not read as a corner crossing.
+            const float rejoin = 12f;
+            var simulation = StartedPitSimulation(3, rejoin);
+            RequestAndAdvanceToService(simulation, PlayerId.Player1, PitService.Tires);
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                PitService.Tires, false, 1f) });
+            var parked = Player(simulation, PlayerId.Player1);
+            Assert.That(parked.Condition.TireWear, Is.Zero);
+
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                requestExit: true) });
+            AdvanceUntilPitPhase(simulation, PlayerId.Player1, PitPhase.OnTrack);
+            var rejoined = Player(simulation, PlayerId.Player1);
+            Assert.That(rejoined.TotalDistance, Is.EqualTo(parked.TotalDistance + rejoin).Within(.001f));
+            Assert.That(rejoined.CompletedLaps, Is.EqualTo(parked.CompletedLaps));
+
+            // One more step while still inside the corner: fresh wear would mean
+            // the hop was charged as a corner entry.
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost) });
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.TireWear, Is.Zero);
+        }
+
+        [Test]
+        public void LateFinishAtTheLineTakesPriorityOverTheRejoinHop()
+        {
+            var simulation = StartedPitSimulation(1, 12f);
+            RequestAndAdvanceToService(simulation, PlayerId.Player1, PitService.Fuel);
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                PitService.Fuel, false, 1f) });
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                requestExit: true) });
+            AdvanceUntilFinished(simulation, PlayerId.Player1);
+            var finished = Player(simulation, PlayerId.Player1);
+            Assert.That(finished.Finished, Is.True);
+            Assert.That(finished.TotalDistance, Is.EqualTo(simulation.Track.Length).Within(.001f));
         }
 
         [Test]
@@ -484,8 +584,13 @@ namespace BoardRacing.Tests
                 });
             simulation.Step(.01f, new[]
             {
-                PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Tires, false, 1f, true),
-                PitCommand(PlayerId.Player2, ThrottleStep.Boost, PitService.Cooling, false, 1f, true)
+                PitCommand(PlayerId.Player1, ThrottleStep.Boost, PitService.Tires, false, 1f),
+                PitCommand(PlayerId.Player2, ThrottleStep.Boost, PitService.Fuel, false, 1f)
+            });
+            simulation.Step(.01f, new[]
+            {
+                PitCommand(PlayerId.Player1, ThrottleStep.Boost, requestExit: true),
+                PitCommand(PlayerId.Player2, ThrottleStep.Boost, requestExit: true)
             });
             while (simulation.Snapshot.Phase != RacePhase.Finished && guard++ < 20000)
                 simulation.Step(.01f, Commands(ThrottleStep.Brake, false));
@@ -497,7 +602,7 @@ namespace BoardRacing.Tests
             Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Grid));
             foreach (var racer in simulation.Snapshot.Racers)
             {
-                Assert.That(racer.Condition.Heat, Is.Zero);
+                Assert.That(racer.Condition.FuelUsed, Is.Zero);
                 Assert.That(racer.Condition.TireWear, Is.Zero);
                 Assert.That(racer.Pit.SelectedService, Is.EqualTo(PitService.None));
                 Assert.That(racer.Pit.Phase, Is.EqualTo(PitPhase.OnTrack));
@@ -553,23 +658,23 @@ namespace BoardRacing.Tests
         private static RaceRules LongConditionRules() => new RaceRules(100, 0f, 360f, 220f, 120f, 300f,
             .55f, 1f, .35f, 180f, 38f, 1f, 0, ConditionRules.Defaults);
 
-        private static RaceSimulation StartedPitSimulation(int laps)
+        private static RaceSimulation StartedPitSimulation(int laps, float exitRejoinDistance = 0f)
         {
             var track = new TrackDefinition(new[]
             {
                 new TrackSegment(new Vec2(0f, 0f), new Vec2(10f, 0f), TrackSectionKind.Straight, float.PositiveInfinity),
                 new TrackSegment(new Vec2(10f, 0f), new Vec2(0f, 0f), TrackSectionKind.Corner, 50f)
             });
-            var conditions = new ConditionRules(.2f, .1f, .8f, .8f, .8f, .2f, .2f, .2f, .8f);
+            var conditions = new ConditionRules(.1f, .2f, .8f, .8f, .8f, .2f, .2f, .2f, .8f);
             var rules = new RaceRules(laps, 0f, 100f, 1000f, 100f, 100f, .5f, .2f, .5f,
-                5f, 1f, 1f, 1, conditions, new PitRules(.2f, .2f));
+                5f, 1f, 1f, 1, conditions, new PitRules(.2f, .2f, exitRejoinDistance));
             return StartedSimulation(track, rules);
         }
 
         private static void BuildConditions(RaceSimulation simulation)
         {
             int guard = 0;
-            while ((Player(simulation, PlayerId.Player1).Condition.Heat <= 0f ||
+            while ((Player(simulation, PlayerId.Player1).Condition.FuelUsed <= 0f ||
                     Player(simulation, PlayerId.Player1).Condition.TireWear <= 0f) && guard++ < 10000)
                 simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost) });
             Assert.That(guard, Is.LessThan(10000));
@@ -609,11 +714,12 @@ namespace BoardRacing.Tests
         };
 
         private static RacerCommand StrategyCommand(PlayerId playerId, PitService service, bool requestPit) =>
-            new RacerCommand(playerId, ThrottleStep.Drive, true, true, service, requestPit, 0f, false);
+            new RacerCommand(playerId, ThrottleStep.Drive, true, true, service, requestPit, 0f);
 
         private static RacerCommand PitCommand(PlayerId playerId, ThrottleStep throttle,
-            PitService service = PitService.None, bool requestPit = false, float progress = 0f, bool complete = false) =>
+            PitService service = PitService.None, bool requestPit = false, float drain = 0f,
+            bool requestExit = false) =>
             new RacerCommand(playerId, throttle, true, throttle != ThrottleStep.Brake,
-                service, requestPit, progress, complete);
+                service, requestPit, drain, requestExit);
     }
 }

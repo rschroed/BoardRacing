@@ -6,7 +6,7 @@ namespace BoardRacing.Domain
 {
     public enum RacePhase { Grid, Countdown, Racing, Finished }
     public enum TrackSectionKind { Straight, Corner }
-    public enum PitService { None, Tires, Cooling }
+    public enum PitService { None, Tires, Fuel }
     public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting }
     public enum PitCallState { Unavailable, NeedsPlacement, Aligning, Holding, Requested }
 
@@ -143,53 +143,60 @@ namespace BoardRacing.Domain
 
     public readonly struct ConditionRules
     {
-        public ConditionRules(float heatGainPerSecondAtFullThrottle, float heatCoolingPerSecond,
-            float heatPenaltyThreshold, float heatedMaximumSpeedScale, float heatedAccelerationScale,
+        public ConditionRules(float fuelBurnPerSecondAtDrive, float fuelBurnPerSecondAtBoost,
+            float fuelWarningThreshold, float emptyMaximumSpeedScale, float emptyAccelerationScale,
             float tireWearPerCorner, float tireWearPerUnsafeSpeed, float tirePenaltyThreshold,
             float fullyWornSafeSpeedScale)
         {
-            var values = new[] { heatGainPerSecondAtFullThrottle, heatCoolingPerSecond, heatPenaltyThreshold,
-                heatedMaximumSpeedScale, heatedAccelerationScale, tireWearPerCorner, tireWearPerUnsafeSpeed,
+            var values = new[] { fuelBurnPerSecondAtDrive, fuelBurnPerSecondAtBoost, fuelWarningThreshold,
+                emptyMaximumSpeedScale, emptyAccelerationScale, tireWearPerCorner, tireWearPerUnsafeSpeed,
                 tirePenaltyThreshold, fullyWornSafeSpeedScale };
-            if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x)) || heatGainPerSecondAtFullThrottle <= 0f ||
-                heatCoolingPerSecond <= 0f || heatPenaltyThreshold <= 0f || heatPenaltyThreshold >= 1f ||
-                heatedMaximumSpeedScale <= 0f || heatedMaximumSpeedScale > 1f || heatedAccelerationScale <= 0f ||
-                heatedAccelerationScale > 1f || tireWearPerCorner < 0f || tireWearPerUnsafeSpeed < 0f ||
+            if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x)) || fuelBurnPerSecondAtDrive <= 0f ||
+                fuelBurnPerSecondAtBoost < fuelBurnPerSecondAtDrive || fuelWarningThreshold <= 0f ||
+                fuelWarningThreshold >= 1f || emptyMaximumSpeedScale <= 0f || emptyMaximumSpeedScale > 1f ||
+                emptyAccelerationScale <= 0f || emptyAccelerationScale > 1f ||
+                tireWearPerCorner < 0f || tireWearPerUnsafeSpeed < 0f ||
                 tirePenaltyThreshold <= 0f || tirePenaltyThreshold >= 1f || fullyWornSafeSpeedScale <= 0f ||
                 fullyWornSafeSpeedScale > 1f)
                 throw new ArgumentException("Condition rules contain invalid values.");
-            Enabled = true; HeatGainPerSecondAtFullThrottle = heatGainPerSecondAtFullThrottle;
-            HeatCoolingPerSecond = heatCoolingPerSecond; HeatPenaltyThreshold = heatPenaltyThreshold;
-            HeatedMaximumSpeedScale = heatedMaximumSpeedScale; HeatedAccelerationScale = heatedAccelerationScale;
+            Enabled = true; FuelBurnPerSecondAtDrive = fuelBurnPerSecondAtDrive;
+            FuelBurnPerSecondAtBoost = fuelBurnPerSecondAtBoost; FuelWarningThreshold = fuelWarningThreshold;
+            EmptyMaximumSpeedScale = emptyMaximumSpeedScale; EmptyAccelerationScale = emptyAccelerationScale;
             TireWearPerCorner = tireWearPerCorner; TireWearPerUnsafeSpeed = tireWearPerUnsafeSpeed;
             TirePenaltyThreshold = tirePenaltyThreshold; FullyWornSafeSpeedScale = fullyWornSafeSpeedScale;
         }
         public bool Enabled { get; }
-        public float HeatGainPerSecondAtFullThrottle { get; }
-        public float HeatCoolingPerSecond { get; }
-        public float HeatPenaltyThreshold { get; }
-        public float HeatedMaximumSpeedScale { get; }
-        public float HeatedAccelerationScale { get; }
+        public float FuelBurnPerSecondAtDrive { get; }
+        public float FuelBurnPerSecondAtBoost { get; }
+        public float FuelWarningThreshold { get; }
+        public float EmptyMaximumSpeedScale { get; }
+        public float EmptyAccelerationScale { get; }
         public float TireWearPerCorner { get; }
         public float TireWearPerUnsafeSpeed { get; }
         public float TirePenaltyThreshold { get; }
         public float FullyWornSafeSpeedScale { get; }
         public static ConditionRules Disabled => default;
-        public static ConditionRules Defaults => new ConditionRules(.045f, .08f, .7f, .6f, .5f, .015f, .08f, .6f, .75f);
+        public static ConditionRules Defaults => new ConditionRules(.008f, .04f, .75f, .35f, .5f, .015f, .08f, .6f, .75f);
     }
 
     public readonly struct PitRules
     {
-        public PitRules(float entrySeconds, float exitSeconds)
+        public PitRules(float entrySeconds, float exitSeconds, float exitRejoinDistance = 0f)
         {
             if (float.IsNaN(entrySeconds) || float.IsInfinity(entrySeconds) ||
-                float.IsNaN(exitSeconds) || float.IsInfinity(exitSeconds) || entrySeconds <= 0f || exitSeconds <= 0f)
+                float.IsNaN(exitSeconds) || float.IsInfinity(exitSeconds) || entrySeconds <= 0f || exitSeconds <= 0f ||
+                float.IsNaN(exitRejoinDistance) || float.IsInfinity(exitRejoinDistance) || exitRejoinDistance < 0f)
                 throw new ArgumentException("Pit rules contain invalid values.");
             Enabled = true; EntrySeconds = entrySeconds; ExitSeconds = exitSeconds;
+            ExitRejoinDistance = exitRejoinDistance;
         }
         public bool Enabled { get; }
         public float EntrySeconds { get; }
         public float ExitSeconds { get; }
+        // Track distance past the start/finish line where the pit lane rejoins the
+        // track: the car resumes where the lane physically ends instead of doubling
+        // back to the line.
+        public float ExitRejoinDistance { get; }
         public static PitRules Disabled => default;
         public static PitRules Defaults => new PitRules(.75f, .75f);
     }
@@ -197,18 +204,18 @@ namespace BoardRacing.Domain
     public readonly struct RacerCommand
     {
         public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool drivingPiecePresent, bool rematchConfirming)
-            : this(playerId, throttle, drivingPiecePresent, rematchConfirming, PitService.None, false, 0f, false) { }
+            : this(playerId, throttle, drivingPiecePresent, rematchConfirming, PitService.None, false, 0f) { }
 
         public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool drivingPiecePresent, bool rematchConfirming,
-            PitService selectedService, bool requestPit, float serviceActionProgress, bool completeService)
+            PitService selectedService, bool requestPit, float serviceDrain, bool requestExit = false)
         {
-            if (!Enum.IsDefined(typeof(PitService), selectedService) || serviceActionProgress < 0f ||
-                serviceActionProgress > 1f || float.IsNaN(serviceActionProgress))
+            if (!Enum.IsDefined(typeof(PitService), selectedService) || serviceDrain < 0f ||
+                serviceDrain > 1f || float.IsNaN(serviceDrain))
                 throw new ArgumentException("Racer strategy command contains invalid values.");
             PlayerId = playerId; Throttle = throttle; DrivingPiecePresent = drivingPiecePresent;
             RematchConfirming = rematchConfirming;
             SelectedService = selectedService; RequestPit = requestPit;
-            ServiceActionProgress = serviceActionProgress; CompleteService = completeService;
+            ServiceDrain = serviceDrain; RequestExit = requestExit;
         }
         public PlayerId PlayerId { get; }
         public ThrottleStep Throttle { get; }
@@ -216,23 +223,23 @@ namespace BoardRacing.Domain
         public bool RematchConfirming { get; }
         public PitService SelectedService { get; }
         public bool RequestPit { get; }
-        public float ServiceActionProgress { get; }
-        public bool CompleteService { get; }
+        public float ServiceDrain { get; }
+        public bool RequestExit { get; }
     }
 
     public readonly struct RacerConditionSnapshot
     {
-        public RacerConditionSnapshot(float heat, float tireWear, bool heatPenaltyActive, bool tirePenaltyActive)
+        public RacerConditionSnapshot(float fuelUsed, float tireWear, bool fuelPenaltyActive, bool tirePenaltyActive)
         {
-            if (heat < 0f || heat > 1f || tireWear < 0f || tireWear > 1f ||
-                float.IsNaN(heat) || float.IsNaN(tireWear))
+            if (fuelUsed < 0f || fuelUsed > 1f || tireWear < 0f || tireWear > 1f ||
+                float.IsNaN(fuelUsed) || float.IsNaN(tireWear))
                 throw new ArgumentException("Condition values must be normalized.");
-            Heat = heat; TireWear = tireWear;
-            HeatPenaltyActive = heatPenaltyActive; TirePenaltyActive = tirePenaltyActive;
+            FuelUsed = fuelUsed; TireWear = tireWear;
+            FuelPenaltyActive = fuelPenaltyActive; TirePenaltyActive = tirePenaltyActive;
         }
-        public float Heat { get; }
+        public float FuelUsed { get; }
         public float TireWear { get; }
-        public bool HeatPenaltyActive { get; }
+        public bool FuelPenaltyActive { get; }
         public bool TirePenaltyActive { get; }
     }
 

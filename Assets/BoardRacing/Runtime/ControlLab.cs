@@ -10,6 +10,7 @@ namespace BoardRacing.Runtime
     public sealed class ControlLab : MonoBehaviour
     {
         private TrancheOneSettings settings;
+        private TrancheThreeSettings strategySettings;
         private IPlayerInputProvider boardProvider;
         private IPlayerInputProvider fallbackProvider;
         private IPlayerInputProvider activeProvider;
@@ -22,8 +23,10 @@ namespace BoardRacing.Runtime
         private void Awake()
         {
             settings = Resources.Load<TrancheOneSettings>("TrancheOneSettings") ?? TrancheOneSettings.Defaults();
+            strategySettings = Resources.Load<TrancheThreeSettings>("TrancheThreeSettings") ?? TrancheThreeSettings.Defaults();
             float hysteresis = settings.throttleHysteresisDegrees * Mathf.Deg2Rad;
-            boardProvider = new BoardContactInputProvider(hysteresis, settings.playerRegionBoundaryY);
+            boardProvider = new BoardContactInputProvider(settings.ToThrottleStops(), hysteresis,
+                settings.playerRegionBoundaryY);
             fallbackProvider = new KeyboardInputProvider();
 #if UNITY_ANDROID && !UNITY_EDITOR
             activeProvider = settings.preferBoardInputOnDevice ? boardProvider : fallbackProvider;
@@ -36,7 +39,7 @@ namespace BoardRacing.Runtime
         }
 
         private void CreatePit(PlayerId id, Vector2 center) => pits[id] = new PitActionMachine(
-            new Vec2(center.x, center.y), new Vec2(settings.serviceHalfSize.x, settings.serviceHalfSize.y),
+            new Vec2(center.x, center.y), new Vec2(strategySettings.serviceHalfSize.x, strategySettings.serviceHalfSize.y),
             settings.targetAngleDegrees * Mathf.Deg2Rad, settings.alignmentToleranceDegrees * Mathf.Deg2Rad,
             settings.holdDurationSeconds);
 
@@ -151,7 +154,11 @@ namespace BoardRacing.Runtime
             GUI.DrawTexture(new Rect(r.x + 485, r.y + 100, 360, 230), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, new Color(accent.r, accent.g, accent.b, .28f), 0, 18);
             GUI.Label(new Rect(r.x + 485, r.y + 118, 360, 110), ((int)s.Throttle) + "%", throttle);
             GUI.Label(new Rect(r.x + 485, r.y + 230, 360, 45), "REQUESTED THROTTLE", progress);
-            GUI.Label(new Rect(r.x + 55, r.y + 260, 410, 70), "Rotate Ship between BRAKE, DRIVE, and BOOST.", body);
+            string angleReading = s.Car.Present
+                ? "RAW ANGLE " + Mathf.RoundToInt(NormalizeDegrees(s.Car.OrientationRadians * Mathf.Rad2Deg)) + "°"
+                : "RAW ANGLE —";
+            GUI.Label(new Rect(r.x + 55, r.y + 260, 410, 40), angleReading, body);
+            GUI.Label(new Rect(r.x + 55, r.y + 300, 410, 40), "Rotate Ship between BRAKE, DRIVE, and BOOST.", body);
         }
 
         private void DrawCrew(Rect r, PlayerControlSnapshot s, Color accent)

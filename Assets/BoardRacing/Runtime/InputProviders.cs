@@ -13,10 +13,11 @@ namespace BoardRacing.Runtime
         private readonly ContactSnapshotReconciler reconciler;
         public event Action InputReset;
 
-        public BoardContactInputProvider(float throttleHysteresisRadians, float playerRegionBoundaryY)
+        public BoardContactInputProvider(ThrottleStops throttleStops, float throttleHysteresisRadians,
+            float playerRegionBoundaryY)
         {
             reconciler = new ContactSnapshotReconciler(TrancheOneAssignments.All,
-                throttleHysteresisRadians, playerRegionBoundaryY);
+                throttleStops, throttleHysteresisRadians, playerRegionBoundaryY);
             BoardInput.settingsChanged += OnSettingsChanged;
         }
 
@@ -59,8 +60,9 @@ namespace BoardRacing.Runtime
             public float CrewAngle;
         }
 
-        private readonly MutablePlayer p1 = new MutablePlayer { CrewPosition = new Vector2(1325f, 270f) };
-        private readonly MutablePlayer p2 = new MutablePlayer { CrewPosition = new Vector2(595f, 810f) };
+        // Crews home on the Round 2 Call Pit centers (wireframe-ui.md, frame 40:23).
+        private readonly MutablePlayer p1 = new MutablePlayer { CrewPosition = new Vector2(1832f, 398f) };
+        private readonly MutablePlayer p2 = new MutablePlayer { CrewPosition = new Vector2(88f, 682f) };
 
         public IReadOnlyList<PlayerControlSnapshot> ReadSnapshots()
         {
