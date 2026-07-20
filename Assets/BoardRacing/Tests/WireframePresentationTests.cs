@@ -277,6 +277,13 @@ namespace BoardRacing.Tests
             Assert.That(RaceUiPreviewFixtures.Create(RaceUiPreviewScenario.RematchRelease, track,
                     ConditionRules.Defaults, 5).Ui.PlayerOne.PrimaryInstructionKind,
                 Is.EqualTo(PlayerUiInstructionKind.RematchRelease));
+            RaceUiPreviewFrame paused = RaceUiPreviewFixtures.Create(RaceUiPreviewScenario.Paused,
+                track, ConditionRules.Defaults, 5);
+            Assert.That(paused.Ui.CenterMessageKind, Is.EqualTo(CenterMessageKind.Paused));
+            Assert.That(paused.Ui.PlayerOne.PrimaryInstructionKind,
+                Is.EqualTo(PlayerUiInstructionKind.PausedPlaceShip));
+            Assert.That(paused.Ui.PlayerTwo.PrimaryInstructionKind,
+                Is.EqualTo(PlayerUiInstructionKind.PausedShipReady));
         }
 
         // Contract geometry from docs/gameplay/wireframe-ui.md (issue #77 Round 2, measured
