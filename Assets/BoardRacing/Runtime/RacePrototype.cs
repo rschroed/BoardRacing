@@ -24,6 +24,9 @@ namespace BoardRacing.Runtime
         private GUIStyle title, carLabel, warning, small, cue, zoneLabel, sectorLabel, dialValue;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
+        // Set by the capture harness (BoardRacingCaptures) so review captures show
+        // only the player-facing UI — no provider/preview labels, no raw readouts.
+        public static bool SuppressEditorDiagnostics;
 #endif
 
         private const float TrackVerticalScale = .33f;
@@ -244,17 +247,20 @@ namespace BoardRacing.Runtime
             // Development builds only: raw Ship orientation per seat so the throttle
             // mapper can be calibrated against the rendered wedges on real hardware
             // (issue #77 hardware review). Never present in release builds.
-            if (Debug.isDebugBuild)
+            if (Debug.isDebugBuild && !EditorDiagnosticsSuppressed())
             {
                 DrawRawAngleReadout(layout.PlayerOne);
                 DrawRawAngleReadout(layout.PlayerTwo);
             }
 #if UNITY_EDITOR
-            GUI.Label(new Rect(1500, 8, 412, 24),
-                (activeProvider == boardProvider ? "BOARD INPUT" : "KEYBOARD FALLBACK") + " · F1 provider", small);
-            GUI.Label(new Rect(1500, 34, 412, 24), previewScenarioIndex < 0
-                ? "LIVE PRESENTATION · F2 preview"
-                : "PREVIEW: " + ((RaceUiPreviewScenario)previewScenarioIndex) + " · F2 next", small);
+            if (!SuppressEditorDiagnostics)
+            {
+                GUI.Label(new Rect(1500, 8, 412, 24),
+                    (activeProvider == boardProvider ? "BOARD INPUT" : "KEYBOARD FALLBACK") + " · F1 provider", small);
+                GUI.Label(new Rect(1500, 34, 412, 24), previewScenarioIndex < 0
+                    ? "LIVE PRESENTATION · F2 preview"
+                    : "PREVIEW: " + ((RaceUiPreviewScenario)previewScenarioIndex) + " · F2 next", small);
+            }
 #endif
             GUI.matrix = original;
         }
@@ -632,6 +638,15 @@ namespace BoardRacing.Runtime
                 true, 0, new Color(.14f, .2f, .3f), 0, 10f);
             DrawOutline(PauseNewRaceButton, 3f, Color.white);
             GUI.Label(PauseNewRaceButton, "START NEW RACE", carLabel);
+        }
+
+        private static bool EditorDiagnosticsSuppressed()
+        {
+#if UNITY_EDITOR
+            return SuppressEditorDiagnostics;
+#else
+            return false;
+#endif
         }
 
         private static string ServiceName(PitService service) =>
