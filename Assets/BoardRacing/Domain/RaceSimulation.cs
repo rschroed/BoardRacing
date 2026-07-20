@@ -160,18 +160,21 @@ namespace BoardRacing.Domain
             float prior = racer.Distance;
             racer.Distance += racer.Speed * delta;
             float finishDistance = track.Length * rules.Laps;
-            bool crossedPitLine = (int)(prior / track.Length) < (int)(racer.Distance / track.Length);
-            if (racer.PitPhase == PitPhase.Requested && rules.Pit.Enabled && crossedPitLine)
-            {
-                racer.Distance = ((int)(prior / track.Length) + 1) * track.Length;
-                racer.Speed = 0f; racer.PitPhase = PitPhase.Entering; racer.PitTimer = 0f;
-                return;
-            }
+            // Reaching the line eligible to classify finishes the race even with a
+            // pit call pending (issue #95) — the call expires with the race. Only an
+            // ineligible racer's call may still divert them into the pit at the line.
             if (racer.Distance >= finishDistance && racer.CompletedServices >= rules.RequiredServiceCount)
             {
                 float moved = racer.Distance - prior;
                 float fraction = moved <= 0f ? 1f : Math.Max(0f, Math.Min(1f, (finishDistance - prior) / moved));
                 FinishRacer(racer, finishDistance, elapsed + delta * fraction);
+                return;
+            }
+            bool crossedPitLine = (int)(prior / track.Length) < (int)(racer.Distance / track.Length);
+            if (racer.PitPhase == PitPhase.Requested && rules.Pit.Enabled && crossedPitLine)
+            {
+                racer.Distance = ((int)(prior / track.Length) + 1) * track.Length;
+                racer.Speed = 0f; racer.PitPhase = PitPhase.Entering; racer.PitTimer = 0f;
             }
         }
 
@@ -236,6 +239,8 @@ namespace BoardRacing.Domain
         private static void FinishRacer(RacerState racer, float distance, float finishTime)
         {
             racer.Distance = distance; racer.Finished = true; racer.FinishTime = finishTime; racer.Speed = 0f;
+            // A pending pit call expires with the race.
+            racer.PitPhase = PitPhase.OnTrack;
         }
 
         private void BurnFuel(RacerState racer, ThrottleStep step, float delta)
