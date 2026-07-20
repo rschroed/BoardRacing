@@ -279,11 +279,12 @@ namespace BoardRacing.Domain
             else if (allReleased) ResetForRematch();
         }
 
-        // The pause overlay's START NEW RACE touch button — the game's one
-        // non-piece control; honored only while paused.
+        // The overlays' START NEW RACE touch button — the game's one non-piece
+        // control; honored only when no race is running (paused, or finished with
+        // the RACE FINISHED overlay up — owner decisions, issues #90 and #97).
         public void RequestNewRace()
         {
-            if (phase != RacePhase.Paused) return;
+            if (phase != RacePhase.Paused && phase != RacePhase.Finished) return;
             ResetForRematch();
             snapshot = BuildSnapshot();
         }

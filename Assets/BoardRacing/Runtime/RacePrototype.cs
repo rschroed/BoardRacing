@@ -40,9 +40,10 @@ namespace BoardRacing.Runtime
         // The lane blends onto the track just before the rejoin sample — no return
         // trip: the simulation resumes the car where the pit lane physically ends.
         private static readonly Vec2 PitMergeApproach = new Vec2(1300f, 452f);
-        // Pause overlay geometry in 1920×1080 GUI space. The button rect doubles as
-        // the touch hit-target polled in Update: the project runs the new Input System
-        // only, so IMGUI never receives pointer events in a player build.
+        // Shared geometry for the pause and race-finished overlays in 1920×1080 GUI
+        // space. The button rect doubles as the touch hit-target polled in Update:
+        // the project runs the new Input System only, so IMGUI never receives
+        // pointer events in a player build.
         private static readonly Rect PausePanel = new Rect(460f, 430f, 1000f, 230f);
         private static readonly Rect PauseNewRaceButton = new Rect(770f, 560f, 380f, 70f);
 
@@ -112,7 +113,7 @@ namespace BoardRacing.Runtime
             }
 #endif
             controls = activeProvider.ReadSnapshots();
-            PollPauseOverlayTouch();
+            PollNewRaceTouch();
             accumulator += Mathf.Min(Time.unscaledDeltaTime, .25f);
             float step = Mathf.Max(.001f, raceSettings.fixedStepSeconds);
             while (accumulator >= step)
@@ -131,12 +132,14 @@ namespace BoardRacing.Runtime
             }
         }
 
-        // Pieces are off the table during a pause, so the overlay may use the game's
-        // one touch control (owner decision, issue #90). Pointer covers the table's
-        // touchscreen on device and the mouse in the editor.
-        private void PollPauseOverlayTouch()
+        // The START NEW RACE button appears only when no race is running: while
+        // paused (pieces off the table, issue #90) and after the finish (issue #97).
+        // It is the game's one touch control, center-table where pieces never rest.
+        // Pointer covers the table's touchscreen on device and the mouse in the editor.
+        private void PollNewRaceTouch()
         {
-            if (simulation.Snapshot.Phase != RacePhase.Paused) return;
+            RacePhase phase = simulation.Snapshot.Phase;
+            if (phase != RacePhase.Paused && phase != RacePhase.Finished) return;
             Pointer pointer = Pointer.current;
             if (pointer == null || !pointer.press.wasPressedThisFrame) return;
             Vector2 press = pointer.position.ReadValue();
@@ -585,21 +588,33 @@ namespace BoardRacing.Runtime
             if (ui.CenterMessage == null) return;
             if (ui.CenterMessageKind == CenterMessageKind.Paused)
             {
-                // Presentation only — the button's tap is polled in PollPauseOverlayTouch.
-                GUI.DrawTexture(PausePanel, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                    new Color(.03f, .04f, .06f, .93f), 0, 12f);
-                DrawOutline(PausePanel, 2f, new Color(.62f, .68f, .74f, .8f));
-                GUI.Label(new Rect(PausePanel.x, PausePanel.y + 16f, PausePanel.width, 52f),
-                    "RACES PAUSED", title);
-                GUI.Label(new Rect(PausePanel.x, PausePanel.y + 76f, PausePanel.width, 40f),
-                    ui.CenterMessage, warning);
-                GUI.DrawTexture(PauseNewRaceButton, Texture2D.whiteTexture, ScaleMode.StretchToFill,
-                    true, 0, new Color(.14f, .2f, .3f), 0, 10f);
-                DrawOutline(PauseNewRaceButton, 3f, Color.white);
-                GUI.Label(PauseNewRaceButton, "START NEW RACE", carLabel);
+                DrawNewRaceOverlay("RACES PAUSED", ui.CenterMessage);
+                return;
+            }
+            if (ui.CenterMessageKind == CenterMessageKind.Winner)
+            {
+                // A finished race owns the center (owner decision, issue #97): the
+                // winner plus the way into the next race.
+                DrawNewRaceOverlay("RACE FINISHED", ui.CenterMessage);
                 return;
             }
             GUI.Label(layout.CenterOverlayBounds, ui.CenterMessage, title);
+        }
+
+        // Presentation only — the button's tap is polled in PollNewRaceTouch.
+        private void DrawNewRaceOverlay(string heading, string subLine)
+        {
+            GUI.DrawTexture(PausePanel, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
+                new Color(.03f, .04f, .06f, .93f), 0, 12f);
+            DrawOutline(PausePanel, 2f, new Color(.62f, .68f, .74f, .8f));
+            GUI.Label(new Rect(PausePanel.x, PausePanel.y + 16f, PausePanel.width, 52f),
+                heading, title);
+            GUI.Label(new Rect(PausePanel.x, PausePanel.y + 76f, PausePanel.width, 40f),
+                subLine, warning);
+            GUI.DrawTexture(PauseNewRaceButton, Texture2D.whiteTexture, ScaleMode.StretchToFill,
+                true, 0, new Color(.14f, .2f, .3f), 0, 10f);
+            DrawOutline(PauseNewRaceButton, 3f, Color.white);
+            GUI.Label(PauseNewRaceButton, "START NEW RACE", carLabel);
         }
 
         private static string ServiceName(PitService service) =>
