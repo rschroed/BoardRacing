@@ -135,17 +135,32 @@ namespace BoardRacing.Runtime
         // The START NEW RACE button appears only when no race is running: while
         // paused (pieces off the table, issue #90) and after the finish (issue #97).
         // It is the game's one touch control, center-table where pieces never rest.
-        // Pointer covers the table's touchscreen on device and the mouse in the editor.
         private void PollNewRaceTouch()
         {
             RacePhase phase = simulation.Snapshot.Phase;
             if (phase != RacePhase.Paused && phase != RacePhase.Finished) return;
-            Pointer pointer = Pointer.current;
-            if (pointer == null || !pointer.press.wasPressedThisFrame) return;
-            Vector2 press = pointer.position.ReadValue();
-            Vector2 gui = new Vector2(press.x * 1920f / Screen.width,
-                (Screen.height - press.y) * 1080f / Screen.height);
-            if (PauseNewRaceButton.Contains(gui)) simulation.RequestNewRace();
+            // Pieces resting on the table hold the earlier touch slots (a finished
+            // race leaves the Ships down), so a finger tap arrives as a secondary
+            // touch — scan every touch, never just the primary/Pointer.
+            Touchscreen touchscreen = Touchscreen.current;
+            if (touchscreen != null)
+                foreach (var touch in touchscreen.touches)
+                    if (touch.press.wasPressedThisFrame && ButtonContains(touch.position.ReadValue()))
+                    {
+                        simulation.RequestNewRace();
+                        return;
+                    }
+            Mouse mouse = Mouse.current;
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame &&
+                ButtonContains(mouse.position.ReadValue()))
+                simulation.RequestNewRace();
+        }
+
+        private static bool ButtonContains(Vector2 screenPosition)
+        {
+            Vector2 gui = new Vector2(screenPosition.x * 1920f / Screen.width,
+                (Screen.height - screenPosition.y) * 1080f / Screen.height);
+            return PauseNewRaceButton.Contains(gui);
         }
 
         public RaceSnapshot GetRaceSnapshot() => simulation.Snapshot;
