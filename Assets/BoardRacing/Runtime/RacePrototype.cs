@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Board.Input;
 using BoardRacing.Domain;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -139,17 +140,18 @@ namespace BoardRacing.Runtime
         {
             RacePhase phase = simulation.Snapshot.Phase;
             if (phase != RacePhase.Paused && phase != RacePhase.Finished) return;
-            // Pieces resting on the table hold the earlier touch slots (a finished
-            // race leaves the Ships down), so a finger tap arrives as a secondary
-            // touch — scan every touch, never just the primary/Pointer.
-            Touchscreen touchscreen = Touchscreen.current;
-            if (touchscreen != null)
-                foreach (var touch in touchscreen.touches)
-                    if (touch.press.wasPressedThisFrame && ButtonContains(touch.position.ReadValue()))
-                    {
-                        simulation.RequestNewRace();
-                        return;
-                    }
+            // On the Board every contact — fingers included — arrives through the
+            // SDK's native contact pipeline, not Unity's Touchscreen, so a tap is a
+            // Finger contact in its Began phase (same stream the pieces ride as
+            // Glyph contacts).
+            foreach (var finger in BoardInput.GetActiveContacts(BoardContactType.Finger))
+                if (finger.phase == BoardContactPhase.Began &&
+                    ButtonContains(finger.screenPosition))
+                {
+                    simulation.RequestNewRace();
+                    return;
+                }
+            // Desktop editor runs have a mouse and no Board contact stream.
             Mouse mouse = Mouse.current;
             if (mouse != null && mouse.leftButton.wasPressedThisFrame &&
                 ButtonContains(mouse.position.ReadValue()))
