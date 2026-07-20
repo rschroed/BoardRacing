@@ -446,12 +446,14 @@ namespace BoardRacing.Runtime
         private PitLanePresentationLayout PitLayout() => new PitLanePresentationLayout(
             simulation.Track.Sample(0f).Position, PitEntry, PlayerOnePitBox,
             PlayerTwoPitBox, PitExit, PitMergeApproach,
-            simulation.Track.Sample(strategySettings.pitExitRejoinDistance).Position);
+            simulation.Track.Sample(strategySettings.pitExitRejoinDistance).Position,
+            TrackPresentation.SmoothHeading(simulation.Track, 0f),
+            TrackPresentation.SmoothHeading(simulation.Track, strategySettings.pitExitRejoinDistance));
 
         private void CarPose(RacerSnapshot racer, out Vector2 position, out Vector2 tangent)
         {
             CarPresentationPose pose = PitLanePresentationMapper.From(racer, racer.Track.Position,
-                racer.Track.Tangent, PitLayout());
+                TrackPresentation.SmoothHeading(simulation.Track, racer.TotalDistance), PitLayout());
             position = new Vector2(pose.Position.X, pose.Position.Y);
             tangent = new Vector2(pose.Tangent.X, pose.Tangent.Y);
         }

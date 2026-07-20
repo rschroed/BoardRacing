@@ -147,6 +147,104 @@ namespace BoardRacing.Tests
             AssertPosition(end, layout.ExitRejoin);
         }
 
+        [Test]
+        public void ExitSplineLandsOnTheRejoinHeadingWithoutSnapping()
+        {
+            // The simulation resumes the car on the track the moment the exit
+            // finishes; the drawn exit must already point down the track then
+            // (issue #89 — the old spline ended ~40° off the rejoin heading).
+            var layout = DirectedLayout();
+            var end = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 1f, false, layout);
+            Assert.That(Dot(end.Tangent, new Vec2(1f, 0f)), Is.GreaterThan(Cos(8f)));
+
+            CarPresentationPose prior = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
+            for (float progress = .02f; progress <= 1.0001f; progress += .02f)
+            {
+                var next = PitLanePresentationMapper.ExitPose(PlayerId.Player1, progress, false, layout);
+                // A 0.02 progress step is sub-frame at the real 0.75 s exit; the
+                // S-bend onto the track legitimately turns ~8 deg per chord, so
+                // the bound guards against snaps, not curvature.
+                Assert.That(Dot(prior.Tangent, next.Tangent), Is.GreaterThan(Cos(20f)),
+                    $"heading snaps near progress {progress:0.00}");
+                prior = next;
+            }
+        }
+
+        [Test]
+        public void EnteringSplineLeavesTheTrackAlongItsHeading()
+        {
+            var layout = DirectedLayout();
+            var justEntered = PitLanePresentationMapper.From(
+                Racer(PlayerId.Player1, PitPhase.Entering, .02f), new Vec2(5f, 5f),
+                new Vec2(1f, 0f), layout);
+            Assert.That(Dot(justEntered.Tangent, new Vec2(1f, 0f)), Is.GreaterThan(Cos(10f)));
+        }
+
+        [Test]
+        public void PitExitMotionEasesOutOfTheBoxAndIntoTheTrack()
+        {
+            var layout = DirectedLayout();
+            float pathLength = 0f;
+            CarPresentationPose prior = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
+            for (float progress = .01f; progress <= 1.0001f; progress += .01f)
+            {
+                var next = PitLanePresentationMapper.ExitPose(PlayerId.Player1, progress, false, layout);
+                pathLength += Distance(prior.Position, next.Position);
+                prior = next;
+            }
+
+            // The drawn car creeps out of the box and settles onto the track:
+            // the first and last tenths of the stop cover well under their
+            // linear share of the path, the middle well over.
+            Assert.That(Span(layout, 0f, .1f), Is.LessThan(pathLength * .06f));
+            Assert.That(Span(layout, .9f, 1f), Is.LessThan(pathLength * .06f));
+            Assert.That(Span(layout, .45f, .55f), Is.GreaterThan(pathLength * .08f));
+        }
+
+        [Test]
+        public void OnTrackHeadingTurnsContinuouslyAcrossChordSeams()
+        {
+            // The simulation tangent steps ≤12° at every chord seam of a designed
+            // corner; the drawn heading spans the seams (issue #89).
+            var track = TrackCatalog.Wedge();
+            Vec2 prior = TrackPresentation.SmoothHeading(track, 0f);
+            for (float distance = 4f; distance <= track.Length + 4f; distance += 4f)
+            {
+                Vec2 heading = TrackPresentation.SmoothHeading(track, distance);
+                Assert.That(Dot(prior, heading), Is.GreaterThan(Cos(4f)),
+                    $"heading pops at distance {distance:0}");
+                Vec2 chord = track.Sample(distance).Tangent;
+                Assert.That(Dot(heading, chord), Is.GreaterThan(Cos(10f)),
+                    $"heading strays from the racing line at distance {distance:0}");
+                prior = heading;
+            }
+        }
+
+        private static float Span(PitLanePresentationLayout layout, float from, float to)
+        {
+            float covered = 0f;
+            CarPresentationPose prior = PitLanePresentationMapper.ExitPose(PlayerId.Player1, from, false, layout);
+            for (float progress = from + .01f; progress <= to + .0001f; progress += .01f)
+            {
+                var next = PitLanePresentationMapper.ExitPose(PlayerId.Player1, progress, false, layout);
+                covered += Distance(prior.Position, next.Position);
+                prior = next;
+            }
+            return covered;
+        }
+
+        // The directed layout mirrors the real wiring: both track hand-offs run
+        // eastward, deliberately misaligned with the lane's own last chords.
+        private static PitLanePresentationLayout DirectedLayout() => new PitLanePresentationLayout(
+            new Vec2(5f, 5f), new Vec2(10f, 10f), new Vec2(20f, 10f),
+            new Vec2(30f, 10f), new Vec2(40f, 10f), new Vec2(38f, 8f),
+            new Vec2(42f, 5f), new Vec2(1f, 0f), new Vec2(1f, 0f));
+
+        private static float Dot(Vec2 a, Vec2 b) => a.X * b.X + a.Y * b.Y;
+        private static float Cos(float degrees) => (float)System.Math.Cos(degrees * System.Math.PI / 180.0);
+        private static float Distance(Vec2 a, Vec2 b) =>
+            (float)System.Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
+
         private static RacerConditionSnapshot Condition(float fuelUsed, float wear, bool fuelPenalty = false) =>
             new RacerConditionSnapshot(fuelUsed, wear, fuelPenalty, false);
 
