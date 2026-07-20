@@ -79,7 +79,7 @@ Player-facing solo play and AI opponents are deferred to Tranche 5 so this gate 
 
 ## 4. Wireframe experience proof
 
-**Status:** In progress. The state inventory and Corner Controllers direction are approved in the [wireframe UI contract](gameplay/wireframe-ui.md). Staged implementation capture review, Android comparison, and the two-person physical Board gate remain required before passage.
+**Status:** Passed July 19, 2026. The approved [wireframe UI contract](gameplay/wireframe-ui.md) was implemented and validated end to end: automated suites (97 EditMode / 13 PlayMode), the 11-state Android capture matrix, and live two-player races on the physical Board. Gate-week hardware findings — the clear-table pause (#90), the mandatory-stop drop (#92), the final-lap pit call (#95), and the post-race restart (#97) — were each fixed, redeployed, and rerun on the table before owner sign-off. See the [Tranche 4 wireframe proof](testing/tranche-4-wireframe-proof.md) and [state-matrix validation](testing/tranche-4-state-matrix-validation.md). Overlay text orientation and finish-line label crowding are accepted limitations deferred to the real UI pass.
 
 **Goal:** Prove that the established two-player race can be read and operated as a coherent player experience.
 
