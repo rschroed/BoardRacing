@@ -52,20 +52,22 @@ namespace BoardRacing.Runtime
     public readonly struct PitLanePresentationLayout
     {
         public PitLanePresentationLayout(Vec2 pitLine, Vec2 entry, Vec2 playerOneBox,
-            Vec2 playerTwoBox, Vec2 exit, Vec2 returnBend, Vec2 returnLane, Vec2 mergeApproach)
+            Vec2 playerTwoBox, Vec2 exit, Vec2 mergeApproach, Vec2 exitRejoin)
         {
             PitLine = pitLine; Entry = entry; PlayerOneBox = playerOneBox;
-            PlayerTwoBox = playerTwoBox; Exit = exit; ReturnBend = returnBend;
-            ReturnLane = returnLane; MergeApproach = mergeApproach;
+            PlayerTwoBox = playerTwoBox; Exit = exit;
+            MergeApproach = mergeApproach; ExitRejoin = exitRejoin;
         }
         public Vec2 PitLine { get; }
         public Vec2 Entry { get; }
         public Vec2 PlayerOneBox { get; }
         public Vec2 PlayerTwoBox { get; }
         public Vec2 Exit { get; }
-        public Vec2 ReturnBend { get; }
-        public Vec2 ReturnLane { get; }
         public Vec2 MergeApproach { get; }
+        // Where the pit lane physically meets the track again — the simulation
+        // resumes the car at the matching track distance, so the exit animation
+        // is a short forward merge instead of a return trip to the start line.
+        public Vec2 ExitRejoin { get; }
         public Vec2 Box(PlayerId playerId) => playerId == PlayerId.Player1 ? PlayerOneBox : PlayerTwoBox;
     }
 
@@ -97,8 +99,7 @@ namespace BoardRacing.Runtime
         public static CarPresentationPose ExitPose(PlayerId playerId, float progress, bool finished,
             PitLanePresentationLayout layout) => AlongSpline(new[]
             {
-                layout.Box(playerId), layout.Exit, layout.ReturnBend,
-                layout.ReturnLane, layout.MergeApproach, layout.PitLine
+                layout.Box(playerId), layout.MergeApproach, layout.ExitRejoin
             }, progress, finished);
 
         private static CarPresentationPose AlongSpline(Vec2[] points, float progress, bool finished)

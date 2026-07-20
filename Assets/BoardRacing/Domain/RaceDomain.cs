@@ -181,16 +181,22 @@ namespace BoardRacing.Domain
 
     public readonly struct PitRules
     {
-        public PitRules(float entrySeconds, float exitSeconds)
+        public PitRules(float entrySeconds, float exitSeconds, float exitRejoinDistance = 0f)
         {
             if (float.IsNaN(entrySeconds) || float.IsInfinity(entrySeconds) ||
-                float.IsNaN(exitSeconds) || float.IsInfinity(exitSeconds) || entrySeconds <= 0f || exitSeconds <= 0f)
+                float.IsNaN(exitSeconds) || float.IsInfinity(exitSeconds) || entrySeconds <= 0f || exitSeconds <= 0f ||
+                float.IsNaN(exitRejoinDistance) || float.IsInfinity(exitRejoinDistance) || exitRejoinDistance < 0f)
                 throw new ArgumentException("Pit rules contain invalid values.");
             Enabled = true; EntrySeconds = entrySeconds; ExitSeconds = exitSeconds;
+            ExitRejoinDistance = exitRejoinDistance;
         }
         public bool Enabled { get; }
         public float EntrySeconds { get; }
         public float ExitSeconds { get; }
+        // Track distance past the start/finish line where the pit lane rejoins the
+        // track: the car resumes where the lane physically ends instead of doubling
+        // back to the line.
+        public float ExitRejoinDistance { get; }
         public static PitRules Disabled => default;
         public static PitRules Defaults => new PitRules(.75f, .75f);
     }

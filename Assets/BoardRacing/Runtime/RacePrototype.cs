@@ -37,9 +37,9 @@ namespace BoardRacing.Runtime
         private static readonly Vec2 PlayerOnePitBox = new Vec2(820f, 455f);
         private static readonly Vec2 PlayerTwoPitBox = new Vec2(1100f, 455f);
         private static readonly Vec2 PitExit = new Vec2(1370f, 455f);
-        private static readonly Vec2 PitReturnBend = new Vec2(1480f, 405f);
-        private static readonly Vec2 PitReturnLane = new Vec2(360f, 405f);
-        private static readonly Vec2 PitMergeApproach = new Vec2(390f, 438f);
+        // The lane blends onto the track just before the rejoin sample — no return
+        // trip: the simulation resumes the car where the pit lane physically ends.
+        private static readonly Vec2 PitMergeApproach = new Vec2(1300f, 452f);
 
 #if !BOARDRACING_CONTROL_LAB
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -254,19 +254,18 @@ namespace BoardRacing.Runtime
             Vec2 start = ProjectTrack(simulation.Track.Sample(0f).Position);
             DrawLine(start, PitEntry, 30f, new Color(.08f, .11f, .15f));
             DrawLine(PitEntry, PitExit, 30f, new Color(.08f, .11f, .15f));
-            DrawPitReturnLane(start, 30f, new Color(.08f, .11f, .15f));
+            DrawPitMergeLane(30f, new Color(.08f, .11f, .15f));
             DrawLine(start, PitEntry, 2f, new Color(.62f, .68f, .74f, .55f));
             DrawLine(PitEntry, PitExit, 2f, new Color(.62f, .68f, .74f, .55f));
-            DrawPitReturnLane(start, 2f, new Color(.62f, .68f, .74f, .55f));
+            DrawPitMergeLane(2f, new Color(.62f, .68f, .74f, .55f));
             DrawPitBox(PlayerOnePitBox, "▲ P1 BOX", new Color(.92f, .39f, .12f));
             DrawPitBox(PlayerTwoPitBox, "● P2 BOX", new Color(.48f, .28f, .72f));
             GUI.Label(new Rect(865, 421, 190, 28), "PIT LANE", small);
         }
 
-        private static void DrawPitReturnLane(Vec2 start, float width, Color color)
+        private void DrawPitMergeLane(float width, Color color)
         {
-            var layout = new PitLanePresentationLayout(start, PitEntry, PlayerOnePitBox,
-                PlayerTwoPitBox, PitExit, PitReturnBend, PitReturnLane, PitMergeApproach);
+            PitLanePresentationLayout layout = PitLayout();
             CarPresentationPose prior = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
             for (int i = 1; i <= 36; i++)
             {
@@ -401,14 +400,16 @@ namespace BoardRacing.Runtime
                 GUI.Label(new Rect(x - 100f, y + 32f, 200f, 28f), CarPitLabel(racer.Pit), small);
         }
 
+        private PitLanePresentationLayout PitLayout() => new PitLanePresentationLayout(
+            ProjectTrack(simulation.Track.Sample(0f).Position), PitEntry, PlayerOnePitBox,
+            PlayerTwoPitBox, PitExit, PitMergeApproach,
+            ProjectTrack(simulation.Track.Sample(strategySettings.pitExitRejoinDistance).Position));
+
         private void CarPose(RacerSnapshot racer, out Vector2 position, out Vector2 tangent)
         {
             Vec2 trackPosition = ProjectTrack(racer.Track.Position);
             var trackTangent = new Vec2(racer.Track.Tangent.X, racer.Track.Tangent.Y * TrackVerticalScale);
-            var layout = new PitLanePresentationLayout(ProjectTrack(simulation.Track.Sample(0f).Position),
-                PitEntry, PlayerOnePitBox, PlayerTwoPitBox, PitExit,
-                PitReturnBend, PitReturnLane, PitMergeApproach);
-            CarPresentationPose pose = PitLanePresentationMapper.From(racer, trackPosition, trackTangent, layout);
+            CarPresentationPose pose = PitLanePresentationMapper.From(racer, trackPosition, trackTangent, PitLayout());
             position = new Vector2(pose.Position.X, pose.Position.Y);
             tangent = new Vector2(pose.Tangent.X, pose.Tangent.Y);
         }

@@ -191,10 +191,16 @@ namespace BoardRacing.Domain
             if (racer.PitTimer < rules.Pit.ExitSeconds) return;
             racer.PitPhase = PitPhase.OnTrack; racer.PitTimer = racer.ServiceProgress = 0f;
             racer.SelectedService = PitService.None;
-            racer.PriorSection = track.Sample(racer.Distance).SectionIndex;
             float finishDistance = track.Length * rules.Laps;
             if (racer.Distance >= finishDistance && racer.CompletedServices >= rules.RequiredServiceCount)
+            {
                 FinishRacer(racer, racer.Distance, elapsed + delta);
+                return;
+            }
+            // The pit lane rejoins the track where it physically ends, not back at
+            // the start/finish line the car entered from.
+            racer.Distance += rules.Pit.ExitRejoinDistance;
+            racer.PriorSection = track.Sample(racer.Distance).SectionIndex;
         }
 
         private static void FinishRacer(RacerState racer, float distance, float finishTime)

@@ -73,11 +73,14 @@ namespace BoardRacing.Tests
             var parked = Pose(Racer(PlayerId.Player1, PitPhase.InService), layout);
             var exitStart = Pose(Racer(PlayerId.Player1, PitPhase.Exiting, 0f), layout);
             var exitEnd = Pose(Racer(PlayerId.Player1, PitPhase.Exiting, 1f), layout);
+            // The simulation resumes the car at the rejoin distance, so the first
+            // on-track pose after an exit samples the track at ExitRejoin.
+            var rejoined = Pose(Racer(PlayerId.Player1, PitPhase.OnTrack), layout, layout.ExitRejoin);
 
             AssertPosition(onTrack, entryStart.Position);
             AssertPosition(entryEnd, parked.Position);
             AssertPosition(parked, exitStart.Position);
-            AssertPosition(exitEnd, onTrack.Position);
+            AssertPosition(exitEnd, rejoined.Position);
         }
 
         [Test]
@@ -112,32 +115,36 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void NormalRejoinAndLateFinishBothEndAtPitLineWithoutChangingTrackPose()
+        public void NormalRejoinAndLateFinishBothEndAtTheExitRejoinPoint()
         {
             var layout = Layout();
             var exitEnd = Pose(Racer(PlayerId.Player2, PitPhase.Exiting, 1f), layout);
-            var rejoined = Pose(Racer(PlayerId.Player2, PitPhase.OnTrack), layout);
+            var rejoined = Pose(Racer(PlayerId.Player2, PitPhase.OnTrack), layout, layout.ExitRejoin);
             var finished = Pose(Racer(PlayerId.Player2, PitPhase.OnTrack, 0f,
-                PitService.None, 0f, true), layout);
+                PitService.None, 0f, true), layout, layout.ExitRejoin);
 
-            AssertPosition(exitEnd, layout.PitLine);
-            AssertPosition(rejoined, layout.PitLine);
-            AssertPosition(finished, layout.PitLine);
+            AssertPosition(exitEnd, layout.ExitRejoin);
+            AssertPosition(rejoined, layout.ExitRejoin);
+            AssertPosition(finished, layout.ExitRejoin);
             Assert.That(finished.Finished, Is.True);
         }
 
         [Test]
-        public void PitExitUsesSeparateSmoothReturnLaneAndMergesInTrackDirection()
+        public void PitExitIsAShortForwardMergeOntoTheRejoinPoint()
         {
             var layout = Layout();
             var start = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
-            var returnLane = PitLanePresentationMapper.ExitPose(PlayerId.Player1, .7f, false, layout);
+            var mid = PitLanePresentationMapper.ExitPose(PlayerId.Player1, .5f, false, layout);
             var end = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 1f, false, layout);
 
-            Assert.That(start.Tangent.X, Is.GreaterThan(.9f));
-            Assert.That(returnLane.Position.Y, Is.GreaterThan(layout.Entry.Y));
-            Assert.That(end.Tangent.X, Is.GreaterThan(.9f));
-            AssertPosition(end, layout.PitLine);
+            // Every point of the exit moves forward with the track — no doubling
+            // back toward the start line.
+            Assert.That(start.Tangent.X, Is.GreaterThan(0f));
+            Assert.That(mid.Tangent.X, Is.GreaterThan(0f));
+            Assert.That(end.Tangent.X, Is.GreaterThan(0f));
+            Assert.That(mid.Position.X,
+                Is.InRange(layout.PlayerOneBox.X, layout.ExitRejoin.X));
+            AssertPosition(end, layout.ExitRejoin);
         }
 
         private static RacerConditionSnapshot Condition(float fuelUsed, float wear, bool fuelPenalty = false) =>
@@ -157,11 +164,15 @@ namespace BoardRacing.Tests
 
         private static PitLanePresentationLayout Layout() => new PitLanePresentationLayout(
             new Vec2(5f, 5f), new Vec2(10f, 10f), new Vec2(20f, 10f),
-            new Vec2(30f, 10f), new Vec2(40f, 10f), new Vec2(45f, 20f),
-            new Vec2(0f, 20f), new Vec2(0f, 5f));
+            new Vec2(30f, 10f), new Vec2(40f, 10f), new Vec2(38f, 8f),
+            new Vec2(42f, 5f));
 
         private static CarPresentationPose Pose(RacerSnapshot racer, PitLanePresentationLayout layout) =>
-            PitLanePresentationMapper.From(racer, new Vec2(5f, 5f), new Vec2(1f, 0f), layout);
+            Pose(racer, layout, new Vec2(5f, 5f));
+
+        private static CarPresentationPose Pose(RacerSnapshot racer, PitLanePresentationLayout layout,
+            Vec2 trackPosition) =>
+            PitLanePresentationMapper.From(racer, trackPosition, new Vec2(1f, 0f), layout);
 
         private static void AssertPosition(CarPresentationPose pose, Vec2 expected)
         {

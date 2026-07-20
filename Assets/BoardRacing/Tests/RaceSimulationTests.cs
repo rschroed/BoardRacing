@@ -222,6 +222,7 @@ namespace BoardRacing.Tests
                 .35f, 180f, 38f, 1f));
             Assert.Throws<ArgumentException>(() => new ConditionRules(.1f, .1f, .7f, 0f, .5f, .01f, .1f, .6f, .75f));
             Assert.Throws<ArgumentException>(() => new PitRules(0f, .5f));
+            Assert.Throws<ArgumentException>(() => new PitRules(.5f, .5f, -1f));
             Assert.Throws<ArgumentException>(() => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f,
                 .35f, 180f, 38f, 1f, 1, ConditionRules.Defaults));
         }
@@ -525,6 +526,47 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void PitExitRejoinsAheadAtTheLaneEndWithoutLapCreditOrCornerWear()
+        {
+            // Rejoin distance 12 lands the car inside the corner section of the
+            // 20-unit test track — the hop must not read as a corner crossing.
+            const float rejoin = 12f;
+            var simulation = StartedPitSimulation(3, rejoin);
+            RequestAndAdvanceToService(simulation, PlayerId.Player1, PitService.Tires);
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                PitService.Tires, false, 1f) });
+            var parked = Player(simulation, PlayerId.Player1);
+            Assert.That(parked.Condition.TireWear, Is.Zero);
+
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                requestExit: true) });
+            AdvanceUntilPitPhase(simulation, PlayerId.Player1, PitPhase.OnTrack);
+            var rejoined = Player(simulation, PlayerId.Player1);
+            Assert.That(rejoined.TotalDistance, Is.EqualTo(parked.TotalDistance + rejoin).Within(.001f));
+            Assert.That(rejoined.CompletedLaps, Is.EqualTo(parked.CompletedLaps));
+
+            // One more step while still inside the corner: fresh wear would mean
+            // the hop was charged as a corner entry.
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost) });
+            Assert.That(Player(simulation, PlayerId.Player1).Condition.TireWear, Is.Zero);
+        }
+
+        [Test]
+        public void LateFinishAtTheLineTakesPriorityOverTheRejoinHop()
+        {
+            var simulation = StartedPitSimulation(1, 12f);
+            RequestAndAdvanceToService(simulation, PlayerId.Player1, PitService.Fuel);
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                PitService.Fuel, false, 1f) });
+            simulation.Step(.01f, new[] { PitCommand(PlayerId.Player1, ThrottleStep.Boost,
+                requestExit: true) });
+            AdvanceUntilFinished(simulation, PlayerId.Player1);
+            var finished = Player(simulation, PlayerId.Player1);
+            Assert.That(finished.Finished, Is.True);
+            Assert.That(finished.TotalDistance, Is.EqualTo(simulation.Track.Length).Within(.001f));
+        }
+
+        [Test]
         public void RematchClearsAllConditionAndPitState()
         {
             var simulation = StartedPitSimulation(1);
@@ -616,7 +658,7 @@ namespace BoardRacing.Tests
         private static RaceRules LongConditionRules() => new RaceRules(100, 0f, 360f, 220f, 120f, 300f,
             .55f, 1f, .35f, 180f, 38f, 1f, 0, ConditionRules.Defaults);
 
-        private static RaceSimulation StartedPitSimulation(int laps)
+        private static RaceSimulation StartedPitSimulation(int laps, float exitRejoinDistance = 0f)
         {
             var track = new TrackDefinition(new[]
             {
@@ -625,7 +667,7 @@ namespace BoardRacing.Tests
             });
             var conditions = new ConditionRules(.1f, .2f, .8f, .8f, .8f, .2f, .2f, .2f, .8f);
             var rules = new RaceRules(laps, 0f, 100f, 1000f, 100f, 100f, .5f, .2f, .5f,
-                5f, 1f, 1f, 1, conditions, new PitRules(.2f, .2f));
+                5f, 1f, 1f, 1, conditions, new PitRules(.2f, .2f, exitRejoinDistance));
             return StartedSimulation(track, rules);
         }
 

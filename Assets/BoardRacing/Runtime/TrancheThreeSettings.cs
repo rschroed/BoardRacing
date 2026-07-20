@@ -26,6 +26,10 @@ namespace BoardRacing.Runtime
         [Min(.01f)] public float pitEntrySeconds = .75f;
         [Min(.01f)] public float pitExitSeconds = .75f;
         [Min(.01f)] public float pitCallHoldSeconds = .75f;
+        // The pit lane rejoins the track where it physically ends, not back at the
+        // start/finish line the car entered from: PitExit x 1370 − track start x 480
+        // along the placeholder top straight.
+        [Min(0f)] public float pitExitRejoinDistance = 890f;
 
         [Header("Crew service regions")]
         // Per-seat dial centers measured from frame 40:23 component 44:124 (wireframe-ui.md,
@@ -44,7 +48,8 @@ namespace BoardRacing.Runtime
             fuelBurnPerSecondAtBoost, fuelWarningThreshold, emptyMaximumSpeedScale, emptyAccelerationScale,
             tireWearPerCorner, tireWearPerUnsafeSpeed, tirePenaltyThreshold, fullyWornSafeSpeedScale);
 
-        public PitRules ToPitRules() => new PitRules(pitEntrySeconds, pitExitSeconds);
+        public PitRules ToPitRules() =>
+            new PitRules(pitEntrySeconds, pitExitSeconds, pitExitRejoinDistance);
 
         public static TrancheThreeSettings Defaults()
         {

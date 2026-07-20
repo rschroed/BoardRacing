@@ -25,6 +25,7 @@ MonoBehaviour:
   pitEntrySeconds: 0.75
   pitExitSeconds: 0.75
   pitCallHoldSeconds: 0.75
+  pitExitRejoinDistance: 890
   playerOneTiresCenter: {x: 1692, y: 321}
   playerOneFuelCenter: {x: 1590, y: 212}
   playerTwoTiresCenter: {x: 228, y: 759}
