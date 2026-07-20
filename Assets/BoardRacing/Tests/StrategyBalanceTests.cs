@@ -62,8 +62,10 @@ namespace BoardRacing.Tests
             Assert.That(fuelCost.PlayerOne.FinishTime,
                 Is.GreaterThan(fuelCost.PlayerTwo.FinishTime + 2f));
             Assert.That(tireTiming.PlayerOne.FinishTime, Is.LessThan(tireTiming.PlayerTwo.FinishTime - .1f));
+            // Two laps apart: a Wedge lap runs ~15 s at Drive (the placeholder's
+            // was ~20 s, hence the old 30 s literal).
             Assert.That(tireTiming.PlayerOne.FirstPitEntryTime,
-                Is.LessThan(tireTiming.PlayerTwo.FirstPitEntryTime - 30f));
+                Is.LessThan(tireTiming.PlayerTwo.FirstPitEntryTime - 25f));
         }
 
         [Test]
@@ -80,7 +82,7 @@ namespace BoardRacing.Tests
             Assert.That(duel.PlayerTwo.FinishTime, Is.EqualTo(-1f));
             Assert.That(duel.PlayerTwo.CompletedServices, Is.Zero);
             Assert.That(duel.PlayerTwo.FinalDistance,
-                Is.GreaterThanOrEqualTo(TrackDefinition.Placeholder().Length * 6f));
+                Is.GreaterThanOrEqualTo(TrackCatalog.Wedge().Length * 6f));
             Assert.That(duel.All.All(x => x.InvalidTransitions == 0), Is.True);
         }
 
@@ -105,7 +107,9 @@ namespace BoardRacing.Tests
         private static RaceRules BalanceRules(int requiredServices)
         {
             var defaults = RaceRules.TrancheThreeDefaults;
-            return new RaceRules(defaults.Laps, 0f, defaults.MaxSpeed, defaults.Acceleration, defaults.Drag,
+            // 6 laps mirrors the live Wedge race (TrancheTwoSettings, issue #88);
+            // the tranche-3 default of 5 belonged to the placeholder's longer lap.
+            return new RaceRules(6, 0f, defaults.MaxSpeed, defaults.Acceleration, defaults.Drag,
                 defaults.Braking, defaults.CornerSpeedScrub, defaults.CornerRecoverySeconds,
                 defaults.RecoveryAccelerationScale, defaults.PassingDistance, defaults.PassingOffset,
                 defaults.RematchHoldSeconds, requiredServices, defaults.Conditions, defaults.Pit);
@@ -114,7 +118,7 @@ namespace BoardRacing.Tests
         private static TraceDuel RunDuel(RaceRules rules, StrategyPlan playerOne, StrategyPlan playerTwo,
             float maximumSeconds = 240f)
         {
-            var simulation = new RaceSimulation(TrackDefinition.Placeholder(), rules);
+            var simulation = new RaceSimulation(TrackCatalog.Wedge(), rules);
             simulation.Step(Step, ReleasedCommands());
             simulation.Step(Step, ReleasedCommands());
             Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));

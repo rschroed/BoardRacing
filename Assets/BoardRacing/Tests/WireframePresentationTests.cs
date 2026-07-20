@@ -248,7 +248,7 @@ namespace BoardRacing.Tests
         [Test]
         public void DeterministicPreviewFixturesCoverTheRequiredReviewStates()
         {
-            var track = TrackDefinition.Placeholder();
+            var track = TrackCatalog.Wedge();
             foreach (RaceUiPreviewScenario scenario in Enum.GetValues(typeof(RaceUiPreviewScenario)))
             {
                 RaceUiPreviewFrame frame = RaceUiPreviewFixtures.Create(scenario, track,

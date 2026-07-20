@@ -30,9 +30,9 @@ namespace BoardRacing.Runtime
         [Min(.01f)] public float pitExitSeconds = .75f;
         [Min(.01f)] public float pitCallHoldSeconds = .75f;
         // The pit lane rejoins the track where it physically ends, not back at the
-        // start/finish line the car entered from: PitExit x 1370 − track start x 480
-        // along the placeholder top straight.
-        [Min(0f)] public float pitExitRejoinDistance = 890f;
+        // start/finish line the car entered from: 850 units along the Wedge top
+        // straight (911 long) puts the rejoin just before the sweeper (issue #88).
+        [Min(0f)] public float pitExitRejoinDistance = 850f;
 
         [Header("Crew service regions")]
         // Per-seat dial centers measured from frame 40:23 component 44:124 (wireframe-ui.md,
