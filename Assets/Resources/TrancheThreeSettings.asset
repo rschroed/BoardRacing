@@ -21,7 +21,7 @@ MonoBehaviour:
   tireWearPerUnsafeSpeed: 0.08
   tirePenaltyThreshold: 0.6
   fullyWornSafeSpeedScale: 0.75
-  requiredServiceCount: 1
+  requiredServiceCount: 0
   pitEntrySeconds: 0.75
   pitExitSeconds: 0.75
   pitCallHoldSeconds: 0.75
