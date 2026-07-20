@@ -22,8 +22,8 @@ namespace BoardRacing.Domain
         private readonly RaceRules rules;
         private readonly RacerState[] racers;
         private RacePhase phase = RacePhase.Grid;
-        private float countdown, elapsed, rematchHeld;
-        private bool awaitingRematchRelease;
+        private float countdown, elapsed, rematchHeld, pauseHeld;
+        private bool awaitingRematchRelease, resumingFromPause;
         private RaceSnapshot snapshot;
 
         public RaceSimulation(TrackDefinition track, RaceRules rules)
@@ -57,19 +57,49 @@ namespace BoardRacing.Domain
             }
             else if (phase == RacePhase.Countdown)
             {
-                if (racers.Any(x => !Command(x.Id).DrivingPiecePresent)) { phase = RacePhase.Grid; countdown = 0f; }
-                else if ((countdown -= fixedDeltaSeconds) <= 0f) { countdown = 0f; phase = RacePhase.Racing; }
+                // A resume countdown only watches the unfinished racers' Ships — a
+                // finished player's Ship may legitimately stay off the table — and
+                // aborts back to the pause, never to a fresh grid.
+                bool abort = resumingFromPause
+                    ? racers.Where(x => !x.Finished).Any(x => !Command(x.Id).DrivingPiecePresent)
+                    : racers.Any(x => !Command(x.Id).DrivingPiecePresent);
+                if (abort) { phase = resumingFromPause ? RacePhase.Paused : RacePhase.Grid; countdown = 0f; }
+                else if ((countdown -= fixedDeltaSeconds) <= 0f)
+                { countdown = 0f; phase = RacePhase.Racing; resumingFromPause = false; }
             }
             else if (phase == RacePhase.Racing)
             {
-                foreach (var racer in racers)
+                // Clearing the table (every unfinished racer's Ship absent long enough
+                // to be deliberate) pauses the race in place.
+                bool tableCleared = racers.Where(x => !x.Finished)
+                    .All(x => !Command(x.Id).DrivingPiecePresent);
+                pauseHeld = tableCleared ? pauseHeld + fixedDeltaSeconds : 0f;
+                if (pauseHeld >= rules.PauseClearSeconds)
                 {
-                    var command = Command(racer.Id);
-                    CaptureStrategyIntent(racer, command);
-                    AdvanceRacer(racer, command, fixedDeltaSeconds);
+                    pauseHeld = 0f;
+                    phase = RacePhase.Paused;
                 }
-                elapsed += fixedDeltaSeconds;
-                if (racers.All(x => x.Finished)) phase = RacePhase.Finished;
+                else
+                {
+                    foreach (var racer in racers)
+                    {
+                        var command = Command(racer.Id);
+                        CaptureStrategyIntent(racer, command);
+                        AdvanceRacer(racer, command, fixedDeltaSeconds);
+                    }
+                    elapsed += fixedDeltaSeconds;
+                    if (racers.All(x => x.Finished)) phase = RacePhase.Finished;
+                }
+            }
+            else if (phase == RacePhase.Paused)
+            {
+                // Nothing advances while paused; the unfinished racers' Ships
+                // returning starts the resume countdown.
+                if (racers.Where(x => !x.Finished).All(x => Command(x.Id).DrivingPiecePresent))
+                {
+                    phase = RacePhase.Countdown; countdown = rules.CountdownSeconds;
+                    resumingFromPause = true;
+                }
             }
             else HandleRematch(commands == null ? Array.Empty<RacerCommand>() : commands, fixedDeltaSeconds);
 
@@ -244,9 +274,19 @@ namespace BoardRacing.Domain
             else if (allReleased) ResetForRematch();
         }
 
+        // The pause overlay's START NEW RACE touch button — the game's one
+        // non-piece control; honored only while paused.
+        public void RequestNewRace()
+        {
+            if (phase != RacePhase.Paused) return;
+            ResetForRematch();
+            snapshot = BuildSnapshot();
+        }
+
         private void ResetForRematch()
         {
-            phase = RacePhase.Grid; countdown = elapsed = rematchHeld = 0f; awaitingRematchRelease = false;
+            phase = RacePhase.Grid; countdown = elapsed = rematchHeld = pauseHeld = 0f;
+            awaitingRematchRelease = resumingFromPause = false;
             foreach (var racer in racers)
             {
                 racer.Speed = racer.Distance = racer.Recovery = 0f; racer.FinishTime = -1f;

@@ -224,6 +224,8 @@ namespace BoardRacing.Tests
             Assert.Throws<ArgumentException>(() => new PitRules(0f, .5f));
             Assert.Throws<ArgumentException>(() => new PitRules(.5f, .5f, -1f));
             Assert.Throws<ArgumentException>(() => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f,
+                .35f, 180f, 38f, 1f, 0, default, default, 0f));
+            Assert.Throws<ArgumentException>(() => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f,
                 .35f, 180f, 38f, 1f, 1, ConditionRules.Defaults));
         }
 
@@ -567,6 +569,114 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void ClearingTheTablePausesOnlyAfterTheDebounceAndFreezesTheRace()
+        {
+            var simulation = StartedPauseSimulation(pauseClear: .3f, countdownSeconds: .2f);
+            for (int i = 0; i < 30; i++) simulation.Step(.01f, Commands(ThrottleStep.Boost, true));
+            Assert.That(Player(simulation, PlayerId.Player1).TotalDistance, Is.GreaterThan(0f));
+
+            // Ships absent shorter than the debounce: still racing, and a returning
+            // Ship resets the clock.
+            for (int i = 0; i < 20; i++) simulation.Step(.01f, AbsentCommands());
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+            simulation.Step(.01f, Commands(ThrottleStep.Brake, true));
+            for (int i = 0; i < 25; i++) simulation.Step(.01f, AbsentCommands());
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+            for (int i = 0; i < 10; i++) simulation.Step(.01f, AbsentCommands());
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Paused));
+
+            float pausedDistance = Player(simulation, PlayerId.Player1).TotalDistance;
+            float pausedElapsed = simulation.Snapshot.ElapsedSeconds;
+            for (int i = 0; i < 50; i++) simulation.Step(.01f, AbsentCommands());
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Paused));
+            Assert.That(Player(simulation, PlayerId.Player1).TotalDistance, Is.EqualTo(pausedDistance));
+            Assert.That(simulation.Snapshot.ElapsedSeconds, Is.EqualTo(pausedElapsed));
+        }
+
+        [Test]
+        public void PausedRaceResumesThroughACountdownWithStateIntact()
+        {
+            var simulation = StartedPauseSimulation(pauseClear: .2f, countdownSeconds: .3f);
+            for (int i = 0; i < 30; i++) simulation.Step(.01f, Commands(ThrottleStep.Boost, true));
+            PauseRace(simulation);
+            // The frozen baseline is the state at the pause itself — cars still
+            // brake to a stop during the debounce, so capture after it.
+            float distance = Player(simulation, PlayerId.Player1).TotalDistance;
+            float elapsed = simulation.Snapshot.ElapsedSeconds;
+
+            // Ships back: a restart countdown, not a fresh grid — and lifting a Ship
+            // mid-countdown falls back to the pause.
+            simulation.Step(.01f, Commands(ThrottleStep.Brake, true));
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Countdown));
+            simulation.Step(.01f, AbsentCommands());
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Paused));
+            simulation.Step(.01f, Commands(ThrottleStep.Brake, true));
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Countdown));
+            simulation.Step(.35f, Commands(ThrottleStep.Brake, true));
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+            Assert.That(Player(simulation, PlayerId.Player1).TotalDistance, Is.EqualTo(distance));
+            Assert.That(simulation.Snapshot.ElapsedSeconds, Is.EqualTo(elapsed));
+        }
+
+        [Test]
+        public void NewRaceRequestResetsToTheGridOnlyWhilePaused()
+        {
+            var simulation = StartedPauseSimulation(pauseClear: .2f, countdownSeconds: .2f);
+            for (int i = 0; i < 30; i++) simulation.Step(.01f, Commands(ThrottleStep.Boost, true));
+
+            // The touch button is honored only while paused — a live race ignores it.
+            simulation.RequestNewRace();
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+            Assert.That(Player(simulation, PlayerId.Player1).TotalDistance, Is.GreaterThan(0f));
+
+            PauseRace(simulation);
+            simulation.RequestNewRace();
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Grid));
+            foreach (var racer in simulation.Snapshot.Racers)
+            {
+                Assert.That(racer.TotalDistance, Is.Zero);
+                Assert.That(racer.Finished, Is.False);
+            }
+        }
+
+        [Test]
+        public void FinishedRacersMissingShipDoesNotBlockPauseOrResume()
+        {
+            var track = new TrackDefinition(new[]
+            {
+                new TrackSegment(new Vec2(0f, 0f), new Vec2(10f, 0f), TrackSectionKind.Straight, float.PositiveInfinity),
+                new TrackSegment(new Vec2(10f, 0f), new Vec2(0f, 0f), TrackSectionKind.Straight, float.PositiveInfinity)
+            });
+            var rules = new RaceRules(1, .2f, 100f, 1000f, 100f, 100f, .5f, .2f, .5f, 5f, 1f, 1f,
+                0, default, default, .2f);
+            var simulation = StartedSimulation(track, rules);
+            int guard = 0;
+            while (!Player(simulation, PlayerId.Player1).Finished && guard++ < 10000)
+                simulation.Step(.01f, new[]
+                {
+                    new RacerCommand(PlayerId.Player1, ThrottleStep.Boost, true, true),
+                    new RacerCommand(PlayerId.Player2, ThrottleStep.Brake, true, false)
+                });
+            Assert.That(guard, Is.LessThan(10000));
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+
+            // The finished player's Ship is already off the table; the pause and the
+            // resume both key off the unfinished racer's Ship alone.
+            for (int i = 0; i < 30; i++) simulation.Step(.01f, AbsentCommands());
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Paused));
+            var resumeCommands = new[]
+            {
+                new RacerCommand(PlayerId.Player1, ThrottleStep.Brake, false, false),
+                new RacerCommand(PlayerId.Player2, ThrottleStep.Brake, true, false)
+            };
+            simulation.Step(.01f, resumeCommands);
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Countdown));
+            simulation.Step(.25f, resumeCommands);
+            Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
+            Assert.That(Player(simulation, PlayerId.Player1).Finished, Is.True);
+        }
+
+        [Test]
         public void RematchClearsAllConditionAndPitState()
         {
             var simulation = StartedPitSimulation(1);
@@ -657,6 +767,34 @@ namespace BoardRacing.Tests
 
         private static RaceRules LongConditionRules() => new RaceRules(100, 0f, 360f, 220f, 120f, 300f,
             .55f, 1f, .35f, 180f, 38f, 1f, 0, ConditionRules.Defaults);
+
+        private static RaceSimulation StartedPauseSimulation(float pauseClear, float countdownSeconds)
+        {
+            var track = new TrackDefinition(new[]
+            {
+                new TrackSegment(new Vec2(0f, 0f), new Vec2(10f, 0f), TrackSectionKind.Straight, float.PositiveInfinity),
+                new TrackSegment(new Vec2(10f, 0f), new Vec2(0f, 0f), TrackSectionKind.Corner, 50f)
+            });
+            // Hard braking so cars halt almost immediately once Ships lift — the
+            // pause tests must not coast across the finish during the debounce.
+            var rules = new RaceRules(3, countdownSeconds, 100f, 1000f, 100f, 1000f, .5f, .2f, .5f,
+                5f, 1f, 1f, 0, default, default, pauseClear);
+            return StartedSimulation(track, rules);
+        }
+
+        private static void PauseRace(RaceSimulation simulation)
+        {
+            int guard = 0;
+            while (simulation.Snapshot.Phase != RacePhase.Paused && guard++ < 10000)
+                simulation.Step(.01f, AbsentCommands());
+            Assert.That(guard, Is.LessThan(10000));
+        }
+
+        private static RacerCommand[] AbsentCommands() => new[]
+        {
+            new RacerCommand(PlayerId.Player1, ThrottleStep.Brake, false, false),
+            new RacerCommand(PlayerId.Player2, ThrottleStep.Brake, false, false)
+        };
 
         private static RaceSimulation StartedPitSimulation(int laps, float exitRejoinDistance = 0f)
         {
