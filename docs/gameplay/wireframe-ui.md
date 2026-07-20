@@ -82,13 +82,13 @@ Every player state follows this order:
 1. **Identity and ownership** — whose corner, car, and targets these are.
 2. **Dominant next action** — exactly one instruction the player should act on now.
 3. **Active control state** — current throttle, pit-call interaction, or service interaction.
-4. **Race status** — lap, place, and mandatory-stop completion.
+4. **Race status** — lap and place. (There is no mandatory stop — owner decision, 2026-07-19, issue #92: a gate that blocks the finish with no on-table read for why is worse than no gate; fuel and tires already motivate pitting. The service-count machinery survives in the rules for a future rethink.)
 5. **Conditions** — fuel and tires with normalized value and Normal, Warning, or Critical severity.
 6. **Secondary explanation** — only when it adds information and does not restate the dominant instruction.
 
 Identity, active control state, and both condition values remain stable enough to find at a glance. The dominant instruction changes with context.
 
-As of the issue #77 Round 2 owner decision, this hierarchy is expressed **spatially, not textually**, at the seats: the dominant instruction manifests as which zone is lit, emphasized, or ringed (and, for missing pieces, as the dimmed Ship well), not as a rendered sentence. Race status (lap, place, mandatory stop) has no per-seat rendering this tranche. The UI model retains all instruction and status strings — tests verify their priority, and shared center overlays still use their copy where the state table permits.
+As of the issue #77 Round 2 owner decision, this hierarchy is expressed **spatially, not textually**, at the seats: the dominant instruction manifests as which zone is lit, emphasized, or ringed (and, for missing pieces, as the dimmed Ship well), not as a rendered sentence. Race status (lap, place) has no per-seat rendering this tranche. The UI model retains all instruction and status strings — tests verify their priority, and shared center overlays still use their copy where the state table permits.
 
 ## Dominant-instruction priority
 
@@ -114,7 +114,7 @@ The "dominant instruction" column below defines semantic priority in the UI mode
 | State | Shared center | Player's dominant instruction | Stable player information and affordances |
 | --- | --- | --- | --- |
 | Grid / not ready | Track and grid remain visible; no player-specific copy | Place the missing Ship; otherwise identify the Ship control | Identity, Brake/Drive/Boost map, current safe Brake state, readiness, Call Pit shown as unavailable |
-| Grid / ready | Brief shared `READY` is permitted | Hold ready for the start | Identity, throttle map/state, lap `1/5`, place, stop required, initial conditions |
+| Grid / ready | Brief shared `READY` is permitted | Hold ready for the start | Identity, throttle map/state, lap `1/5`, place, initial conditions |
 | Countdown | One shared `3`, `2`, `1` sequence | Get ready; rotate only after Go | Same stable information; Call Pit remains unavailable; losing a Ship returns that player to placement guidance and the race to Grid |
 | Go | Brief shared `GO` | Begin driving, unless a missing Ship overrides it | Current throttle becomes live; Call Pit becomes available only after the race starts |
 | Stable racing | Track remains unobstructed by global copy | General Ship guidance or Robot pit availability | Current throttle, lap/place/stop, fuel, tires, and the exact Call Pit boundary |
@@ -128,7 +128,7 @@ The "dominant instruction" column below defines semantic priority in the UI mode
 | In service — choose | No global message | Stir Tires or Fuel, or leave the pit | The circle relabels to LEAVE PIT and stays lit; both service dials light up at their fixed positions; car parked is explicit |
 | In service — stirring | No global message | Stir the Robot in circles | Selected dial uses shape/boundary emphasis; percentage is co-located with the physical target; the other dial remains available to switch; drained meter value persists across switches and Robot loss |
 | In service — Robot lost or misplaced | No global message | Place the Robot back in Tires or Fuel | The service selection clears; the already-drained meter value is kept — stirring resumes where the meter left off |
-| Service meter empty | No global message | More repairs or leave the pit | The completed meter reads empty and the stop counts toward the mandatory total; the car stays parked — both dials and LEAVE PIT remain live, so one stop can service both meters |
+| Service meter empty | No global message | More repairs or leave the pit | The completed meter reads empty; the car stays parked — both dials and LEAVE PIT remain live, so one stop can service both meters |
 | Leave Pit — holding | No global message | Hold the Robot steady in Leave Pit | Available at any parked moment, even mid-service; hold percentage co-located with the circle; a Robot already resting in the circle when the car parks must enter it deliberately |
 | Pit exit | Track and moving car remain primary | Wait for automatic rejoin | Exit happens only via Leave Pit; partial drains are kept; stop status updates and Ship control is visibly restored only after exit |
 | Paused — table cleared | `RACES PAUSED` overlay: place Ships to resume, plus a `START NEW RACE` touch button | Place the Ship to resume, or touch START NEW RACE | Race state is frozen exactly (positions, clock, meters); seat zones go ghosted — the crew has no role while paused; a finished player's Ship is not required to resume |

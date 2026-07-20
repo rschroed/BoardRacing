@@ -22,7 +22,10 @@ namespace BoardRacing.Runtime
         [Range(0f, 1f)] public float fullyWornSafeSpeedScale = .75f;
 
         [Header("Pit lifecycle")]
-        [Min(0)] public int requiredServiceCount = 1;
+        // No mandatory stop (owner decision, 2026-07-19, issue #92): a blocked finish
+        // with no on-table read for why was worse than no rule — fuel and tires
+        // already motivate pitting. The rules machinery stays for a future rethink.
+        [Min(0)] public int requiredServiceCount = 0;
         [Min(.01f)] public float pitEntrySeconds = .75f;
         [Min(.01f)] public float pitExitSeconds = .75f;
         [Min(.01f)] public float pitCallHoldSeconds = .75f;
