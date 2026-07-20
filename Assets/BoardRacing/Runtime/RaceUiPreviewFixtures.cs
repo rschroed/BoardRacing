@@ -16,7 +16,8 @@ namespace BoardRacing.Runtime
         InService,
         SplitFinish,
         Results,
-        RematchRelease
+        RematchRelease,
+        Paused
     }
 
     internal readonly struct RaceUiPreviewFrame
@@ -47,6 +48,7 @@ namespace BoardRacing.Runtime
             float countdown = 0f;
             float elapsed = 12f;
             bool awaitingRelease = false;
+            bool shipsPresent = true;
             RacerSnapshot playerOne = Racer(PlayerId.Player1, track.Sample(540f), place: 1);
             RacerSnapshot playerTwo = Racer(PlayerId.Player2, track.Sample(1080f), place: 2);
             var crew = new Dictionary<PlayerId, CrewStrategyOutput>
@@ -107,24 +109,34 @@ namespace BoardRacing.Runtime
                     playerTwo = Racer(PlayerId.Player2, track.Sample(0f), place: 2,
                         finished: true, finishEligible: true);
                     break;
+                case RaceUiPreviewScenario.Paused:
+                    // A mixed pause: the finished racer's Ship may stay off the table
+                    // (pause choices), the unfinished racer is asked to replace theirs.
+                    phase = RacePhase.Paused;
+                    playerOne = Racer(PlayerId.Player1, track.Sample(540f), place: 2);
+                    playerTwo = Racer(PlayerId.Player2, track.Sample(0f), place: 1,
+                        finished: true, finishEligible: true);
+                    shipsPresent = false;
+                    break;
             }
 
-            IReadOnlyList<PlayerControlSnapshot> controls = Controls();
+            IReadOnlyList<PlayerControlSnapshot> controls = Controls(shipsPresent);
             var race = new RaceSnapshot(phase, countdown, elapsed, new[] { playerOne, playerTwo },
                 awaitingRelease ? 1f : 0f, awaitingRelease);
             RaceUiModel ui = RaceUiModelBuilder.Build(race, controls, crew, conditionRules, laps);
             return new RaceUiPreviewFrame(race, controls, crew, ui);
         }
 
-        private static IReadOnlyList<PlayerControlSnapshot> Controls()
+        private static IReadOnlyList<PlayerControlSnapshot> Controls(bool shipsPresent = true)
         {
             PieceState Present(int contact) => new PieceState(true, false, contact, new Vec2(), 0f);
+            PieceState Ship(int contact) => shipsPresent ? Present(contact) : PieceState.Missing;
             return new[]
             {
                 new PlayerControlSnapshot(PlayerId.Player1, ThrottleStep.Drive,
-                    Present(1), Present(2), InputWarning.None),
+                    Ship(1), Present(2), InputWarning.None),
                 new PlayerControlSnapshot(PlayerId.Player2, ThrottleStep.Boost,
-                    Present(3), Present(4), InputWarning.None)
+                    Ship(3), Present(4), InputWarning.None)
             };
         }
 
