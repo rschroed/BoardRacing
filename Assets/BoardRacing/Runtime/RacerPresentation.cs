@@ -49,14 +49,45 @@ namespace BoardRacing.Runtime
         }
     }
 
+    // Presentation-side track heading: the simulation's tangent is the current
+    // chord of the polyline racing line, which turns stepwise at every chord
+    // seam (issue #89). The drawn car heading instead spans the seams.
+    public static class TrackPresentation
+    {
+        // A designed corner chord spans ~16-31 px (TrackCatalog, ≤12° steps), so
+        // a ±14 px central difference always bridges the nearest seam: the drawn
+        // heading turns continuously while the position stays the exact
+        // simulation sample.
+        public const float HeadingHalfSpan = 14f;
+
+        public static Vec2 SmoothHeading(TrackDefinition track, float distance,
+            float halfSpan = HeadingHalfSpan)
+        {
+            Vec2 ahead = track.Sample(distance + halfSpan).Position;
+            Vec2 behind = track.Sample(distance - halfSpan).Position;
+            float dx = ahead.X - behind.X, dy = ahead.Y - behind.Y;
+            float length = (float)Math.Sqrt(dx * dx + dy * dy);
+            return length <= .00001f ? new Vec2(1f, 0f) : new Vec2(dx / length, dy / length);
+        }
+    }
+
     public readonly struct PitLanePresentationLayout
     {
         public PitLanePresentationLayout(Vec2 pitLine, Vec2 entry, Vec2 playerOneBox,
             Vec2 playerTwoBox, Vec2 exit, Vec2 mergeApproach, Vec2 exitRejoin)
+            : this(pitLine, entry, playerOneBox, playerTwoBox, exit, mergeApproach, exitRejoin,
+                default, default)
+        {
+        }
+
+        public PitLanePresentationLayout(Vec2 pitLine, Vec2 entry, Vec2 playerOneBox,
+            Vec2 playerTwoBox, Vec2 exit, Vec2 mergeApproach, Vec2 exitRejoin,
+            Vec2 entryDirection, Vec2 rejoinDirection)
         {
             PitLine = pitLine; Entry = entry; PlayerOneBox = playerOneBox;
             PlayerTwoBox = playerTwoBox; Exit = exit;
             MergeApproach = mergeApproach; ExitRejoin = exitRejoin;
+            EntryDirection = entryDirection; RejoinDirection = rejoinDirection;
         }
         public Vec2 PitLine { get; }
         public Vec2 Entry { get; }
@@ -68,6 +99,12 @@ namespace BoardRacing.Runtime
         // resumes the car at the matching track distance, so the exit animation
         // is a short forward merge instead of a return trip to the start line.
         public Vec2 ExitRejoin { get; }
+        // Track headings where the lane touches the track (issue #89): the entry
+        // spline leaves the pit line along EntryDirection and the exit spline
+        // lands on RejoinDirection, so neither hand-off snaps the car's heading.
+        // Left default (zero), the splines fall back to endpoint extrapolation.
+        public Vec2 EntryDirection { get; }
+        public Vec2 RejoinDirection { get; }
         public Vec2 Box(PlayerId playerId) => playerId == PlayerId.Player1 ? PlayerOneBox : PlayerTwoBox;
     }
 
@@ -88,7 +125,7 @@ namespace BoardRacing.Runtime
             Vec2 box = layout.Box(racer.PlayerId);
             if (racer.Pit.Phase == PitPhase.Entering)
                 return AlongSpline(new[] { layout.PitLine, layout.Entry, box },
-                    racer.Pit.PhaseProgress, racer.Finished);
+                    Ease(racer.Pit.PhaseProgress), racer.Finished, layout.EntryDirection, default);
             if (racer.Pit.Phase == PitPhase.InService)
                 return new CarPresentationPose(box, Unit(layout.Exit, box), racer.Finished);
             if (racer.Pit.Phase == PitPhase.Exiting)
@@ -100,21 +137,38 @@ namespace BoardRacing.Runtime
             PitLanePresentationLayout layout) => AlongSpline(new[]
             {
                 layout.Box(playerId), layout.MergeApproach, layout.ExitRejoin
-            }, progress, finished);
+            }, Ease(progress), finished, default, layout.RejoinDirection);
 
-        private static CarPresentationPose AlongSpline(Vec2[] points, float progress, bool finished)
+        // The simulation's phase progress is linear time; the drawn car eases out
+        // of one speed and into the next instead of jumping between them.
+        private static float Ease(float progress)
         {
-            const int SamplesPerSegment = 12;
+            float clamped = Math.Max(0f, Math.Min(1f, progress));
+            return clamped * clamped * (3f - 2f * clamped);
+        }
+
+        private static CarPresentationPose AlongSpline(Vec2[] points, float progress, bool finished,
+            Vec2 inDirection, Vec2 outDirection)
+        {
+            // 24 keeps every chord's turn small even where a pinned end
+            // concentrates curvature into an S-bend (issue #89; was 12).
+            const int SamplesPerSegment = 24;
             var samples = new Vec2[(points.Length - 1) * SamplesPerSegment + 1];
             int index = 0;
             samples[index++] = points[0];
             for (int segment = 0; segment < points.Length - 1; segment++)
             {
-                Vec2 p0 = segment == 0 ? Extrapolate(points[0], points[1]) : points[segment - 1];
+                // A known track heading at either hand-off pins the spline's end
+                // direction (phantom control point along it); otherwise the end
+                // extrapolates its own last chord as before.
+                Vec2 p0 = segment == 0
+                    ? PhantomBehind(points[0], points[1], inDirection)
+                    : points[segment - 1];
                 Vec2 p1 = points[segment];
                 Vec2 p2 = points[segment + 1];
                 Vec2 p3 = segment + 2 < points.Length
-                    ? points[segment + 2] : Extrapolate(points[points.Length - 1], points[points.Length - 2]);
+                    ? points[segment + 2]
+                    : PhantomBeyond(points[points.Length - 1], points[points.Length - 2], outDirection);
                 for (int sample = 1; sample <= SamplesPerSegment; sample++)
                     samples[index++] = CatmullRom(p0, p1, p2, p3, sample / (float)SamplesPerSegment);
             }
@@ -123,6 +177,23 @@ namespace BoardRacing.Runtime
 
         private static Vec2 Extrapolate(Vec2 point, Vec2 neighbor) =>
             new Vec2(point.X * 2f - neighbor.X, point.Y * 2f - neighbor.Y);
+
+        // A Catmull-Rom endpoint's tangent is (neighbor-side control − phantom)/2,
+        // so pinning an end to a track heading places the phantom relative to the
+        // NEIGHBOR control point along that heading — not behind the endpoint.
+        private static Vec2 PhantomBehind(Vec2 end, Vec2 neighbor, Vec2 direction)
+        {
+            if (direction.X == 0f && direction.Y == 0f) return Extrapolate(end, neighbor);
+            float reach = 3f * Distance(end, neighbor);
+            return new Vec2(neighbor.X - direction.X * reach, neighbor.Y - direction.Y * reach);
+        }
+
+        private static Vec2 PhantomBeyond(Vec2 end, Vec2 neighbor, Vec2 direction)
+        {
+            if (direction.X == 0f && direction.Y == 0f) return Extrapolate(end, neighbor);
+            float reach = 3f * Distance(end, neighbor);
+            return new Vec2(neighbor.X + direction.X * reach, neighbor.Y + direction.Y * reach);
+        }
 
         private static Vec2 CatmullRom(Vec2 p0, Vec2 p1, Vec2 p2, Vec2 p3, float t)
         {
@@ -148,8 +219,13 @@ namespace BoardRacing.Runtime
                 if (remaining <= length || i == points.Length - 2)
                 {
                     float t = length <= 0f ? 1f : Math.Min(1f, remaining / length);
+                    // Blend the neighbor chords' directions across the chord so
+                    // the heading turns continuously through every sample seam
+                    // instead of stepping per chord (issue #89).
+                    Vec2 inbound = Unit(points[i + 1], points[Math.Max(0, i - 1)]);
+                    Vec2 outbound = Unit(points[Math.Min(points.Length - 1, i + 2)], points[i]);
                     return new CarPresentationPose(Lerp(points[i], points[i + 1], t),
-                        Unit(points[i + 1], points[i]), finished);
+                        Normalize(Lerp(inbound, outbound, t)), finished);
                 }
                 remaining -= length;
             }
