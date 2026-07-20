@@ -28,6 +28,10 @@
 sysinfo.txt
 crashlytics-build.properties
 
+# Batch-mode test/build artifacts at the repo root
+/*.log
+/test-results*.xml
+
 # IDE and operating-system state
 .idea/
 .vscode/

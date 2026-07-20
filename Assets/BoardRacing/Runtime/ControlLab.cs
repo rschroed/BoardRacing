@@ -20,15 +20,6 @@ namespace BoardRacing.Runtime
         private IReadOnlyList<PlayerControlSnapshot> snapshots = Array.Empty<PlayerControlSnapshot>();
         private GUIStyle title, heading, body, throttle, warning, progress;
 
-#if BOARDRACING_CONTROL_LAB
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void Bootstrap()
-        {
-            if (FindObjectOfType<ControlLab>() == null)
-                new GameObject("Board Racing Control Lab").AddComponent<ControlLab>();
-        }
-#endif
-
         private void Awake()
         {
             settings = Resources.Load<TrancheOneSettings>("TrancheOneSettings") ?? TrancheOneSettings.Defaults();

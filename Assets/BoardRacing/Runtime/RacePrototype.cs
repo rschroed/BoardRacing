@@ -41,14 +41,12 @@ namespace BoardRacing.Runtime
         // trip: the simulation resumes the car where the pit lane physically ends.
         private static readonly Vec2 PitMergeApproach = new Vec2(1300f, 452f);
 
-#if !BOARDRACING_CONTROL_LAB
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
             if (FindObjectOfType<RacePrototype>() == null)
                 new GameObject("Board Racing Race Prototype").AddComponent<RacePrototype>();
         }
-#endif
 
         private void Awake()
         {
