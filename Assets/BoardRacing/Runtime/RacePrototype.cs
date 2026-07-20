@@ -121,7 +121,7 @@ namespace BoardRacing.Runtime
                     bool rematchConfirming = simulation.Snapshot.Phase == RacePhase.Finished &&
                         control.Car.Present && control.Throttle == ThrottleStep.Brake;
                     return new RacerCommand(control.PlayerId, control.Throttle, control.Car.Present, rematchConfirming,
-                        crew.SelectedService, crew.RequestPit, crew.ServiceDrain);
+                        crew.SelectedService, crew.RequestPit, crew.ServiceDrain, crew.RequestExit);
                 }).ToArray();
                 simulation.Step(step, commands); accumulator -= step;
             }
@@ -299,8 +299,11 @@ namespace BoardRacing.Runtime
             RacePhase racePhase, Color accent)
         {
             bool inService = model.PitPhase == PitPhase.InService;
+            // The circle is Call Pit on track and Leave Pit while parked — lit in both,
+            // ghosted only while the car is moving through the pit lane.
             DrawCallPitZone(model, playerLayout, accent,
-                !inService && racePhase == RacePhase.Racing && !model.Finished);
+                racePhase == RacePhase.Racing && !model.Finished &&
+                model.PitPhase != PitPhase.Entering && model.PitPhase != PitPhase.Exiting);
             DrawConditionDial(model, PitService.Tires, playerLayout.Tires,
                 playerLayout.Controller.TiresLabel, "TIRES", TiresLabelColor, playerLayout,
                 accent, inService, model.Condition.TireWear, model.Condition.TireLevel);
@@ -315,6 +318,7 @@ namespace BoardRacing.Runtime
             CornerControllerLayout controller = layout.Controller;
             Vector2 center = layout.CallPit.center;
             PitCallState state = model.CallState;
+            bool inPit = model.PitPhase == PitPhase.Entering || model.PitPhase == PitPhase.InService;
             bool emphasized = lit && (state == PitCallState.Holding || state == PitCallState.Requested ||
                 model.PitPhase == PitPhase.Requested);
             DrawArc(center, controller.CallPitRadius, 0f, 360f, emphasized ? 5f : 3f,
@@ -322,7 +326,7 @@ namespace BoardRacing.Runtime
             if (lit && state == PitCallState.Holding)
                 DrawArc(center, controller.CallPitRadius - 16f, -90f,
                     -90f + 360f * model.CallAction.Progress, 5f, Color.white);
-            DrawRotatedLabel(controller.CallPitLabel.Bounds, "CALL PIT",
+            DrawRotatedLabel(controller.CallPitLabel.Bounds, inPit ? "LEAVE PIT" : "CALL PIT",
                 controller.CallPitLabel.RotationDegrees + layout.RotationDegrees, zoneLabel,
                 emphasized ? Color.white : lit ? accent : GhostColor);
         }
@@ -437,8 +441,8 @@ namespace BoardRacing.Runtime
             if (pit.Phase == PitPhase.Requested) return "PIT @ LINE";
             if (pit.Phase == PitPhase.Entering) return "PIT ENTRY";
             if (pit.Phase == PitPhase.InService) return pit.SelectedService == PitService.None
-                ? "CAR PARKED · CHOOSE REPAIR" : "IN BOX · " + ServiceName(pit.SelectedService);
-            if (pit.Phase == PitPhase.Exiting) return "SERVICE ✓ · PIT EXIT";
+                ? "CAR PARKED · REPAIR OR LEAVE" : "IN BOX · " + ServiceName(pit.SelectedService);
+            if (pit.Phase == PitPhase.Exiting) return "PIT EXIT";
             return string.Empty;
         }
 

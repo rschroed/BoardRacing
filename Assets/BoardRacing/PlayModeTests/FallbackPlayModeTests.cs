@@ -185,9 +185,19 @@ namespace BoardRacing.PlayModeTests
                 $"{serviceControls.Single(c => c.PlayerId == x.PlayerId).Crew.Position.X:0}/" +
                 $"{serviceControls.Single(c => c.PlayerId == x.PlayerId).Crew.Touched}, progress {x.Pit.ServiceProgress:0.00}, " +
                 $"completed {x.Pit.CompletedServices}, action {race.GetCrewStrategy(x.PlayerId).ServiceAction.State}")));
+            // Completed services keep the cars parked: only Leave Pit ends the stop.
+            Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.Phase == PitPhase.InService), Is.True);
+            Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.FinishEligible), Is.True);
+
+            // Steer each Robot into its Leave Pit circle (the Call Pit circle) and
+            // hold it there — the same placement-plus-hold grammar as Call Pit.
+            SteerCrewTo(race, update, provider, PlayerId.Player1, new Vector2(1832f, 398f),
+                keyboard.fKey, keyboard.gKey, keyboard.tKey, keyboard.bKey);
+            SteerCrewTo(race, update, provider, PlayerId.Player2, new Vector2(88f, 682f),
+                keyboard.hKey, keyboard.kKey, keyboard.yKey, keyboard.nKey);
+            PumpRace(race, update, 1.2f);
             Assert.That(race.GetRaceSnapshot().Racers.All(x =>
                 x.Pit.Phase == PitPhase.Exiting || x.Pit.Phase == PitPhase.OnTrack), Is.True);
-            Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.FinishEligible), Is.True);
 
             Assert.That(PumpUntil(race, update, 180f, x => x.Phase == RacePhase.Finished), Is.True);
             TapRaceKeys(race, update, keyboard.zKey, keyboard.digit7Key);
@@ -258,6 +268,23 @@ namespace BoardRacing.PlayModeTests
             ButtonControl button, float seconds)
         {
             HoldRaceKeys(race, update, seconds, button);
+        }
+
+        private void SteerCrewTo(RacePrototype race, System.Reflection.MethodInfo update,
+            KeyboardInputProvider provider, PlayerId player, Vector2 target,
+            ButtonControl left, ButtonControl right, ButtonControl up, ButtonControl down)
+        {
+            for (int i = 0; i < 40; i++)
+            {
+                var position = provider.ReadSnapshots().Single(x => x.PlayerId == player).Crew.Position;
+                float dx = target.x - position.X, dy = target.y - position.Y;
+                if (Mathf.Abs(dx) <= 20f && Mathf.Abs(dy) <= 20f) return;
+                if (Mathf.Abs(dx) > 20f)
+                    HoldRaceKeys(race, update, Mathf.Min(.3f, Mathf.Abs(dx) / 280f), dx > 0f ? right : left);
+                if (Mathf.Abs(dy) > 20f)
+                    HoldRaceKeys(race, update, Mathf.Min(.3f, Mathf.Abs(dy) / 280f), dy > 0f ? up : down);
+            }
+            Assert.Fail("Crew steering did not converge for " + player);
         }
 
         private void HoldRaceKeys(RacePrototype race, System.Reflection.MethodInfo update,

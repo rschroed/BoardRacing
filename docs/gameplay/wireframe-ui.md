@@ -57,7 +57,7 @@ Treatment decisions fixed by owner approval (issue #85 and the issue #77 Round 1
 
 - **Throttle** is a fan arc around the Ship well. The physical Ship is the needle: it rests on the corner diagonal and its rotation selects the lit sector. The lit sector renders as a deep accent wedge with its label riding the arc tangent; unlit sectors are thin quiet bands. There is no separate state word.
 - **Condition meters are fixed-size round dials** (Tires and Fuel) that fill as the condition worsens — fuller = worse, empty = healthy. Dials are freestanding rings — no zone panel around them. Each dial **doubles as the parked service target**: when the car is parked, a target ring surrounds the dial and the player **stirs the Robot in circles around the dial center**; angular travel drains the meter directly, and a progress ring on the target tracks the drain. Physically moving the piece *is* the repair — there is no hold timer. Dials do not move or resize between states. A critical red-flash treatment and a repair animation are deliberately deferred.
-- **Call Pit is an outline circle** with its tilted label inside — no panel, no embedded copy. Ghosted before the race starts and while parked; accent-lit while available; white with a hold-progress ring while holding or requested.
+- **Call Pit is an outline circle** with its tilted label inside — no panel, no embedded copy. Ghosted before the race starts and while the car moves through the pit lane; accent-lit while available; white with a hold-progress ring while holding or requested. **While the car is in the pit the same circle becomes LEAVE PIT** (owner decision, 2026-07-19): the label swaps on pit entrance and the lit circle is how the player ends the stop.
 
 Stroke fidelity, exact type sizing, and state-emphasis weights remain review decisions in Issue #77.
 
@@ -98,7 +98,7 @@ The presentation chooses one instruction per player using the first applicable c
    - A missing Ship always qualifies because throttle safely falls to Brake.
    - A missing, wrong-region, or invalid Robot qualifies while calling the pit or while the car is parked for service.
    - A missing Robot during ordinary racing does not outrank an urgent race condition.
-2. Active service: choose a service, stir, or recover a lost Robot.
+2. Active service: choose a service, stir, hold Leave Pit, or recover a lost Robot.
 3. Active pit lifecycle: Call Pit placement/hold, confirmed request, entry, or exit.
 4. Corner-speed recovery.
 5. Critical condition.
@@ -125,10 +125,12 @@ The "dominant instruction" column below defines semantic priority in the UI mode
 | Call Pit — holding | No global message | Hold the Robot steady | Hold percentage/progress inside the target; no duplicate progress sentence elsewhere |
 | Pit requested | Track and pit path remain primary | Expect entry at start/finish | `PIT CALLED` confirmation replaces Call Pit action; throttle, conditions, and race status remain visible |
 | Pit entering | Track and moving car remain primary | Wait while the car enters automatically | Throttle is visibly locked; entry state and progress are clear; service targets are not active early |
-| In service — choose | No global message | Move the Robot to Tires or Fuel and stir in circles | Call Pit ghosts in place; both service dials light up at their fixed positions; car parked is explicit |
+| In service — choose | No global message | Stir Tires or Fuel, or leave the pit | The circle relabels to LEAVE PIT and stays lit; both service dials light up at their fixed positions; car parked is explicit |
 | In service — stirring | No global message | Stir the Robot in circles | Selected dial uses shape/boundary emphasis; percentage is co-located with the physical target; the other dial remains available to switch; drained meter value persists across switches and Robot loss |
 | In service — Robot lost or misplaced | No global message | Place the Robot back in Tires or Fuel | The service selection clears; the already-drained meter value is kept — stirring resumes where the meter left off |
-| Service complete / pit exit | Track and moving car remain primary | Wait for automatic rejoin | Completion is the meter reaching empty — explicit, the service dial returns to its ghosted state, stop status updates, and Ship control is visibly restored only after exit |
+| Service meter empty | No global message | More repairs or leave the pit | The completed meter reads empty and the stop counts toward the mandatory total; the car stays parked — both dials and LEAVE PIT remain live, so one stop can service both meters |
+| Leave Pit — holding | No global message | Hold the Robot steady in Leave Pit | Available at any parked moment, even mid-service; hold percentage co-located with the circle; a Robot already resting in the circle when the car parks must enter it deliberately |
+| Pit exit | Track and moving car remain primary | Wait for automatic rejoin | Exit happens only via Leave Pit; partial drains are kept; stop status updates and Ship control is visibly restored only after exit |
 | Split finish — this player finished | Brief `<PLAYER> FINISHED` is permitted | Wait for the other racer | Result/place replaces live driving guidance; no Call Pit or condition instruction remains active |
 | Split finish — this player racing | Brief announcement must not displace live guidance | Continue the highest-priority live action | Full racing hierarchy and physical affordances remain available |
 | Final results | Winner in the center | Move both Ships to Brake and hold for rematch | Each player sees result/place, stop completion, and rematch hold progress; racing guidance is removed |
@@ -183,6 +185,7 @@ Additional immovable mechanical constraints:
 | Player-region boundary | `y = 540` in runtime coordinates |
 | Robot action activation (Call Pit, Tires, Fuel) | placement only — no orientation gate |
 | Call Pit hold | `0.75 s` |
+| Leave Pit hold | `0.75 s` in the same circle; deliberate entry required; available any time while parked |
 | Tires/Fuel service stir | `5` full turns drain a full meter (≈ `5 s` at one turn per second); partial drain persists |
 | Stir dead zone / teleport cap | no drain within `12 px` of the dial center; one sample may count at most `1.5 rad` of travel |
 | Fuel burn (no passive recovery) | Brake `0` · Drive `0.008/s` (~125 s tank) · Boost `0.04/s`; no burn while pitted or with the Ship missing |
@@ -194,7 +197,9 @@ The throttle stops are **hardware-measured** (issue #77 hardware review, 2026-07
 
 All Robot actions are **placement-only** (issue #77 hardware review, 2026-07-19): placing the Robot inside a target starts its action at any orientation — Call Pit starts its hold, a service dial starts listening for stirring; there is no rotate-to-0° step anywhere. The raw SDK Robot orientation has no player-visible meaning on the disc piece, so the earlier `0° ± 15°` alignment gate could not be performed deliberately on hardware. Call Pit additionally requires a fresh placement (a Robot parked inside the circle does not re-trigger).
 
-Service is **stir-to-repair** (owner decision, 2026-07-19 hardware review): while parked, the player stirs the Robot in circles around the selected dial's center; accumulated angular travel — in either direction, at any radius past the dead zone — drains the meter directly, `5` full turns for a full meter. There is no hold timer and no completion acknowledgment step: the service completes the moment the meter reaches empty, and partial drains persist through dial switches or a lifted Robot. The same decision replaced the Heat cooldown mechanic with Fuel: the meter only refills at the Fuel dial, Drive burns it slowly, Boost burns it five times faster, and an empty tank limps rather than stopping — the car can always crawl to the pit.
+Service is **stir-to-repair** (owner decision, 2026-07-19 hardware review): while parked, the player stirs the Robot in circles around the selected dial's center; accumulated angular travel — in either direction, at any radius past the dead zone — drains the meter directly, `5` full turns for a full meter. There is no hold timer in service and no completion acknowledgment step: a meter reaching empty counts the service, and partial drains persist through dial switches or a lifted Robot. The same decision replaced the Heat cooldown mechanic with Fuel: the meter only refills at the Fuel dial, Drive burns it slowly, Boost burns it five times faster, and an empty tank limps rather than stopping — the car can always crawl to the pit.
+
+The pit stop **never ends itself** (owner decision, 2026-07-19): completing a service keeps the car parked, so one stop can service both meters. The player ends the stop with **Leave Pit** — the Call Pit circle, relabeled on pit entrance — by entering it deliberately (slide in from outside or a fresh placement) and holding `0.75 s`, at any parked moment, even mid-refuel. A Robot already resting in the circle when the car parks does not trigger an exit. Leaving mid-service keeps whatever was drained and awards no service credit for the unfinished meter.
 
 Placement invariants every target satisfies (numerically checked in issue #77 Round 2 and enforced by the presentation tests):
 

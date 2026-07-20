@@ -160,14 +160,22 @@ namespace BoardRacing.Tests
             }
 
             float drain = 0f;
+            bool exit = false;
             if (racer.Pit.Phase == PitPhase.InService)
             {
-                selection = state.Plan.Service;
-                drain = Step / ServiceStirSecondsForFull;
+                float meter = state.Plan.Service == PitService.Tires
+                    ? racer.Condition.TireWear : racer.Condition.FuelUsed;
+                if (meter > 0f)
+                {
+                    selection = state.Plan.Service;
+                    drain = Step / ServiceStirSecondsForFull;
+                }
+                // Scripted crews head straight to Leave Pit once their meter is empty.
+                else exit = true;
             }
 
             return new RacerCommand(racer.PlayerId, state.Plan.Throttle, true, true,
-                selection, request, drain);
+                selection, request, drain, exit);
         }
 
         private static RacerCommand[] ReleasedCommands() => new[]

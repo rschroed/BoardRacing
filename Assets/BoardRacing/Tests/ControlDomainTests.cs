@@ -316,6 +316,40 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void LeavePitArmsOnDeliberateEntryAndHoldRequestsExit()
+        {
+            var adapter = StrategyAdapter();
+            var pit = Pit(PitService.None, PitPhase.InService);
+
+            // A Robot already resting in the circle when the car parks never arms.
+            var resting = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, 2f);
+            Assert.That(resting.RequestExit, Is.False);
+            Assert.That(resting.CallState, Is.EqualTo(PitCallState.NeedsPlacement));
+            Assert.That(adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, 2f).RequestExit, Is.False);
+
+            // Sliding out to a dial and back in arms; the hold then requests the exit.
+            adapter.Update(StrategyControls(Crew(true, true, 100f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            var entered = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .1f);
+            Assert.That(entered.CallState, Is.EqualTo(PitCallState.Holding));
+            Assert.That(entered.RequestExit, Is.False);
+            var held = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
+                RacePhase.Racing, pit, .8f);
+            Assert.That(held.RequestExit, Is.True);
+            Assert.That(held.CallState, Is.EqualTo(PitCallState.Requested));
+
+            // A fresh placement inside the circle also arms — even mid-service.
+            adapter.Update(StrategyControls(Crew(true, true, 115f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            var replaced = new PieceState(true, true, 9, new Vec2(200f, 100f), 0f, true);
+            Assert.That(adapter.Update(StrategyControls(replaced), RacePhase.Racing, pit, .1f)
+                .CallState, Is.EqualTo(PitCallState.Holding));
+            Assert.That(adapter.Update(StrategyControls(replaced), RacePhase.Racing, pit, .8f)
+                .RequestExit, Is.True);
+        }
+
+        [Test]
         public void ServiceIgnoresRobotOrientationEntirely()
         {
             var adapter = StrategyAdapter();

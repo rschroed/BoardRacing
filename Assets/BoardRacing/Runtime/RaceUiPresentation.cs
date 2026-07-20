@@ -206,6 +206,7 @@ namespace BoardRacing.Runtime
         ChooseService,
         PlaceInServiceZone,
         StirService,
+        LeavePitHolding,
         HoldPitCall,
         PitRequested,
         PitEntering,
@@ -349,7 +350,7 @@ namespace BoardRacing.Runtime
                         Mathf.RoundToInt(racer.Pit.ServiceProgress * 100f) + "%";
             if (racer.Pit.Phase == PitPhase.Requested) return "PIT CALLED · ENTRY AT LINE";
             if (racer.Pit.Phase == PitPhase.Entering) return "PIT ENTRY · THROTTLE LOCKED";
-            if (racer.Pit.Phase == PitPhase.Exiting) return "SERVICE COMPLETE ✓ · REJOINING";
+            if (racer.Pit.Phase == PitPhase.Exiting) return "LEAVING PIT · REJOINING";
             return "LAP " + Math.Min(laps, racer.CompletedLaps + 1) + " / " + laps + " · " +
                 Ordinal(racer.Place) + " · " + (racer.Pit.FinishEligible ? "STOP ✓" : "STOP REQUIRED");
         }
@@ -390,7 +391,7 @@ namespace BoardRacing.Runtime
                     "CAR UNDER PIT CONTROL · WAIT FOR SERVICE");
             if (racer.Pit.Phase == PitPhase.Exiting)
                 return new Instruction(PlayerUiInstructionKind.PitExiting,
-                    "SERVICE COMPLETE · CAR REJOINS AUTOMATICALLY");
+                    "LEAVING PIT · CAR REJOINS AUTOMATICALLY");
             if (racer.Pit.Phase == PitPhase.Requested)
                 return new Instruction(PlayerUiInstructionKind.PitRequested,
                     "PIT CALLED · ENTER AT START / FINISH");
@@ -425,9 +426,13 @@ namespace BoardRacing.Runtime
             if (control.Warnings.HasFlag(InputWarning.WrongRegion))
                 return new Instruction(PlayerUiInstructionKind.MoveRobotToPlayerRegion,
                     "MOVE ROBOT TO YOUR SERVICE ZONES · PROGRESS RESET");
+            if (crew.CallState == PitCallState.Holding || crew.RequestExit)
+                return new Instruction(PlayerUiInstructionKind.LeavePitHolding,
+                    "HOLD ROBOT STEADY · LEAVING PIT " +
+                    Mathf.RoundToInt(crew.CallAction.Progress * 100f) + "%");
             if (racer.Pit.SelectedService == PitService.None && crew.SelectedService == PitService.None)
                 return new Instruction(PlayerUiInstructionKind.ChooseService,
-                    "MOVE ROBOT TO TIRES OR FUEL · STIR IN CIRCLES");
+                    "STIR TIRES OR FUEL IN CIRCLES · OR LEAVE PIT");
             PitService selected = racer.Pit.SelectedService != PitService.None
                 ? racer.Pit.SelectedService : crew.SelectedService;
             string service = ServiceName(selected);

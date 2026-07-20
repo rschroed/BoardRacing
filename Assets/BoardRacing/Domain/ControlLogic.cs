@@ -163,11 +163,12 @@ namespace BoardRacing.Domain
     public readonly struct CrewStrategyOutput
     {
         public CrewStrategyOutput(PitService selectedService, bool requestPit, PitCallState callState,
-            PitActionResult callAction, PitActionResult serviceAction, float serviceDrain = 0f)
+            PitActionResult callAction, PitActionResult serviceAction, float serviceDrain = 0f,
+            bool requestExit = false)
         {
             SelectedService = selectedService; RequestPit = requestPit;
             CallState = callState; CallAction = callAction; ServiceAction = serviceAction;
-            ServiceDrain = serviceDrain;
+            ServiceDrain = serviceDrain; RequestExit = requestExit;
         }
         public PitService SelectedService { get; }
         public bool RequestPit { get; }
@@ -175,16 +176,18 @@ namespace BoardRacing.Domain
         public PitActionResult CallAction { get; }
         public PitActionResult ServiceAction { get; }
         public float ServiceDrain { get; }
+        public bool RequestExit { get; }
     }
 
     public sealed class CrewStrategyAdapter
     {
         private readonly Vec2 callCenter, tiresCenter, fuelCenter, halfSize;
-        private readonly PitActionMachine callAction;
+        private readonly PitActionMachine callAction, leaveAction;
         private readonly StirServiceMachine tiresAction, fuelAction;
         private int contactId = -1;
         private bool wasInsideCall, callPlacementArmed, suppressNextObservedContact = true;
         private bool suppressServiceUntilPlacement;
+        private bool leaveInitialized, leaveArmed, wasInsideLeave;
 
         public CrewStrategyAdapter(Vec2 callCenter, Vec2 tiresCenter, Vec2 fuelCenter, Vec2 halfSize,
             float stirTurnsForFullService, float callHoldDuration = .75f)
@@ -196,6 +199,8 @@ namespace BoardRacing.Domain
             // Robot orientation has no player-visible meaning on the disc piece. Call Pit
             // holds after placement (full-circle tolerance); services drain by stirring.
             callAction = new PitActionMachine(callCenter, halfSize, 0f, (float)Math.PI, callHoldDuration);
+            // The same circle doubles as Leave Pit while the car is parked.
+            leaveAction = new PitActionMachine(callCenter, halfSize, 0f, (float)Math.PI, callHoldDuration);
             tiresAction = new StirServiceMachine(tiresCenter, halfSize, stirTurnsForFullService);
             fuelAction = new StirServiceMachine(fuelCenter, halfSize, stirTurnsForFullService);
         }
@@ -217,10 +222,12 @@ namespace BoardRacing.Domain
                 suppressNextObservedContact = false;
                 callAction.Reset();
                 ResetActions();
+                ResetLeave();
                 return default;
             }
 
             bool newContact = controls.Crew.ContactId != contactId;
+            bool deliberateNewContact = newContact && !suppressNextObservedContact;
             if (controls.Crew.ContactId != contactId)
             {
                 contactId = controls.Crew.ContactId;
@@ -239,10 +246,43 @@ namespace BoardRacing.Domain
                 if (suppressServiceUntilPlacement)
                 {
                     ResetActions();
+                    ResetLeave();
                     if (service == PitService.None) suppressServiceUntilPlacement = false;
                     return new CrewStrategyOutput(PitService.None, false,
                         PitCallState.Unavailable, default, default);
                 }
+
+                // Leave Pit arms only on a deliberate entry: a Robot already resting
+                // in the circle when the car parks must leave it (or be re-placed)
+                // before it can trigger an exit.
+                bool insideLeave = Inside(controls.Crew.Position, callCenter);
+                bool freshLeaveState = !leaveInitialized;
+                leaveInitialized = true;
+                if (!insideLeave)
+                {
+                    leaveArmed = false;
+                    leaveAction.Reset();
+                }
+                else if (deliberateNewContact || (!freshLeaveState && !wasInsideLeave))
+                    leaveArmed = true;
+                wasInsideLeave = insideLeave;
+                wasInsideCall = insideLeave;
+
+                if (leaveArmed && insideLeave)
+                {
+                    ResetActions();
+                    PitActionResult leave = leaveAction.Update(controls.Crew, deltaSeconds);
+                    if (leave.CompletedThisUpdate)
+                    {
+                        leaveArmed = false;
+                        return new CrewStrategyOutput(PitService.None, false, PitCallState.Requested,
+                            leave, default, 0f, requestExit: true);
+                    }
+                    PitCallState leaveState = leave.State == PitActionState.Holding
+                        ? PitCallState.Holding : PitCallState.NeedsPlacement;
+                    return new CrewStrategyOutput(PitService.None, false, leaveState, leave, default);
+                }
+
                 PitActionState serviceState;
                 float drain;
                 if (service == PitService.Tires)
@@ -260,11 +300,12 @@ namespace BoardRacing.Domain
                     ResetActions();
                     (serviceState, drain) = (default, 0f);
                 }
-                return new CrewStrategyOutput(service, false, PitCallState.Unavailable, default,
+                return new CrewStrategyOutput(service, false, PitCallState.NeedsPlacement, default,
                     new PitActionResult(serviceState, 0f, false), drain);
             }
 
             ResetActions();
+            ResetLeave();
             suppressServiceUntilPlacement = false;
             if (pit.Phase != PitPhase.OnTrack)
             {
@@ -309,7 +350,7 @@ namespace BoardRacing.Domain
             wasInsideCall = callPlacementArmed = false;
             suppressNextObservedContact = true;
             suppressServiceUntilPlacement = true;
-            callAction.Reset(); ResetActions();
+            callAction.Reset(); ResetActions(); ResetLeave();
         }
 
         private PitService ServiceAt(Vec2 position)
@@ -328,12 +369,18 @@ namespace BoardRacing.Domain
             wasInsideCall = callPlacementArmed = false;
             suppressNextObservedContact = false;
             suppressServiceUntilPlacement = false;
-            callAction.Reset(); ResetActions();
+            callAction.Reset(); ResetActions(); ResetLeave();
         }
 
         private void ResetActions()
         {
             tiresAction.Reset(); fuelAction.Reset();
+        }
+
+        private void ResetLeave()
+        {
+            leaveInitialized = leaveArmed = wasInsideLeave = false;
+            leaveAction.Reset();
         }
     }
 }

@@ -160,7 +160,18 @@ namespace BoardRacing.Domain
             }
             if (racer.PitPhase == PitPhase.InService)
             {
+                // The pit stop never ends itself: the player leaves by holding the
+                // Robot in Leave Pit — allowed at any time, even mid-service.
+                if (command.RequestExit)
+                {
+                    racer.SelectedService = PitService.None;
+                    racer.ServiceProgress = 0f;
+                    racer.PitPhase = PitPhase.Exiting; racer.PitTimer = 0f;
+                    return;
+                }
                 if (racer.SelectedService == PitService.None) { racer.ServiceProgress = 0f; return; }
+                float meterBefore = racer.SelectedService == PitService.Tires
+                    ? racer.TireWear : racer.FuelUsed;
                 if (command.ServiceDrain > 0f)
                 {
                     if (racer.SelectedService == PitService.Tires)
@@ -169,11 +180,10 @@ namespace BoardRacing.Domain
                 }
                 float meter = racer.SelectedService == PitService.Tires ? racer.TireWear : racer.FuelUsed;
                 racer.ServiceProgress = 1f - meter;
-                if (meter <= 0f && command.ServiceDrain > 0f)
-                {
-                    racer.CompletedServices++;
-                    racer.ServiceProgress = 1f; racer.PitPhase = PitPhase.Exiting; racer.PitTimer = 0f;
-                }
+                // Count the service only on the emptying stroke so stirring an
+                // already-empty meter cannot count it again; both dials may be
+                // serviced in one parked stop.
+                if (meterBefore > 0f && meter <= 0f) racer.CompletedServices++;
                 return;
             }
 

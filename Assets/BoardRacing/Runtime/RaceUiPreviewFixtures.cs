@@ -85,7 +85,7 @@ namespace BoardRacing.Runtime
                         pitPhase: PitPhase.InService, selectedService: PitService.Tires,
                         serviceProgress: .55f, tireWear: .45f);
                     crew[PlayerId.Player1] = new CrewStrategyOutput(PitService.Tires, false,
-                        PitCallState.Unavailable, default,
+                        PitCallState.NeedsPlacement, default,
                         new PitActionResult(PitActionState.Stirring, 0f, false), .002f);
                     break;
                 case RaceUiPreviewScenario.SplitFinish:

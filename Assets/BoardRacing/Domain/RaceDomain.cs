@@ -201,7 +201,7 @@ namespace BoardRacing.Domain
             : this(playerId, throttle, drivingPiecePresent, rematchConfirming, PitService.None, false, 0f) { }
 
         public RacerCommand(PlayerId playerId, ThrottleStep throttle, bool drivingPiecePresent, bool rematchConfirming,
-            PitService selectedService, bool requestPit, float serviceDrain)
+            PitService selectedService, bool requestPit, float serviceDrain, bool requestExit = false)
         {
             if (!Enum.IsDefined(typeof(PitService), selectedService) || serviceDrain < 0f ||
                 serviceDrain > 1f || float.IsNaN(serviceDrain))
@@ -209,7 +209,7 @@ namespace BoardRacing.Domain
             PlayerId = playerId; Throttle = throttle; DrivingPiecePresent = drivingPiecePresent;
             RematchConfirming = rematchConfirming;
             SelectedService = selectedService; RequestPit = requestPit;
-            ServiceDrain = serviceDrain;
+            ServiceDrain = serviceDrain; RequestExit = requestExit;
         }
         public PlayerId PlayerId { get; }
         public ThrottleStep Throttle { get; }
@@ -218,6 +218,7 @@ namespace BoardRacing.Domain
         public PitService SelectedService { get; }
         public bool RequestPit { get; }
         public float ServiceDrain { get; }
+        public bool RequestExit { get; }
     }
 
     public readonly struct RacerConditionSnapshot
