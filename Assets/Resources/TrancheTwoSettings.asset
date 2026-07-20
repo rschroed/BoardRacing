@@ -27,3 +27,4 @@ MonoBehaviour:
   passingDistance: 180
   passingOffset: 38
   rematchHoldSeconds: 1
+  pauseClearSeconds: 0.75

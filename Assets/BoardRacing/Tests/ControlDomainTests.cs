@@ -350,6 +350,24 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void PausedRaceSuspendsAllCrewActions()
+        {
+            var adapter = StrategyAdapter();
+            var pit = Pit(PitService.None, PitPhase.InService);
+
+            // The pause overlay's touch button owns the new-race action (owner
+            // decision, issue #90): the crew has no role while paused, however
+            // long a Robot sits in any target.
+            adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)), RacePhase.Racing, pit, .1f);
+            var paused = adapter.Update(StrategyControls(Crew(true, true, 200f, 100f, 0f)),
+                RacePhase.Paused, pit, 2f);
+            Assert.That(paused.RequestPit, Is.False);
+            Assert.That(paused.RequestExit, Is.False);
+            Assert.That(paused.SelectedService, Is.EqualTo(PitService.None));
+            Assert.That(paused.ServiceDrain, Is.Zero);
+        }
+
+        [Test]
         public void ServiceIgnoresRobotOrientationEntirely()
         {
             var adapter = StrategyAdapter();

@@ -227,6 +227,25 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void PausedRaceShowsTheOverlayAndPerSeatPauseChoices()
+        {
+            RaceUiModel model = Build(RacePhase.Paused, Racer(PlayerId.Player1),
+                Racer(PlayerId.Player2, place: 2), Controls(playerOneCarPresent: false));
+            Assert.That(model.CenterMessageKind, Is.EqualTo(CenterMessageKind.Paused));
+            Assert.That(model.PlayerOne.PrimaryInstructionKind,
+                Is.EqualTo(PlayerUiInstructionKind.PausedPlaceShip));
+            Assert.That(model.PlayerTwo.PrimaryInstructionKind,
+                Is.EqualTo(PlayerUiInstructionKind.PausedShipReady));
+
+            // A finished racer sees pause choices instead of its usual wait state.
+            RaceUiModel finished = Build(RacePhase.Paused, Racer(PlayerId.Player1, finished: true),
+                Racer(PlayerId.Player2, place: 2), Controls());
+            Assert.That(finished.CenterMessageKind, Is.EqualTo(CenterMessageKind.Paused));
+            Assert.That(finished.PlayerOne.PrimaryInstructionKind,
+                Is.EqualTo(PlayerUiInstructionKind.PausedShipReady));
+        }
+
+        [Test]
         public void DeterministicPreviewFixturesCoverTheRequiredReviewStates()
         {
             var track = TrackDefinition.Placeholder();

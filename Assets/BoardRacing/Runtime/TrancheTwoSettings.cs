@@ -21,11 +21,16 @@ namespace BoardRacing.Runtime
         public float passingDistance = 180f;
         public float passingOffset = 38f;
         public float rematchHoldSeconds = 1f;
+        // Every unfinished racer's Ship off the table for this long pauses the race
+        // (issue #90). Just enough debounce that hands passing over the sensors don't
+        // trigger it — 2 s read as lag on hardware, so the overlay must come up fast.
+        [Min(.1f)] public float pauseClearSeconds = .75f;
 
         public RaceRules ToRules(int requiredServiceCount = 0, ConditionRules conditions = default,
             PitRules pit = default) => new RaceRules(laps, countdownSeconds, maximumSpeed, acceleration, drag,
             braking, cornerSpeedScrub, cornerRecoverySeconds, recoveryAccelerationScale,
-            passingDistance, passingOffset, rematchHoldSeconds, requiredServiceCount, conditions, pit);
+            passingDistance, passingOffset, rematchHoldSeconds, requiredServiceCount, conditions, pit,
+            pauseClearSeconds);
 
         public static TrancheTwoSettings Defaults() => CreateInstance<TrancheTwoSettings>();
     }

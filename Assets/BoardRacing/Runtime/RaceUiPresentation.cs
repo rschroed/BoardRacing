@@ -218,10 +218,12 @@ namespace BoardRacing.Runtime
         TiresWarning,
         WaitForOtherRacer,
         RematchHold,
-        RematchRelease
+        RematchRelease,
+        PausedPlaceShip,
+        PausedShipReady
     }
 
-    internal enum CenterMessageKind { None, Countdown, Go, SplitFinish, Winner }
+    internal enum CenterMessageKind { None, Countdown, Go, SplitFinish, Winner, Paused }
 
     internal readonly struct PlayerUiModel
     {
@@ -358,6 +360,22 @@ namespace BoardRacing.Runtime
         private static Instruction PrimaryInstruction(RaceSnapshot race, RacerSnapshot racer,
             PlayerControlSnapshot control, CrewStrategyOutput crew, CarConditionVisualState condition)
         {
+            // A paused race outranks every other read, including a finished racer's
+            // wait state — the seats resume by replacing Ships; the center overlay
+            // owns the START NEW RACE touch button.
+            if (race.Phase == RacePhase.Paused)
+            {
+                // A finished racer's Ship never gates the resume.
+                if (racer.Finished)
+                    return new Instruction(PlayerUiInstructionKind.PausedShipReady,
+                        "PAUSED · RESUME OR START A NEW RACE");
+                if (!control.Car.Present)
+                    return new Instruction(PlayerUiInstructionKind.PausedPlaceShip,
+                        "PAUSED · PLACE SHIP TO RESUME");
+                return new Instruction(PlayerUiInstructionKind.PausedShipReady,
+                    "SHIP READY · WAITING FOR OTHER SHIP TO RESUME");
+            }
+
             if (racer.Finished)
             {
                 if (race.Phase != RacePhase.Finished)
@@ -446,6 +464,8 @@ namespace BoardRacing.Runtime
 
         private static (CenterMessageKind, string) CenterMessage(RaceSnapshot race)
         {
+            if (race.Phase == RacePhase.Paused)
+                return (CenterMessageKind.Paused, "PLACE SHIPS TO RESUME");
             if (race.Phase == RacePhase.Countdown)
                 return (CenterMessageKind.Countdown,
                     Math.Max(1, Mathf.CeilToInt(race.CountdownRemaining)).ToString());

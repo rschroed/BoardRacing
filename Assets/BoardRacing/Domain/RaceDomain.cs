@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace BoardRacing.Domain
 {
-    public enum RacePhase { Grid, Countdown, Racing, Finished }
+    public enum RacePhase { Grid, Countdown, Racing, Finished, Paused }
     public enum TrackSectionKind { Straight, Corner }
     public enum PitService { None, Tires, Fuel }
     public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting }
@@ -100,17 +100,19 @@ namespace BoardRacing.Domain
         public RaceRules(int laps, float countdownSeconds, float maxSpeed, float acceleration, float drag,
             float braking, float cornerSpeedScrub, float cornerRecoverySeconds, float recoveryAccelerationScale,
             float passingDistance, float passingOffset, float rematchHoldSeconds, int requiredServiceCount = 0,
-            ConditionRules conditionRules = default, PitRules pitRules = default)
+            ConditionRules conditionRules = default, PitRules pitRules = default, float pauseClearSeconds = 2f)
         {
             var scalarValues = new[] { countdownSeconds, maxSpeed, acceleration, drag, braking, cornerSpeedScrub,
-                cornerRecoverySeconds, recoveryAccelerationScale, passingDistance, passingOffset, rematchHoldSeconds };
+                cornerRecoverySeconds, recoveryAccelerationScale, passingDistance, passingOffset, rematchHoldSeconds,
+                pauseClearSeconds };
             if (scalarValues.Any(x => float.IsNaN(x) || float.IsInfinity(x)))
                 throw new ArgumentException("Race rules must contain finite values.");
             if (laps < 1 || countdownSeconds < 0f || maxSpeed <= 0f || acceleration <= 0f || drag <= 0f || braking <= 0f)
                 throw new ArgumentException("Race rules contain invalid non-positive values.");
             if (cornerSpeedScrub <= 0f || cornerSpeedScrub > 1f || cornerRecoverySeconds < 0f ||
                 recoveryAccelerationScale <= 0f || recoveryAccelerationScale > 1f || passingDistance < 0f ||
-                passingOffset < 0f || rematchHoldSeconds <= 0f || requiredServiceCount < 0)
+                passingOffset < 0f || rematchHoldSeconds <= 0f || requiredServiceCount < 0 ||
+                pauseClearSeconds <= 0f)
                 throw new ArgumentException("Race rules contain invalid strategy or presentation values.");
             if (requiredServiceCount > 0 && !pitRules.Enabled)
                 throw new ArgumentException("A required service count needs an enabled pit lifecycle.");
@@ -119,6 +121,7 @@ namespace BoardRacing.Domain
             CornerRecoverySeconds = cornerRecoverySeconds; RecoveryAccelerationScale = recoveryAccelerationScale;
             PassingDistance = passingDistance; PassingOffset = passingOffset; RematchHoldSeconds = rematchHoldSeconds;
             RequiredServiceCount = requiredServiceCount; Conditions = conditionRules; Pit = pitRules;
+            PauseClearSeconds = pauseClearSeconds;
         }
         public int Laps { get; }
         public float CountdownSeconds { get; }
@@ -135,6 +138,10 @@ namespace BoardRacing.Domain
         public int RequiredServiceCount { get; }
         public ConditionRules Conditions { get; }
         public PitRules Pit { get; }
+        // How long every unfinished racer's Ship must stay off the table mid-race
+        // before the race pauses — long enough that hands sweeping over the sensors
+        // never read as a deliberate table clear.
+        public float PauseClearSeconds { get; }
         public static RaceRules Defaults => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f);
         public static RaceRules TrancheThreeDefaults =>
             new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f, 1,
