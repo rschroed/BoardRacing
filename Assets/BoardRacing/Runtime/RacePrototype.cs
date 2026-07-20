@@ -21,6 +21,9 @@ namespace BoardRacing.Runtime
         private readonly Dictionary<PlayerId, CrewStrategyOutput> crewOutputs =
             new Dictionary<PlayerId, CrewStrategyOutput>();
         private float accumulator;
+        // The sim state one fixed step behind Snapshot: OnGUI draws the blend of
+        // the two by the accumulator fraction (SnapshotInterpolation, issue #89).
+        private RaceSnapshot previousSnapshot;
         private GUIStyle title, carLabel, warning, small, cue, zoneLabel, sectorLabel, dialValue;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
@@ -79,6 +82,7 @@ namespace BoardRacing.Runtime
             simulation = new RaceSimulation(TrackCatalog.Wedge(raceSettings.cornerSafeSpeed),
                 raceSettings.ToRules(strategySettings.requiredServiceCount, strategySettings.ToConditionRules(),
                     strategySettings.ToPitRules()));
+            previousSnapshot = simulation.Snapshot;
         }
 
         private void CreateCrewAdapter(PlayerId id)
@@ -134,6 +138,7 @@ namespace BoardRacing.Runtime
                     return new RacerCommand(control.PlayerId, control.Throttle, control.Car.Present, rematchConfirming,
                         crew.SelectedService, crew.RequestPit, crew.ServiceDrain, crew.RequestExit);
                 }).ToArray();
+                previousSnapshot = simulation.Snapshot;
                 simulation.Step(step, commands); accumulator -= step;
             }
         }
@@ -222,7 +227,9 @@ namespace BoardRacing.Runtime
                 new Color(.025f, .035f, .05f), 0, 0);
             RaceLayout layout = RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
                 ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize);
-            RaceSnapshot presentedRace = simulation.Snapshot;
+            RaceSnapshot presentedRace = SnapshotInterpolation.Blend(previousSnapshot,
+                simulation.Snapshot, accumulator / Mathf.Max(.001f, raceSettings.fixedStepSeconds),
+                simulation.Track);
             RaceUiModel ui;
 #if UNITY_EDITOR
             if (previewScenarioIndex >= 0)

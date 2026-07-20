@@ -71,6 +71,70 @@ namespace BoardRacing.Runtime
         }
     }
 
+    // The simulation advances in fixed steps behind an accumulator, so a display
+    // frame usually lands between two steps: drawing the newest step directly
+    // advances a car zero or two steps on misaligned frames — the temporal
+    // stutter of issue #89. The drawn state instead blends the last two sim
+    // states by the accumulator fraction, trading one step (~17 ms) of display
+    // latency for continuous motion. The simulation itself is never touched.
+    public static class SnapshotInterpolation
+    {
+        public static RaceSnapshot Blend(RaceSnapshot previous, RaceSnapshot current, float alpha,
+            TrackDefinition track)
+        {
+            // A phase change is a reset boundary (a new race zeroes distances);
+            // blending across it would sweep cars backwards through the course.
+            if (previous.Racers == null || current.Racers == null || previous.Phase != current.Phase)
+                return current;
+            float t = Math.Max(0f, Math.Min(1f, alpha));
+            var racers = new RacerSnapshot[current.Racers.Count];
+            for (int i = 0; i < racers.Length; i++)
+                racers[i] = BlendRacer(previous, current.Racers[i], t, track);
+            return new RaceSnapshot(current.Phase,
+                Lerp(previous.CountdownRemaining, current.CountdownRemaining, t),
+                Lerp(previous.ElapsedSeconds, current.ElapsedSeconds, t),
+                racers,
+                Lerp(previous.RematchProgress, current.RematchProgress, t),
+                current.AwaitingRematchRelease);
+        }
+
+        private static RacerSnapshot BlendRacer(RaceSnapshot previous, RacerSnapshot current, float t,
+            TrackDefinition track)
+        {
+            if (!TryFindRacer(previous, current.PlayerId, out RacerSnapshot before)) return current;
+            // Pit hand-offs move the car between the track and the lane splines,
+            // and the exit rejoin jumps TotalDistance forward; only motion that
+            // stayed on one continuous path through the step may interpolate.
+            if (before.Pit.Phase != current.Pit.Phase || current.TotalDistance < before.TotalDistance)
+                return current;
+            float distance = Lerp(before.TotalDistance, current.TotalDistance, t);
+            var pit = new RacerPitSnapshot(current.Pit.SelectedService, current.Pit.Phase,
+                BlendProgress(before.Pit.ServiceProgress, current.Pit.ServiceProgress, t),
+                current.Pit.CompletedServices, current.Pit.FinishEligible,
+                BlendProgress(before.Pit.PhaseProgress, current.Pit.PhaseProgress, t));
+            return new RacerSnapshot(current.PlayerId, Lerp(before.Speed, current.Speed, t), distance,
+                current.CompletedLaps, current.Place, current.Finished, current.FinishTime,
+                track.Sample(distance), Lerp(before.LateralOffset, current.LateralOffset, t),
+                current.IncidentThisStep, current.RecoveryRemaining, current.IncidentCount,
+                current.Condition, pit);
+        }
+
+        // Progress values reset when a service completes or a phase turns over;
+        // never blend backwards through a reset.
+        private static float BlendProgress(float before, float after, float t) =>
+            after >= before ? Lerp(before, after, t) : after;
+
+        private static bool TryFindRacer(RaceSnapshot snapshot, PlayerId playerId, out RacerSnapshot racer)
+        {
+            for (int i = 0; i < snapshot.Racers.Count; i++)
+                if (snapshot.Racers[i].PlayerId == playerId) { racer = snapshot.Racers[i]; return true; }
+            racer = default;
+            return false;
+        }
+
+        private static float Lerp(float from, float to, float t) => from + (to - from) * t;
+    }
+
     public readonly struct PitLanePresentationLayout
     {
         public PitLanePresentationLayout(Vec2 pitLine, Vec2 entry, Vec2 playerOneBox,
