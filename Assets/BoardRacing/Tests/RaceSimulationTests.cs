@@ -637,12 +637,13 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void NewRaceRequestResetsToTheGridOnlyWhilePaused()
+        public void NewRaceRequestResetsToTheGridOnlyWhilePausedOrFinished()
         {
             var simulation = StartedPauseSimulation(pauseClear: .2f, countdownSeconds: .2f);
             for (int i = 0; i < 30; i++) simulation.Step(.01f, Commands(ThrottleStep.Boost, true));
 
-            // The touch button is honored only while paused — a live race ignores it.
+            // The touch button is honored only when no race is running — a live
+            // race ignores it.
             simulation.RequestNewRace();
             Assert.That(simulation.Snapshot.Phase, Is.EqualTo(RacePhase.Racing));
             Assert.That(Player(simulation, PlayerId.Player1).TotalDistance, Is.GreaterThan(0f));
@@ -655,6 +656,16 @@ namespace BoardRacing.Tests
                 Assert.That(racer.TotalDistance, Is.Zero);
                 Assert.That(racer.Finished, Is.False);
             }
+
+            // The RACE FINISHED overlay offers the same button (issue #97).
+            var finished = StartedPitSimulation(1, requiredServiceCount: 0);
+            int guard = 0;
+            while (finished.Snapshot.Phase != RacePhase.Finished && guard++ < 10000)
+                finished.Step(.01f, Commands(ThrottleStep.Boost, false));
+            Assert.That(guard, Is.LessThan(10000));
+            finished.RequestNewRace();
+            Assert.That(finished.Snapshot.Phase, Is.EqualTo(RacePhase.Grid));
+            Assert.That(Player(finished, PlayerId.Player1).Finished, Is.False);
         }
 
         [Test]
