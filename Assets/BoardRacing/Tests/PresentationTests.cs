@@ -220,6 +220,97 @@ namespace BoardRacing.Tests
             }
         }
 
+        [Test]
+        public void BlendedMotionAdvancesByTheAccumulatorFraction()
+        {
+            // One 1/60 s sim step at racing speed moves the car ~4 px; a frame
+            // landing between steps draws the fraction it has actually waited
+            // (issue #89 — the zero-or-two-steps-per-frame stutter).
+            var track = TrackCatalog.Wedge();
+            var previous = Race(RacePhase.Racing, 10f, RacerAt(track, 100f, 240f));
+            var current = Race(RacePhase.Racing, 10f + 1f / 60f, RacerAt(track, 104f, 244f));
+
+            var mid = SnapshotInterpolation.Blend(previous, current, .5f, track).Racers[0];
+            Assert.That(mid.TotalDistance, Is.EqualTo(102f).Within(.001f));
+            Assert.That(mid.Speed, Is.EqualTo(242f).Within(.001f));
+            var expected = track.Sample(102f).Position;
+            Assert.That(mid.Track.Position.X, Is.EqualTo(expected.X).Within(.001f));
+            Assert.That(mid.Track.Position.Y, Is.EqualTo(expected.Y).Within(.001f));
+
+            Assert.That(SnapshotInterpolation.Blend(previous, current, 0f, track)
+                .Racers[0].TotalDistance, Is.EqualTo(100f).Within(.001f));
+            Assert.That(SnapshotInterpolation.Blend(previous, current, 1f, track)
+                .Racers[0].TotalDistance, Is.EqualTo(104f).Within(.001f));
+        }
+
+        [Test]
+        public void BlendKeepsDiscreteStateFromTheCurrentStep()
+        {
+            // Laps, places and flags are the current step's truth even while the
+            // drawn position still trails it — a counter may tick ~17 ms early,
+            // a car may never be drawn in a stale state.
+            var track = TrackCatalog.Wedge();
+            var previous = Race(RacePhase.Racing, 10f, RacerAt(track, track.Length - 2f, 240f, laps: 0));
+            var current = Race(RacePhase.Racing, 10f + 1f / 60f, RacerAt(track, track.Length + 2f, 240f, laps: 1));
+
+            var mid = SnapshotInterpolation.Blend(previous, current, .25f, track).Racers[0];
+            Assert.That(mid.CompletedLaps, Is.EqualTo(1));
+            Assert.That(mid.TotalDistance, Is.EqualTo(track.Length - 1f).Within(.001f));
+        }
+
+        [Test]
+        public void PhaseChangesAndDistanceResetsSnapToTheCurrentState()
+        {
+            var track = TrackCatalog.Wedge();
+            // A new race resets distances to zero; blending across the phase
+            // change would sweep the car backwards through the whole course.
+            var finished = Race(RacePhase.Finished, 90f, RacerAt(track, 3000f, 0f));
+            var restarted = Race(RacePhase.Countdown, 0f, RacerAt(track, 0f, 0f));
+            var blended = SnapshotInterpolation.Blend(finished, restarted, .5f, track);
+            Assert.That(blended.Phase, Is.EqualTo(RacePhase.Countdown));
+            Assert.That(blended.Racers[0].TotalDistance, Is.Zero);
+
+            // Same guard when only the distance regresses within a phase.
+            var before = Race(RacePhase.Racing, 10f, RacerAt(track, 500f, 200f));
+            var reset = Race(RacePhase.Racing, 10f, RacerAt(track, 100f, 200f));
+            Assert.That(SnapshotInterpolation.Blend(before, reset, .5f, track)
+                .Racers[0].TotalDistance, Is.EqualTo(100f));
+        }
+
+        [Test]
+        public void PitHandOffsNeverInterpolateAcrossTheTeleport()
+        {
+            var track = TrackCatalog.Wedge();
+            // OnTrack → Entering moves the car onto the lane spline; the rejoin
+            // jumps TotalDistance forward. Both are phase changes: snap.
+            var onTrack = Race(RacePhase.Racing, 10f, RacerAt(track, 100f, 200f));
+            var entering = Race(RacePhase.Racing, 10f, RacerAt(track, 100f, 60f,
+                pit: new RacerPitSnapshot(PitService.None, PitPhase.Entering, 0f, 0, false, .05f)));
+            var snapped = SnapshotInterpolation.Blend(onTrack, entering, .5f, track).Racers[0];
+            Assert.That(snapped.Pit.Phase, Is.EqualTo(PitPhase.Entering));
+            Assert.That(snapped.Pit.PhaseProgress, Is.EqualTo(.05f).Within(.0001f));
+            Assert.That(snapped.Speed, Is.EqualTo(60f));
+
+            // Within one pit phase the lane progress interpolates like distance,
+            // but a progress reset (service complete, phase turnover) never
+            // blends backwards.
+            var early = Race(RacePhase.Racing, 10f, RacerAt(track, 100f, 60f,
+                pit: new RacerPitSnapshot(PitService.Tires, PitPhase.Entering, .8f, 0, false, .2f)));
+            var late = Race(RacePhase.Racing, 10f, RacerAt(track, 100f, 60f,
+                pit: new RacerPitSnapshot(PitService.Tires, PitPhase.Entering, .1f, 0, false, .3f)));
+            var blended = SnapshotInterpolation.Blend(early, late, .5f, track).Racers[0];
+            Assert.That(blended.Pit.PhaseProgress, Is.EqualTo(.25f).Within(.0001f));
+            Assert.That(blended.Pit.ServiceProgress, Is.EqualTo(.1f).Within(.0001f));
+        }
+
+        private static RacerSnapshot RacerAt(TrackDefinition track, float distance, float speed,
+            int laps = 0, RacerPitSnapshot pit = default) =>
+            new RacerSnapshot(PlayerId.Player1, speed, distance, laps, 1, false, -1f,
+                track.Sample(distance), 0f, false, 0f, 0, Condition(0f, 0f), pit);
+
+        private static RaceSnapshot Race(RacePhase phase, float elapsed, params RacerSnapshot[] racers) =>
+            new RaceSnapshot(phase, 0f, elapsed, racers, 0f, false);
+
         private static float Span(PitLanePresentationLayout layout, float from, float to)
         {
             float covered = 0f;
