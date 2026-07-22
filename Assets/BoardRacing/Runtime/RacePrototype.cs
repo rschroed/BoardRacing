@@ -323,7 +323,12 @@ namespace BoardRacing.Runtime
                 ? Mathf.RoundToInt(Mathf.Repeat(piece.OrientationRadians * Mathf.Rad2Deg, 360f)) + "°"
                 : "—";
             string text = (layout.PlayerId == PlayerId.Player1 ? "▲ SHIP RAW " : "● SHIP RAW ") +
-                Reading(control.Car) + " · ROBOT " + Reading(control.Crew);
+                Reading(control.Car) + " · ROBOT " + Reading(control.Crew) +
+                // Frame pacing readout for the #86 motion review: rendered fps
+                // vs the target the Awake unlock requested vs the sim tick.
+                " · FPS " + Mathf.RoundToInt(1f / Mathf.Max(.001f, Time.smoothDeltaTime)) +
+                "/" + Application.targetFrameRate +
+                " · SIM " + Mathf.RoundToInt(1f / Mathf.Max(.001f, raceSettings.fixedStepSeconds)) + "Hz";
             Rect bounds = layout.Opposite ? new Rect(530f, 6f, 360f, 30f) : new Rect(1030f, 1044f, 360f, 30f);
             DrawRotatedLabel(bounds, text, layout.RotationDegrees, small, Color.white);
         }

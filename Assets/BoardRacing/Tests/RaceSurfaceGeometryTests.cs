@@ -172,32 +172,37 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void MergeLaneTucksUnderTheTrackEdge()
+        public void MergeLaneRendersUnderTheTrack()
         {
-            // The exit spline continues to the rejoin point on the centerline,
-            // but the DRAWN lane must stop at the track's inner edge instead of
-            // poking across the fill (rounds 1+2 hardware review).
+            // The exit spline runs to the rejoin point on the centerline; the
+            // drawn lane must be swallowed by the track fill there, which in the
+            // painter-ordered mesh means every merge-lane triangle precedes the
+            // first track triangle (#86 hardware review, rounds one and two:
+            // overhanging read wrong, and trimming left a floating stub).
             var track = Track;
-            SurfaceMeshData withPit = RaceSurfaceGeometry.Build(track, PitLayout(),
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(track, PitLayout(),
                 Color.red, Color.blue);
-            SurfaceMeshData without = new SurfaceMeshData();
-            RaceSurfaceGeometry.AppendClosedRibbon(without,
-                RaceSurfaceGeometry.SmoothCenterline(track, RaceSurfaceGeometry.SamplesPerChord),
-                RaceSurfaceGeometry.TrackWidth, RaceSurfaceGeometry.CornerColor,
-                RaceSurfaceGeometry.StraightColor);
-            // Pit-lane-colored vertices near the rejoin must never cross the
-            // centerline: every one keeps at least a few pixels of distance.
-            int checked_ = 0;
-            for (int i = 0; i < withPit.Vertices.Count; i++)
+            int firstTrackVertex = -1;
+            int lastCrossingPitVertex = -1;
+            for (int i = 0; i < mesh.Vertices.Count; i++)
             {
-                if (withPit.Colors[i] != RaceSurfaceGeometry.PitLaneColor) continue;
-                Vector2 vertex = withPit.Vertices[i];
-                if (vertex.x < 1200f) continue; // only the merge approach matters
-                Assert.That(RaceSurfaceGeometry.DistanceToCenterline(vertex, track),
-                    Is.GreaterThan(8f), $"merge lane vertex {vertex} crosses the racing line");
-                checked_++;
+                bool trackFill = mesh.Colors[i] == RaceSurfaceGeometry.CornerColor ||
+                    mesh.Colors[i] == RaceSurfaceGeometry.StraightColor;
+                if (trackFill && firstTrackVertex < 0) firstTrackVertex = i;
+                // Pit-colored geometry crossing into the track footprint east of
+                // the pit boxes can only be the merge lane (the entry ramp also
+                // touches the track, but at the start/finish end of the straight).
+                if (mesh.Colors[i] == RaceSurfaceGeometry.PitLaneColor &&
+                    mesh.Vertices[i].x > 1200f &&
+                    RaceSurfaceGeometry.DistanceToCenterline(mesh.Vertices[i], track) <
+                        RaceSurfaceGeometry.TrackWidth * .5f)
+                    lastCrossingPitVertex = i;
             }
-            Assert.That(checked_, Is.GreaterThan(0), "no merge-lane vertices found to check");
+            Assert.That(lastCrossingPitVertex, Is.GreaterThan(-1),
+                "expected the merge lane to reach the track footprint");
+            Assert.That(firstTrackVertex, Is.GreaterThan(-1));
+            Assert.That(lastCrossingPitVertex, Is.LessThan(firstTrackVertex),
+                "merge lane must render before (under) the track fill");
         }
 
         private static float DistanceToPolyline(Vector2 point, TrackDefinition track)

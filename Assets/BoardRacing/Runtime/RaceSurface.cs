@@ -104,6 +104,14 @@ namespace BoardRacing.Runtime
             PitLanePresentationLayout pitLayout, Color playerOneAccent, Color playerTwoAccent)
         {
             var mesh = new SurfaceMeshData();
+            // The merge lane renders FIRST, under the track fill: the exit
+            // spline runs all the way to the rejoin point on the centerline, and
+            // the opaque track drawn over it swallows the crossing — the lane
+            // reads as sliding under the track edge (#86 hardware review, second
+            // round: trimming the ribbon early left a floating stub instead).
+            List<Vector2> mergeLane = MergeLanePoints(pitLayout);
+            AppendOpenRibbon(mesh, mergeLane, PitLaneWidth, PitLaneColor);
+            AppendOpenRibbon(mesh, mergeLane, PitStripeWidth, PitStripeColor);
             List<CenterlineSample> centerline = SmoothCenterline(track, SamplesPerChord);
             AppendClosedRibbon(mesh, centerline, TrackWidth, CornerColor, StraightColor);
             AppendClosedRibbon(mesh, centerline, TrackStripeWidth, StripeColor, StripeColor);
@@ -114,7 +122,6 @@ namespace BoardRacing.Runtime
                 Color color = width == PitLaneWidth ? PitLaneColor : PitStripeColor;
                 AppendOpenRibbon(mesh, new List<Vector2> { ToVector(pitLayout.PitLine), ToVector(pitLayout.Entry) }, width, color);
                 AppendOpenRibbon(mesh, new List<Vector2> { ToVector(pitLayout.Entry), ToVector(pitLayout.Exit) }, width, color);
-                AppendOpenRibbon(mesh, MergeLanePoints(pitLayout, track), width, color);
             }
             AppendPitBox(mesh, pitLayout.PlayerOneBox, playerOneAccent);
             AppendPitBox(mesh, pitLayout.PlayerTwoBox, playerTwoAccent);
@@ -215,23 +222,12 @@ namespace BoardRacing.Runtime
             return delta.sqrMagnitude < 1e-8f ? Vector2.zero : delta.normalized;
         }
 
-        // The drawn merge lane stops where the exit spline reaches the track's
-        // inner edge and tucks underneath the fill: the spline itself continues
-        // to the rejoin point ON the centerline (cars ride it all the way), but
-        // a full-width ribbon there visibly pokes across the track (rounds 1+2
-        // hardware review, #86).
-        private static List<Vector2> MergeLanePoints(PitLanePresentationLayout layout,
-            TrackDefinition track)
+        private static List<Vector2> MergeLanePoints(PitLanePresentationLayout layout)
         {
             var points = new List<Vector2>(MergeLaneSteps + 1);
             for (int i = 0; i <= MergeLaneSteps; i++)
-            {
-                Vector2 point = ToVector(PitLanePresentationMapper.ExitPose(PlayerId.Player1,
-                    i / (float)MergeLaneSteps, false, layout).Position);
-                points.Add(point);
-                if (points.Count > 1 && DistanceToCenterline(point, track) < TrackWidth * .5f)
-                    break;
-            }
+                points.Add(ToVector(PitLanePresentationMapper.ExitPose(PlayerId.Player1,
+                    i / (float)MergeLaneSteps, false, layout).Position));
             return points;
         }
 
