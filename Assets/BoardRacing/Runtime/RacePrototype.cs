@@ -26,8 +26,14 @@ namespace BoardRacing.Runtime
         private RaceSnapshot previousSnapshot;
         private GUIStyle title, carLabel, warning, small, cue, zoneLabel, sectorLabel, dialValue;
         // The static racing surface (track, pit complex) is a world-space mesh
-        // since issue #86 round 1; OnGUI keeps only cars, HUD, and text.
+        // since issue #86 round 1, and the car bodies since round 2; OnGUI keeps
+        // the HUD and all text.
         private RaceSurfaceRenderer surface;
+        // One presentation state per frame, computed at the end of Update: the
+        // world-space cars and every OnGUI event (IMGUI raises several per
+        // frame) read the same blend instead of each rebuilding it.
+        private RaceSnapshot presentedRace;
+        private RaceUiModel presentedUi;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
         // Set by the capture harness (BoardRacingCaptures) so review captures show
@@ -90,6 +96,12 @@ namespace BoardRacing.Runtime
             previousSnapshot = simulation.Snapshot;
             surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
                 simulation.Track, PitLayout(), PlayerOneAccent, PlayerTwoAccent));
+            surface.AttachCar(PlayerId.Player1,
+                RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, PlayerOneAccent));
+            surface.AttachCar(PlayerId.Player2,
+                RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, PlayerTwoAccent));
+            RefreshPresentation();
+            UpdateWorldCars();
         }
 
         private void CreateCrewAdapter(PlayerId id)
@@ -149,6 +161,43 @@ namespace BoardRacing.Runtime
                 previousSnapshot = simulation.Snapshot;
                 simulation.Step(step, commands); accumulator -= step;
             }
+            RefreshPresentation();
+            UpdateWorldCars();
+        }
+
+        private void RefreshPresentation()
+        {
+            presentedRace = SnapshotInterpolation.Blend(previousSnapshot, simulation.Snapshot,
+                accumulator / Mathf.Max(.001f, raceSettings.fixedStepSeconds), simulation.Track);
+#if UNITY_EDITOR
+            if (previewScenarioIndex >= 0)
+            {
+                RaceUiPreviewFrame preview = RaceUiPreviewFixtures.Create(
+                    (RaceUiPreviewScenario)previewScenarioIndex, simulation.Track,
+                    simulation.Rules.Conditions, raceSettings.laps);
+                presentedRace = preview.Race;
+                presentedUi = preview.Ui;
+                return;
+            }
+#endif
+            presentedUi = RaceUiModelBuilder.Build(presentedRace, controls, crewOutputs,
+                simulation.Rules.Conditions, raceSettings.laps);
+        }
+
+        private void UpdateWorldCars()
+        {
+            foreach (var racer in presentedRace.Racers)
+                surface.SetCarPose(racer.PlayerId, CarCenter(racer));
+        }
+
+        // The drawn car center: the smoothed pose plus the racing-line lateral
+        // offset (suppressed once the car is physically in the pit complex).
+        private Vector2 CarCenter(RacerSnapshot racer)
+        {
+            CarPose(racer, out Vector2 center, out Vector2 tangent);
+            float lateralOffset = racer.Pit.Phase == PitPhase.OnTrack || racer.Pit.Phase == PitPhase.Requested
+                ? racer.LateralOffset : 0f;
+            return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }
 
         // The START NEW RACE button appears only when no race is running: while
@@ -233,25 +282,7 @@ namespace BoardRacing.Runtime
             GUI.matrix = Matrix4x4.Scale(new Vector3(Screen.width / 1920f, Screen.height / 1080f, 1f));
             RaceLayout layout = RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
                 ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize);
-            RaceSnapshot presentedRace = SnapshotInterpolation.Blend(previousSnapshot,
-                simulation.Snapshot, accumulator / Mathf.Max(.001f, raceSettings.fixedStepSeconds),
-                simulation.Track);
-            RaceUiModel ui;
-#if UNITY_EDITOR
-            if (previewScenarioIndex >= 0)
-            {
-                RaceUiPreviewFrame preview = RaceUiPreviewFixtures.Create(
-                    (RaceUiPreviewScenario)previewScenarioIndex, simulation.Track,
-                    simulation.Rules.Conditions, raceSettings.laps);
-                presentedRace = preview.Race;
-                ui = preview.Ui;
-            }
-            else
-#endif
-            {
-                ui = RaceUiModelBuilder.Build(presentedRace, controls, crewOutputs,
-                    simulation.Rules.Conditions, raceSettings.laps);
-            }
+            RaceUiModel ui = presentedUi;
             DrawPitLabels();
             DrawCrewRegions(layout, ui);
             foreach (var racer in presentedRace.Racers) DrawCar(racer);
@@ -399,16 +430,13 @@ namespace BoardRacing.Runtime
             GUI.matrix = original;
         }
 
+        // The car body is a world-space mesh (issue #86 round 2); IMGUI keeps the
+        // piece glyph, condition cues, and status labels riding the same pose.
         private void DrawCar(RacerSnapshot racer)
         {
-            CarPose(racer, out Vector2 center, out Vector2 tangent);
-            float lateralOffset = racer.Pit.Phase == PitPhase.OnTrack || racer.Pit.Phase == PitPhase.Requested
-                ? racer.LateralOffset : 0f;
-            float x = center.x - tangent.y * lateralOffset, y = center.y + tangent.x * lateralOffset;
-            Color color = racer.PlayerId == PlayerId.Player1 ? PlayerOneAccent : PlayerTwoAccent;
+            Vector2 carCenter = CarCenter(racer);
+            float x = carCenter.x, y = carCenter.y;
             Rect rect = new Rect(x - 27f, y - 27f, 54f, 54f);
-            GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, 0,
-                racer.PlayerId == PlayerId.Player1 ? 8f : 27f);
             GUI.Label(rect, racer.PlayerId == PlayerId.Player1 ? "▲" : "●", carLabel);
             DrawConditionCues(racer, x, y);
             if (racer.RecoveryRemaining > 0f) GUI.Label(new Rect(x - 100f, y - 72f, 200f, 36f), "SLOWDOWN!", warning);

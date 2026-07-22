@@ -143,6 +143,34 @@ namespace BoardRacing.Tests
             }
         }
 
+        [Test]
+        public void CarBodiesKeepTheDrawnFootprint()
+        {
+            // P1 is the rounded square, P2 the disc — both fill the same 54×54
+            // footprint the IMGUI pass drew (issue #86 round 2).
+            SurfaceMeshData square = RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, Color.red);
+            float maxAxis = 0f, maxDiagonal = 0f;
+            foreach (Vector3 vertex in square.Vertices)
+            {
+                maxAxis = Mathf.Max(maxAxis, Mathf.Max(Mathf.Abs(vertex.x), Mathf.Abs(vertex.y)));
+                maxDiagonal = Mathf.Max(maxDiagonal, new Vector2(vertex.x, vertex.y).magnitude);
+            }
+            Assert.That(maxAxis, Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize).Within(.01f));
+            // The corner radius must actually cut the diagonal: strictly inside
+            // the sharp corner, strictly outside the inscribed circle.
+            float sharpCorner = RaceSurfaceGeometry.CarBodyHalfSize * Mathf.Sqrt(2f);
+            Assert.That(maxDiagonal, Is.LessThan(sharpCorner - 1f));
+            Assert.That(maxDiagonal, Is.GreaterThan(RaceSurfaceGeometry.CarBodyHalfSize + 1f));
+
+            SurfaceMeshData disc = RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, Color.blue);
+            for (int i = 1; i < disc.Vertices.Count; i++)
+                Assert.That(new Vector2(disc.Vertices[i].x, disc.Vertices[i].y).magnitude,
+                    Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize).Within(.01f),
+                    "disc perimeter vertex off the radius");
+            Assert.That(square.Colors, Is.All.EqualTo(Color.red));
+            Assert.That(disc.Colors, Is.All.EqualTo(Color.blue));
+        }
+
         private static float DistanceToPolyline(Vector2 point, TrackDefinition track)
         {
             float best = float.MaxValue;

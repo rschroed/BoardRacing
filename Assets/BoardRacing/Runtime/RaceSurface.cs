@@ -47,6 +47,27 @@ namespace BoardRacing.Runtime
             AddRect(new Rect(rect.x, rect.y, width, rect.height), color);
             AddRect(new Rect(rect.xMax - width, rect.y, width, rect.height), color);
         }
+
+        // Convex closed fan: center vertex plus the perimeter loop (last point
+        // connects back to the first).
+        public void AddFan(Vector2 center, IReadOnlyList<Vector2> perimeter, Color color)
+        {
+            int centerIndex = Vertices.Count;
+            Vertices.Add(new Vector3(center.x, center.y, 0f));
+            Colors.Add(color);
+            int first = Vertices.Count;
+            for (int i = 0; i < perimeter.Count; i++)
+            {
+                Vertices.Add(new Vector3(perimeter[i].x, perimeter[i].y, 0f));
+                Colors.Add(color);
+            }
+            for (int i = 0; i < perimeter.Count; i++)
+            {
+                Triangles.Add(centerIndex);
+                Triangles.Add(first + i);
+                Triangles.Add(first + (i + 1) % perimeter.Count);
+            }
+        }
     }
 
     internal readonly struct CenterlineSample
@@ -209,6 +230,53 @@ namespace BoardRacing.Runtime
             mesh.AddRectOutline(box, 3f, accent);
         }
 
+        // Car bodies (issue #86 round 2), centered on the origin so the renderer
+        // moves them by transform: the same 54×54 footprint the IMGUI pass drew —
+        // P1 a rounded square (corner radius 8), P2 a disc (the 27 px "radius"
+        // rounded the square into a circle).
+        public const float CarBodyHalfSize = 27f;
+        public const float CarBodyCornerRadius = 8f;
+
+        public static SurfaceMeshData BuildCarBody(PlayerId playerId, Color accent)
+        {
+            var mesh = new SurfaceMeshData();
+            mesh.AddFan(Vector2.zero, playerId == PlayerId.Player1
+                ? RoundedRectPerimeter(CarBodyHalfSize, CarBodyCornerRadius)
+                : DiscPerimeter(CarBodyHalfSize), accent);
+            return mesh;
+        }
+
+        private static List<Vector2> DiscPerimeter(float radius, int segments = 48)
+        {
+            var points = new List<Vector2>(segments);
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = i * 2f * Mathf.PI / segments;
+                points.Add(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius);
+            }
+            return points;
+        }
+
+        private static List<Vector2> RoundedRectPerimeter(float halfSize, float cornerRadius,
+            int segmentsPerCorner = 6)
+        {
+            float inset = halfSize - cornerRadius;
+            var points = new List<Vector2>(4 * (segmentsPerCorner + 1));
+            for (int corner = 0; corner < 4; corner++)
+            {
+                float baseAngle = corner * 90f;
+                var center = new Vector2(
+                    Mathf.Sign(Mathf.Cos((baseAngle + 45f) * Mathf.Deg2Rad)) * inset,
+                    Mathf.Sign(Mathf.Sin((baseAngle + 45f) * Mathf.Deg2Rad)) * inset);
+                for (int step = 0; step <= segmentsPerCorner; step++)
+                {
+                    float angle = (baseAngle + 90f * step / segmentsPerCorner) * Mathf.Deg2Rad;
+                    points.Add(center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * cornerRadius);
+                }
+            }
+            return points;
+        }
+
         // Centripetal parameterization (alpha = .5), Barry-Goldman evaluation.
         private static Vector2 CatmullRom(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
         {
@@ -236,8 +304,15 @@ namespace BoardRacing.Runtime
 
     internal sealed class RaceSurfaceRenderer : MonoBehaviour
     {
-        private Mesh mesh;
+        // Cars sit one unit nearer the camera than the surface (z = 0), so the
+        // transparent queue draws them over the pit boxes — the order the IMGUI
+        // painter had.
+        private const float CarDepth = -1f;
+
         private Material material;
+        private readonly List<Mesh> meshes = new List<Mesh>();
+        private readonly Dictionary<PlayerId, Transform> cars =
+            new Dictionary<PlayerId, Transform>();
 
         public static RaceSurfaceRenderer Create(SurfaceMeshData data)
         {
@@ -261,27 +336,45 @@ namespace BoardRacing.Runtime
             surfaceCamera.projectionMatrix = Matrix4x4.Ortho(
                 0f, RaceLayout.ReferenceWidth, RaceLayout.ReferenceHeight, 0f, .3f, 50f);
 
-            var meshObject = new GameObject("Race Surface Mesh");
-            meshObject.transform.SetParent(root.transform, false);
-            surface.mesh = new Mesh { name = "Race Surface" };
-            surface.mesh.SetVertices(data.Vertices);
-            surface.mesh.SetColors(data.Colors);
-            surface.mesh.SetTriangles(data.Triangles, 0);
-            surface.mesh.RecalculateBounds();
-            meshObject.AddComponent<MeshFilter>().sharedMesh = surface.mesh;
-            var meshRenderer = meshObject.AddComponent<MeshRenderer>();
             surface.material = new Material(Shader.Find("Sprites/Default"));
-            meshRenderer.sharedMaterial = surface.material;
+            surface.CreateMeshObject("Race Surface Mesh", data);
+            return surface;
+        }
+
+        public void AttachCar(PlayerId playerId, SurfaceMeshData body) =>
+            cars[playerId] = CreateMeshObject("Race Car " + playerId, body);
+
+        // Reference-pixel position (Y down), straight onto the transform — world
+        // space is reference space by the camera's projection.
+        public void SetCarPose(PlayerId playerId, Vector2 referencePosition)
+        {
+            if (cars.TryGetValue(playerId, out Transform car))
+                car.localPosition = new Vector3(referencePosition.x, referencePosition.y, CarDepth);
+        }
+
+        private Transform CreateMeshObject(string objectName, SurfaceMeshData data)
+        {
+            var meshObject = new GameObject(objectName);
+            meshObject.transform.SetParent(transform, false);
+            var mesh = new Mesh { name = objectName };
+            mesh.SetVertices(data.Vertices);
+            mesh.SetColors(data.Colors);
+            mesh.SetTriangles(data.Triangles, 0);
+            mesh.RecalculateBounds();
+            meshes.Add(mesh);
+            meshObject.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var meshRenderer = meshObject.AddComponent<MeshRenderer>();
+            meshRenderer.sharedMaterial = material;
             meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             meshRenderer.receiveShadows = false;
             meshRenderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
             meshRenderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
-            return surface;
+            return meshObject.transform;
         }
 
         private void OnDestroy()
         {
-            if (mesh != null) Destroy(mesh);
+            foreach (Mesh mesh in meshes) if (mesh != null) Destroy(mesh);
             if (material != null) Destroy(material);
         }
     }
