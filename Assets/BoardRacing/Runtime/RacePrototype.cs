@@ -283,6 +283,12 @@ namespace BoardRacing.Runtime
 
         private void OnGUI()
         {
+            // Repaint only: everything draws at explicit rects, so the Layout
+            // pass (and any input events — touch is polled in Update) would just
+            // re-issue the same thousand draw calls for nothing. IMGUI raises
+            // several events per frame and the seat HUD is draw-call bound on
+            // device (#86 hardware review: 9-20 fps).
+            if (Event.current.type != EventType.Repaint) return;
             EnsureStyles();
             Matrix4x4 original = GUI.matrix;
             GUI.matrix = Matrix4x4.Scale(new Vector3(Screen.width / 1920f, Screen.height / 1080f, 1f));
@@ -603,7 +609,9 @@ namespace BoardRacing.Runtime
         private static void DrawArc(Vector2 center, float radius, float startAngle,
             float endAngle, float width, Color color)
         {
-            int segments = Mathf.Max(2, Mathf.CeilToInt(Mathf.Abs(endAngle - startAngle) / 3f));
+            // 6° chords: at the HUD's ring radii the sag is under half a pixel,
+            // and every chord is an individual GUI draw call (#86 fps review).
+            int segments = Mathf.Max(2, Mathf.CeilToInt(Mathf.Abs(endAngle - startAngle) / 6f));
             Vector2 prior = ArcPoint(center, radius, startAngle);
             for (int i = 1; i <= segments; i++)
             {
