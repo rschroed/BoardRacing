@@ -114,7 +114,7 @@ namespace BoardRacing.Runtime
                 Color color = width == PitLaneWidth ? PitLaneColor : PitStripeColor;
                 AppendOpenRibbon(mesh, new List<Vector2> { ToVector(pitLayout.PitLine), ToVector(pitLayout.Entry) }, width, color);
                 AppendOpenRibbon(mesh, new List<Vector2> { ToVector(pitLayout.Entry), ToVector(pitLayout.Exit) }, width, color);
-                AppendOpenRibbon(mesh, MergeLanePoints(pitLayout), width, color);
+                AppendOpenRibbon(mesh, MergeLanePoints(pitLayout, track), width, color);
             }
             AppendPitBox(mesh, pitLayout.PlayerOneBox, playerOneAccent);
             AppendPitBox(mesh, pitLayout.PlayerTwoBox, playerTwoAccent);
@@ -192,8 +192,9 @@ namespace BoardRacing.Runtime
         // Perpendicular offset at a polyline point, averaging the adjacent
         // directions (miter join). At an endpoint the degenerate neighbor drops
         // out and the offset is the plain perpendicular of the surviving chord.
-        // The dot clamp caps the miter at twice the half width, which the ≤12°
-        // authored steps never approach.
+        // The dot clamp caps the miter at 1.25× the half width: the ≤12°
+        // authored track steps never approach it, and the pit exit spline's
+        // sharper landing kink bevels instead of spiking (#86 hardware review).
         private static Vector2 MiterOffset(Vector2 previous, Vector2 current, Vector2 next,
             float halfWidth)
         {
@@ -205,7 +206,7 @@ namespace BoardRacing.Runtime
             Vector2 normalOutOf = new Vector2(-outOf.y, outOf.x);
             Vector2 miter = (normalInto + normalOutOf).normalized;
             if (miter == Vector2.zero) miter = normalOutOf;
-            return miter * (halfWidth / Mathf.Max(.5f, Vector2.Dot(miter, normalOutOf)));
+            return miter * (halfWidth / Mathf.Max(.8f, Vector2.Dot(miter, normalOutOf)));
         }
 
         private static Vector2 Direction(Vector2 from, Vector2 to)
@@ -214,13 +215,38 @@ namespace BoardRacing.Runtime
             return delta.sqrMagnitude < 1e-8f ? Vector2.zero : delta.normalized;
         }
 
-        private static List<Vector2> MergeLanePoints(PitLanePresentationLayout layout)
+        // The drawn merge lane stops where the exit spline reaches the track's
+        // inner edge and tucks underneath the fill: the spline itself continues
+        // to the rejoin point ON the centerline (cars ride it all the way), but
+        // a full-width ribbon there visibly pokes across the track (rounds 1+2
+        // hardware review, #86).
+        private static List<Vector2> MergeLanePoints(PitLanePresentationLayout layout,
+            TrackDefinition track)
         {
             var points = new List<Vector2>(MergeLaneSteps + 1);
             for (int i = 0; i <= MergeLaneSteps; i++)
-                points.Add(ToVector(PitLanePresentationMapper.ExitPose(PlayerId.Player1,
-                    i / (float)MergeLaneSteps, false, layout).Position));
+            {
+                Vector2 point = ToVector(PitLanePresentationMapper.ExitPose(PlayerId.Player1,
+                    i / (float)MergeLaneSteps, false, layout).Position);
+                points.Add(point);
+                if (points.Count > 1 && DistanceToCenterline(point, track) < TrackWidth * .5f)
+                    break;
+            }
             return points;
+        }
+
+        internal static float DistanceToCenterline(Vector2 point, TrackDefinition track)
+        {
+            float best = float.MaxValue;
+            foreach (TrackSegment segment in track.Segments)
+            {
+                var start = new Vector2(segment.Start.X, segment.Start.Y);
+                var end = new Vector2(segment.End.X, segment.End.Y);
+                Vector2 direction = end - start;
+                float t = Mathf.Clamp01(Vector2.Dot(point - start, direction) / direction.sqrMagnitude);
+                best = Mathf.Min(best, Vector2.Distance(point, start + direction * t));
+            }
+            return best;
         }
 
         private static void AppendPitBox(SurfaceMeshData mesh, Vec2 center, Color accent)

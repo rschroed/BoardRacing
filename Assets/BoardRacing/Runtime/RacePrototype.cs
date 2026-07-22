@@ -76,6 +76,12 @@ namespace BoardRacing.Runtime
 
         private void Awake()
         {
+            // Unity's mobile default caps rendering at 30 fps, which read as
+            // visible car stepping in the rounds 1+2 hardware review (#86).
+            // Presentation interpolates every rendered frame, so rendering at
+            // the panel's native refresh is pure smoothness.
+            int refresh = Mathf.RoundToInt((float)Screen.currentResolution.refreshRateRatio.value);
+            Application.targetFrameRate = refresh > 0 ? refresh : 60;
             inputSettings = Resources.Load<TrancheOneSettings>("TrancheOneSettings") ?? TrancheOneSettings.Defaults();
             raceSettings = Resources.Load<TrancheTwoSettings>("TrancheTwoSettings") ?? TrancheTwoSettings.Defaults();
             strategySettings = Resources.Load<TrancheThreeSettings>("TrancheThreeSettings") ?? TrancheThreeSettings.Defaults();

@@ -171,6 +171,35 @@ namespace BoardRacing.Tests
             Assert.That(disc.Colors, Is.All.EqualTo(Color.blue));
         }
 
+        [Test]
+        public void MergeLaneTucksUnderTheTrackEdge()
+        {
+            // The exit spline continues to the rejoin point on the centerline,
+            // but the DRAWN lane must stop at the track's inner edge instead of
+            // poking across the fill (rounds 1+2 hardware review).
+            var track = Track;
+            SurfaceMeshData withPit = RaceSurfaceGeometry.Build(track, PitLayout(),
+                Color.red, Color.blue);
+            SurfaceMeshData without = new SurfaceMeshData();
+            RaceSurfaceGeometry.AppendClosedRibbon(without,
+                RaceSurfaceGeometry.SmoothCenterline(track, RaceSurfaceGeometry.SamplesPerChord),
+                RaceSurfaceGeometry.TrackWidth, RaceSurfaceGeometry.CornerColor,
+                RaceSurfaceGeometry.StraightColor);
+            // Pit-lane-colored vertices near the rejoin must never cross the
+            // centerline: every one keeps at least a few pixels of distance.
+            int checked_ = 0;
+            for (int i = 0; i < withPit.Vertices.Count; i++)
+            {
+                if (withPit.Colors[i] != RaceSurfaceGeometry.PitLaneColor) continue;
+                Vector2 vertex = withPit.Vertices[i];
+                if (vertex.x < 1200f) continue; // only the merge approach matters
+                Assert.That(RaceSurfaceGeometry.DistanceToCenterline(vertex, track),
+                    Is.GreaterThan(8f), $"merge lane vertex {vertex} crosses the racing line");
+                checked_++;
+            }
+            Assert.That(checked_, Is.GreaterThan(0), "no merge-lane vertices found to check");
+        }
+
         private static float DistanceToPolyline(Vector2 point, TrackDefinition track)
         {
             float best = float.MaxValue;
