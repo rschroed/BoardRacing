@@ -25,6 +25,9 @@ namespace BoardRacing.Runtime
         // the two by the accumulator fraction (SnapshotInterpolation, issue #89).
         private RaceSnapshot previousSnapshot;
         private GUIStyle title, carLabel, warning, small, cue, zoneLabel, sectorLabel, dialValue;
+        // The static racing surface (track, pit complex) is a world-space mesh
+        // since issue #86 round 1; OnGUI keeps only cars, HUD, and text.
+        private RaceSurfaceRenderer surface;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
         // Set by the capture harness (BoardRacingCaptures) so review captures show
@@ -32,7 +35,9 @@ namespace BoardRacing.Runtime
         public static bool SuppressEditorDiagnostics;
 #endif
 
-        private const float TrackWidth = 64f;
+        // Player accents from the design authority (frame 40:23): P1 orange, P2 purple.
+        private static readonly Color PlayerOneAccent = new Color(.92f, .39f, .12f);
+        private static readonly Color PlayerTwoAccent = new Color(.48f, .28f, .72f);
         // Zone/label palette from the design authority (frame 40:23): ghosted chrome,
         // Fuel's warm hue (the frame still labels this dial HEAT — Figma update pending
         // the owner's Fuel decision, 2026-07-19), Tires' green hue.
@@ -83,6 +88,8 @@ namespace BoardRacing.Runtime
                 raceSettings.ToRules(strategySettings.requiredServiceCount, strategySettings.ToConditionRules(),
                     strategySettings.ToPitRules()));
             previousSnapshot = simulation.Snapshot;
+            surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
+                simulation.Track, PitLayout(), PlayerOneAccent, PlayerTwoAccent));
         }
 
         private void CreateCrewAdapter(PlayerId id)
@@ -108,6 +115,7 @@ namespace BoardRacing.Runtime
         {
             DetachResetSource(activeProvider);
             if (boardProvider is IDisposable disposable) disposable.Dispose();
+            if (surface != null) Destroy(surface.gameObject);
         }
 
         private void Update()
@@ -223,8 +231,6 @@ namespace BoardRacing.Runtime
             EnsureStyles();
             Matrix4x4 original = GUI.matrix;
             GUI.matrix = Matrix4x4.Scale(new Vector3(Screen.width / 1920f, Screen.height / 1080f, 1f));
-            GUI.DrawTexture(new Rect(0, 0, 1920, 1080), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                new Color(.025f, .035f, .05f), 0, 0);
             RaceLayout layout = RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
                 ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize);
             RaceSnapshot presentedRace = SnapshotInterpolation.Blend(previousSnapshot,
@@ -246,12 +252,11 @@ namespace BoardRacing.Runtime
                 ui = RaceUiModelBuilder.Build(presentedRace, controls, crewOutputs,
                     simulation.Rules.Conditions, raceSettings.laps);
             }
-            DrawTrack();
-            DrawPitLane();
+            DrawPitLabels();
             DrawCrewRegions(layout, ui);
             foreach (var racer in presentedRace.Racers) DrawCar(racer);
-            DrawCornerController(ui.PlayerTwo, layout.PlayerTwo, new Color(.48f, .28f, .72f));
-            DrawCornerController(ui.PlayerOne, layout.PlayerOne, new Color(.92f, .39f, .12f));
+            DrawCornerController(ui.PlayerTwo, layout.PlayerTwo, PlayerTwoAccent);
+            DrawCornerController(ui.PlayerOne, layout.PlayerOne, PlayerOneAccent);
             DrawCenterMessage(ui, layout);
             // Development builds only: raw Ship orientation per seat so the throttle
             // mapper can be calibrated against the rendered wedges on real hardware
@@ -286,58 +291,21 @@ namespace BoardRacing.Runtime
             DrawRotatedLabel(bounds, text, layout.RotationDegrees, small, Color.white);
         }
 
-        private void DrawTrack()
+        // The pit geometry itself is world-space mesh (RaceSurfaceGeometry); text
+        // stays IMGUI until the migration settles a world-space text stack.
+        private void DrawPitLabels()
         {
-            foreach (var segment in simulation.Track.Segments)
-            {
-                Color color = segment.Kind == TrackSectionKind.Corner ? new Color(.22f, .28f, .36f) : new Color(.16f, .2f, .27f);
-                DrawLine(segment.Start, segment.End, TrackWidth, color);
-                DrawLine(segment.Start, segment.End, 3f, new Color(.55f, .62f, .7f, .5f));
-            }
-            Vec2 line = simulation.Track.Sample(0f).Position;
-            GUI.DrawTexture(new Rect(line.X - 12, line.Y - 28, 24, 56), Texture2D.whiteTexture,
-                ScaleMode.StretchToFill, true, 0, Color.white, 0, 0);
-        }
-
-        private void DrawPitLane()
-        {
-            Vec2 start = simulation.Track.Sample(0f).Position;
-            DrawLine(start, PitEntry, 30f, new Color(.08f, .11f, .15f));
-            DrawLine(PitEntry, PitExit, 30f, new Color(.08f, .11f, .15f));
-            DrawPitMergeLane(30f, new Color(.08f, .11f, .15f));
-            DrawLine(start, PitEntry, 2f, new Color(.62f, .68f, .74f, .55f));
-            DrawLine(PitEntry, PitExit, 2f, new Color(.62f, .68f, .74f, .55f));
-            DrawPitMergeLane(2f, new Color(.62f, .68f, .74f, .55f));
-            DrawPitBox(PlayerOnePitBox, "▲ P1 BOX", new Color(.92f, .39f, .12f));
-            DrawPitBox(PlayerTwoPitBox, "● P2 BOX", new Color(.48f, .28f, .72f));
+            GUI.Label(new Rect(PlayerOnePitBox.X - 70f, PlayerOnePitBox.Y - 32f, 140f, 64f),
+                "▲ P1 BOX", small);
+            GUI.Label(new Rect(PlayerTwoPitBox.X - 70f, PlayerTwoPitBox.Y - 32f, 140f, 64f),
+                "● P2 BOX", small);
             GUI.Label(new Rect(865, 421, 190, 28), "PIT LANE", small);
-        }
-
-        private void DrawPitMergeLane(float width, Color color)
-        {
-            PitLanePresentationLayout layout = PitLayout();
-            CarPresentationPose prior = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
-            for (int i = 1; i <= 36; i++)
-            {
-                CarPresentationPose next = PitLanePresentationMapper.ExitPose(PlayerId.Player1, i / 36f, false, layout);
-                DrawLine(prior.Position, next.Position, width, color);
-                prior = next;
-            }
-        }
-
-        private void DrawPitBox(Vec2 center, string label, Color accent)
-        {
-            Rect box = new Rect(center.X - 70f, center.Y - 32f, 140f, 64f);
-            GUI.DrawTexture(box, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                new Color(accent.r, accent.g, accent.b, .22f), 0, 5f);
-            DrawOutline(box, 3f, accent);
-            GUI.Label(box, label, small);
         }
 
         private void DrawCrewRegions(RaceLayout layout, RaceUiModel ui)
         {
-            DrawCrewRegions(layout.PlayerTwo, ui.PlayerTwo, ui.Phase, new Color(.48f, .28f, .72f));
-            DrawCrewRegions(layout.PlayerOne, ui.PlayerOne, ui.Phase, new Color(.92f, .39f, .12f));
+            DrawCrewRegions(layout.PlayerTwo, ui.PlayerTwo, ui.Phase, PlayerTwoAccent);
+            DrawCrewRegions(layout.PlayerOne, ui.PlayerOne, ui.Phase, PlayerOneAccent);
         }
 
         // All three Robot zones live at fixed positions; state controls lit versus ghosted
@@ -437,7 +405,7 @@ namespace BoardRacing.Runtime
             float lateralOffset = racer.Pit.Phase == PitPhase.OnTrack || racer.Pit.Phase == PitPhase.Requested
                 ? racer.LateralOffset : 0f;
             float x = center.x - tangent.y * lateralOffset, y = center.y + tangent.x * lateralOffset;
-            Color color = racer.PlayerId == PlayerId.Player1 ? new Color(.92f, .39f, .12f) : new Color(.48f, .28f, .72f);
+            Color color = racer.PlayerId == PlayerId.Player1 ? PlayerOneAccent : PlayerTwoAccent;
             Rect rect = new Rect(x - 27f, y - 27f, 54f, 54f);
             GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, 0,
                 racer.PlayerId == PlayerId.Player1 ? 8f : 27f);
