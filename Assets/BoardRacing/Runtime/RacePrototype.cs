@@ -24,11 +24,13 @@ namespace BoardRacing.Runtime
         // The sim state one fixed step behind Snapshot: OnGUI draws the blend of
         // the two by the accumulator fraction (SnapshotInterpolation, issue #89).
         private RaceSnapshot previousSnapshot;
-        private GUIStyle title, carLabel, warning, small, cue, zoneLabel, sectorLabel, dialValue;
+        private GUIStyle title, carLabel, warning, small, cue;
         // The static racing surface (track, pit complex) is a world-space mesh
-        // since issue #86 round 1, and the car bodies since round 2; OnGUI keeps
-        // the HUD and all text.
+        // since issue #86 round 1, and the car bodies since round 2; the seat
+        // clusters are a uGUI canvas since round 3. OnGUI keeps the car-riding
+        // labels, pit text, center overlays, and dev readouts.
         private RaceSurfaceRenderer surface;
+        private RaceHud hud;
         // One presentation state per frame, computed at the end of Update: the
         // world-space cars and every OnGUI event (IMGUI raises several per
         // frame) read the same blend instead of each rebuilding it.
@@ -44,12 +46,6 @@ namespace BoardRacing.Runtime
         // Player accents from the design authority (frame 40:23): P1 orange, P2 purple.
         private static readonly Color PlayerOneAccent = new Color(.92f, .39f, .12f);
         private static readonly Color PlayerTwoAccent = new Color(.48f, .28f, .72f);
-        // Zone/label palette from the design authority (frame 40:23): ghosted chrome,
-        // Fuel's warm hue (the frame still labels this dial HEAT — Figma update pending
-        // the owner's Fuel decision, 2026-07-19), Tires' green hue.
-        private static readonly Color GhostColor = new Color(.4f, .44f, .5f, .55f);
-        private static readonly Color FuelLabelColor = new Color(.95f, .55f, .2f);
-        private static readonly Color TiresLabelColor = new Color(.35f, .72f, .5f);
         // Pit complex re-derived from the Wedge top straight (issue #88): entry
         // ramps off the start/finish line, the lane parallels the straight inside
         // the loop, and the exit rejoins the straight at pitExitRejoinDistance.
@@ -106,6 +102,9 @@ namespace BoardRacing.Runtime
                 RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, PlayerOneAccent));
             surface.AttachCar(PlayerId.Player2,
                 RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, PlayerTwoAccent));
+            hud = RaceHud.Create(RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
+                ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize),
+                PlayerOneAccent, PlayerTwoAccent);
             RefreshPresentation();
             UpdateWorldCars();
         }
@@ -134,6 +133,7 @@ namespace BoardRacing.Runtime
             DetachResetSource(activeProvider);
             if (boardProvider is IDisposable disposable) disposable.Dispose();
             if (surface != null) Destroy(surface.gameObject);
+            if (hud != null) Destroy(hud.gameObject);
         }
 
         private void Update()
@@ -189,6 +189,8 @@ namespace BoardRacing.Runtime
             presentedUi = RaceUiModelBuilder.Build(presentedRace, controls, crewOutputs,
                 simulation.Rules.Conditions, raceSettings.laps);
         }
+
+        private void LateUpdate() => hud.Apply(presentedUi);
 
         private void UpdateWorldCars()
         {
@@ -273,9 +275,6 @@ namespace BoardRacing.Runtime
             warning = Style(26, FontStyle.Bold, new Color(1f, .75f, .2f), TextAnchor.MiddleCenter);
             small = Style(15, FontStyle.Bold, new Color(.87f, .9f, .94f), TextAnchor.MiddleCenter);
             cue = Style(13, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            zoneLabel = Style(13, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            sectorLabel = Style(14, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            dialValue = Style(20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         }
 
         private static GUIStyle Style(int size, FontStyle fontStyle, Color color, TextAnchor anchor) => new GUIStyle(GUI.skin.label)
@@ -296,10 +295,15 @@ namespace BoardRacing.Runtime
                 ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize);
             RaceUiModel ui = presentedUi;
             DrawPitLabels();
-            DrawCrewRegions(layout, ui);
             foreach (var racer in presentedRace.Racers) DrawCar(racer);
-            DrawCornerController(ui.PlayerTwo, layout.PlayerTwo, PlayerTwoAccent);
-            DrawCornerController(ui.PlayerOne, layout.PlayerOne, PlayerOneAccent);
+#if UNITY_EDITOR
+            // The rotated glyph stands in for the physical Ship on desktop only;
+            // on Board hardware the real piece sits on the uGUI seat's well ring.
+            DrawShipGlyph(layout.PlayerTwo.Controller, layout.PlayerTwo, PlayerTwoAccent,
+                ui.PlayerTwo.ShipPresent);
+            DrawShipGlyph(layout.PlayerOne.Controller, layout.PlayerOne, PlayerOneAccent,
+                ui.PlayerOne.ShipPresent);
+#endif
             DrawCenterMessage(ui, layout);
             // Development builds only: raw Ship orientation per seat so the throttle
             // mapper can be calibrated against the rendered wedges on real hardware
@@ -350,79 +354,6 @@ namespace BoardRacing.Runtime
             GUI.Label(new Rect(865, 421, 190, 28), "PIT LANE", small);
         }
 
-        private void DrawCrewRegions(RaceLayout layout, RaceUiModel ui)
-        {
-            DrawCrewRegions(layout.PlayerTwo, ui.PlayerTwo, ui.Phase, PlayerTwoAccent);
-            DrawCrewRegions(layout.PlayerOne, ui.PlayerOne, ui.Phase, PlayerOneAccent);
-        }
-
-        // All three Robot zones live at fixed positions; state controls lit versus ghosted
-        // (wireframe-ui.md, frames 35:2 and 40:23). Zones render exactly as the design
-        // authority draws them — outline circles and rim dials, no panels and no per-seat
-        // copy (issue #77 Round 2 owner decision). Progress reads as rings, not sentences.
-        private void DrawCrewRegions(PlayerLayout playerLayout, PlayerUiModel model,
-            RacePhase racePhase, Color accent)
-        {
-            bool inService = model.PitPhase == PitPhase.InService;
-            // The circle is Call Pit on track and Leave Pit while parked — lit in both,
-            // ghosted only while the car is moving through the pit lane.
-            DrawCallPitZone(model, playerLayout, accent,
-                racePhase == RacePhase.Racing && !model.Finished &&
-                model.PitPhase != PitPhase.Entering && model.PitPhase != PitPhase.Exiting);
-            DrawConditionDial(model, PitService.Tires, playerLayout.Tires,
-                playerLayout.Controller.TiresLabel, "TIRES", TiresLabelColor, playerLayout,
-                accent, inService, model.Condition.TireWear, model.Condition.TireLevel);
-            DrawConditionDial(model, PitService.Fuel, playerLayout.Fuel,
-                playerLayout.Controller.FuelLabel, "FUEL", FuelLabelColor, playerLayout,
-                accent, inService, model.Condition.FuelUsed, model.Condition.FuelLevel);
-        }
-
-        private void DrawCallPitZone(PlayerUiModel model, PlayerLayout layout, Color accent,
-            bool lit)
-        {
-            CornerControllerLayout controller = layout.Controller;
-            Vector2 center = layout.CallPit.center;
-            PitCallState state = model.CallState;
-            bool inPit = model.PitPhase == PitPhase.Entering || model.PitPhase == PitPhase.InService;
-            bool emphasized = lit && (state == PitCallState.Holding || state == PitCallState.Requested ||
-                model.PitPhase == PitPhase.Requested);
-            DrawArc(center, controller.CallPitRadius, 0f, 360f, emphasized ? 5f : 3f,
-                emphasized ? Color.white : lit ? accent : GhostColor);
-            if (lit && state == PitCallState.Holding)
-                DrawArc(center, controller.CallPitRadius - 16f, -90f,
-                    -90f + 360f * model.CallAction.Progress, 5f, Color.white);
-            DrawRotatedLabel(controller.CallPitLabel.Bounds, inPit ? "LEAVE PIT" : "CALL PIT",
-                controller.CallPitLabel.RotationDegrees + layout.RotationDegrees, zoneLabel,
-                emphasized ? Color.white : lit ? accent : GhostColor);
-        }
-
-        private void DrawConditionDial(PlayerUiModel model, PitService service, Rect zone,
-            RotatedLabel label, string conditionName, Color labelColor, PlayerLayout layout,
-            Color accent, bool inService, float value, ConditionVisualLevel level)
-        {
-            Vector2 center = zone.center;
-            float dialRadius = layout.Controller.DialRadius;
-            bool selected = inService && model.SelectedService == service;
-            // Parked: the dial itself is the service target; a surrounding ring marks it.
-            if (inService)
-                DrawArc(center, dialRadius + 12f, 0f, 360f, selected ? 5f : 2.5f,
-                    selected ? Color.white : accent);
-            DrawArc(center, dialRadius, 0f, 360f, 10f, new Color(.13f, .16f, .2f));
-            float clamped = Mathf.Clamp01(value);
-            // Normal severity fills in the condition's identity hue (frame 40:23);
-            // warning/critical escalate to the shared severity colors.
-            if (clamped > .001f)
-                DrawArc(center, dialRadius, -90f, -90f + 360f * clamped, 10f,
-                    level == ConditionVisualLevel.Normal ? labelColor : ConditionColor(level));
-            DrawRotatedLabel(new Rect(center.x - dialRadius, center.y - 15f, dialRadius * 2f, 30f),
-                Mathf.RoundToInt(clamped * 100f).ToString(), layout.RotationDegrees, dialValue);
-            if (selected && model.ServiceAction.State == PitActionState.Stirring)
-                DrawArc(center, dialRadius + 12f, -90f, -90f + 360f * model.ServiceProgress,
-                    6f, Color.white);
-            DrawRotatedLabel(label.Bounds, conditionName,
-                label.RotationDegrees + layout.RotationDegrees, zoneLabel, labelColor);
-        }
-
         private static void DrawOutline(Rect rect, float width, Color color)
         {
             GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, width), Texture2D.whiteTexture,
@@ -433,18 +364,6 @@ namespace BoardRacing.Runtime
                 ScaleMode.StretchToFill, true, 0, color, 0, 0);
             GUI.DrawTexture(new Rect(rect.xMax - width, rect.y, width, rect.height), Texture2D.whiteTexture,
                 ScaleMode.StretchToFill, true, 0, color, 0, 0);
-        }
-
-        private static void DrawLine(Vec2 from, Vec2 to, float width, Color color)
-        {
-            Vector2 a = new Vector2(from.X, from.Y), b = new Vector2(to.X, to.Y);
-            Vector2 middle = (a + b) * .5f;
-            float length = Vector2.Distance(a, b);
-            Matrix4x4 original = GUI.matrix;
-            GUIUtility.RotateAroundPivot(Mathf.Atan2(b.y - a.y, b.x - a.x) * Mathf.Rad2Deg, middle);
-            GUI.DrawTexture(new Rect(middle.x - length * .5f, middle.y - width * .5f, length, width),
-                Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, 0, width * .25f);
-            GUI.matrix = original;
         }
 
         // The car body is a world-space mesh (issue #86 round 2); IMGUI keeps the
@@ -487,18 +406,11 @@ namespace BoardRacing.Runtime
 
         private void DrawConditionCue(Rect rect, string symbol, ConditionVisualLevel level, bool rounded)
         {
-            Color color = ConditionColor(level);
+            Color color = RaceHud.ConditionColor(level);
             GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, 0,
                 rounded ? rect.height * .5f : 2f);
             GUI.Label(rect, symbol + (level == ConditionVisualLevel.Critical ? "!!" :
                 level == ConditionVisualLevel.Warning ? "!" : ""), cue);
-        }
-
-        private static Color ConditionColor(ConditionVisualLevel level)
-        {
-            if (level == ConditionVisualLevel.Critical) return new Color(.86f, .12f, .12f);
-            if (level == ConditionVisualLevel.Warning) return new Color(.94f, .62f, .08f);
-            return new Color(.24f, .31f, .39f);
         }
 
         private static string CarPitLabel(RacerPitSnapshot pit)
@@ -509,63 +421,6 @@ namespace BoardRacing.Runtime
                 ? "CAR PARKED · REPAIR OR LEAVE" : "IN BOX · " + ServiceName(pit.SelectedService);
             if (pit.Phase == PitPhase.Exiting) return "PIT EXIT";
             return string.Empty;
-        }
-
-        // Corner cluster measured from frame 40:23 (component 44:124): the Ship well sits on
-        // the corner diagonal, the throttle arc fans around its nose, and the lit sector plus
-        // its accent fill ARE the throttle read — no separate state word or per-seat copy
-        // (issue #77 Round 2 owner decision). Condition dials render in DrawConditionDial.
-        private void DrawCornerController(PlayerUiModel model, PlayerLayout layout, Color accent)
-        {
-            CornerControllerLayout controller = layout.Controller;
-            // The footprint ring marks the Ship's resting well; the rotated glyph stands in
-            // for the physical piece on desktop only. On Board hardware the real Ship sits on
-            // the well, and a solid rect drawn underneath it shows through around any
-            // misalignment (issue #77 Round 2 hardware review).
-            DrawArc(controller.ShipWellCenter, controller.ShipWellRadius, 0f, 360f, 3f,
-                model.ShipPresent ? new Color(accent.r, accent.g, accent.b, .8f) : GhostColor);
-#if UNITY_EDITOR
-            DrawShipGlyph(controller, layout, accent, model.ShipPresent);
-#endif
-
-            bool throttleLive = model.PitPhase == PitPhase.OnTrack ||
-                model.PitPhase == PitPhase.Requested;
-            DrawThrottleSector(controller, model.Throttle, ThrottleStep.Brake, accent, layout,
-                throttleLive);
-            DrawThrottleSector(controller, model.Throttle, ThrottleStep.Drive, accent, layout,
-                throttleLive);
-            DrawThrottleSector(controller, model.Throttle, ThrottleStep.Boost, accent, layout,
-                throttleLive);
-        }
-
-        private void DrawThrottleSector(CornerControllerLayout controller, ThrottleStep current,
-            ThrottleStep sector, Color accent, PlayerLayout layout, bool lit)
-        {
-            float centerAngle = controller.SectorAngle(sector) + layout.RotationDegrees;
-            float halfSweep = controller.SectorSweepDegrees * .5f;
-            bool active = lit && current == sector;
-            if (active)
-            {
-                // The lit sector is the deep accent wedge from the design; concentric rings
-                // fill it more smoothly than one fat scalloped stroke.
-                for (float ring = controller.ThrottleRadius - 54f;
-                    ring <= controller.ThrottleRadius - 6f; ring += 12f)
-                    DrawArc(controller.ArcCenter, ring, centerAngle - halfSweep,
-                        centerAngle + halfSweep, 14f, accent);
-            }
-            else
-            {
-                // Unlit sectors are thin accent-tinted dark bands; locked seats go neutral.
-                Color band = lit
-                    ? new Color(accent.r * .38f + .08f, accent.g * .38f + .08f, accent.b * .38f + .08f)
-                    : new Color(.16f, .19f, .24f);
-                DrawArc(controller.ArcCenter, controller.ThrottleRadius - 22f,
-                    centerAngle - halfSweep, centerAngle + halfSweep, 22f, band);
-            }
-            RotatedLabel label = controller.SectorLabel(sector);
-            DrawRotatedLabel(label.Bounds, RaceUiModelBuilder.ThrottleName(sector),
-                label.RotationDegrees + layout.RotationDegrees, sectorLabel,
-                active ? Color.white : lit ? new Color(.85f, .88f, .92f) : new Color(.55f, .6f, .66f));
         }
 
         private static void DrawShipGlyph(CornerControllerLayout controller, PlayerLayout layout,
@@ -604,28 +459,6 @@ namespace BoardRacing.Runtime
                 Matrix4x4.Translate(-pivot);
             GUI.Label(rect, text, style);
             GUI.matrix = original;
-        }
-
-        private static void DrawArc(Vector2 center, float radius, float startAngle,
-            float endAngle, float width, Color color)
-        {
-            // 6° chords: at the HUD's ring radii the sag is under half a pixel,
-            // and every chord is an individual GUI draw call (#86 fps review).
-            int segments = Mathf.Max(2, Mathf.CeilToInt(Mathf.Abs(endAngle - startAngle) / 6f));
-            Vector2 prior = ArcPoint(center, radius, startAngle);
-            for (int i = 1; i <= segments; i++)
-            {
-                Vector2 next = ArcPoint(center, radius,
-                    Mathf.Lerp(startAngle, endAngle, i / (float)segments));
-                DrawLine(new Vec2(prior.x, prior.y), new Vec2(next.x, next.y), width, color);
-                prior = next;
-            }
-        }
-
-        private static Vector2 ArcPoint(Vector2 center, float radius, float degrees)
-        {
-            float radians = degrees * Mathf.Deg2Rad;
-            return center + new Vector2(Mathf.Cos(radians), Mathf.Sin(radians)) * radius;
         }
 
         private void DrawCenterMessage(RaceUiModel ui, RaceLayout layout)

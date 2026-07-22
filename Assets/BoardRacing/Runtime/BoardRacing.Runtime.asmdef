@@ -1,6 +1,6 @@
 {
   "name": "BoardRacing.Runtime",
   "rootNamespace": "BoardRacing.Runtime",
-  "references": ["BoardRacing.Domain", "Board", "Unity.InputSystem"],
+  "references": ["BoardRacing.Domain", "Board", "Unity.InputSystem", "UnityEngine.UI"],
   "autoReferenced": true
 }

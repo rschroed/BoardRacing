@@ -6,7 +6,8 @@
     "BoardRacing.Runtime",
     "Board",
     "Unity.InputSystem",
-    "Unity.InputSystem.TestFramework"
+    "Unity.InputSystem.TestFramework",
+    "UnityEngine.UI"
   ],
   "optionalUnityReferences": ["TestAssemblies"],
   "includePlatforms": ["Editor"],

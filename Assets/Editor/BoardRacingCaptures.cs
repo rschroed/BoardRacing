@@ -12,8 +12,8 @@ using UnityEngine;
 // The method exits the editor itself when the last capture is on disk.
 public static class BoardRacingCaptures
 {
-    private const string OutputDirectory = "docs/captures/surface-round2";
-    private const string Prefix = "surface-round2";
+    private const string OutputDirectory = "docs/captures/surface-round3";
+    private const string Prefix = "surface-round3";
     private const int SettleTicksPerScenario = 20;
 
     private static string[] scenarios;
