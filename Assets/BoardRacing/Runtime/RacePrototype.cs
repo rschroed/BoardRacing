@@ -206,16 +206,53 @@ namespace BoardRacing.Runtime
         private void UpdateWorldCars()
         {
             foreach (var racer in presentedRace.Racers)
-                surface.SetCarPose(racer.PlayerId, CarCenter(racer));
+            {
+                CarPose(racer, out Vector2 center, out Vector2 tangent);
+                // Corner character (issue #117) belongs to a car racing the
+                // track; the pit lane and the finished pose stay composed.
+                CarAttitude attitude = OnRacingLine(racer) && !racer.Finished
+                    ? CornerCharacter.Attitude(simulation.Track, racer.TotalDistance, racer.Speed,
+                        Deceleration(racer.PlayerId), simulation.Rules.Braking)
+                    : CarAttitude.Neutral;
+                surface.SetCarPose(racer.PlayerId, OffsetCenter(racer, center, tangent),
+                    Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg + attitude.DriftDegrees,
+                    new Vector2(attitude.SquashAlong, attitude.StretchAcross));
+            }
         }
+
+        // The sim's braking answers "how hard CAN a car slow"; the dive reads
+        // how hard this one is slowing, one fixed step against the last.
+        private float Deceleration(PlayerId playerId)
+        {
+            if (previousSnapshot.Racers == null ||
+                previousSnapshot.Phase != simulation.Snapshot.Phase) return 0f;
+            foreach (var before in previousSnapshot.Racers)
+                foreach (var after in simulation.Snapshot.Racers)
+                    if (before.PlayerId == playerId && after.PlayerId == playerId)
+                        return Mathf.Max(0f, (before.Speed - after.Speed) /
+                            Mathf.Max(.001f, raceSettings.fixedStepSeconds));
+            return 0f;
+        }
+
+        private static bool OnRacingLine(RacerSnapshot racer) =>
+            racer.Pit.Phase == PitPhase.OnTrack || racer.Pit.Phase == PitPhase.Requested;
 
         // The drawn car center: the smoothed pose plus the racing-line lateral
         // offset (suppressed once the car is physically in the pit complex).
         private Vector2 CarCenter(RacerSnapshot racer)
         {
             CarPose(racer, out Vector2 center, out Vector2 tangent);
-            float lateralOffset = racer.Pit.Phase == PitPhase.OnTrack || racer.Pit.Phase == PitPhase.Requested
-                ? racer.LateralOffset : 0f;
+            return OffsetCenter(racer, center, tangent);
+        }
+
+        private Vector2 OffsetCenter(RacerSnapshot racer, Vector2 center, Vector2 tangent)
+        {
+            // The split tapers toward a floor through corners (issue #117):
+            // drawn at full width, the outside car swept a wider arc at the
+            // same angular rate — a phantom speed-up the sim never granted.
+            float lateralOffset = OnRacingLine(racer)
+                ? racer.LateralOffset * CornerCharacter.SplitScale(simulation.Track, racer.TotalDistance)
+                : 0f;
             return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }
 

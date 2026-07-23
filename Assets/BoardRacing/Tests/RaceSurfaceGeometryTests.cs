@@ -140,7 +140,9 @@ namespace BoardRacing.Tests
         public void CarBodiesKeepTheDrawnFootprint()
         {
             // P1 is the rounded square, P2 the disc — both fill the same 54×54
-            // footprint the IMGUI pass drew (issue #86 round 2).
+            // footprint the IMGUI pass drew (issue #86 round 2). The cockpit
+            // wedge (issue #117) lives strictly inside it, so the footprint
+            // pin is an upper bound plus proof the body still reaches it.
             SurfaceMeshData square = RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, Color.red);
             float maxAxis = 0f, maxDiagonal = 0f;
             foreach (Vector3 vertex in square.Vertices)
@@ -156,12 +158,17 @@ namespace BoardRacing.Tests
             Assert.That(maxDiagonal, Is.GreaterThan(RaceSurfaceGeometry.CarBodyHalfSize + 1f));
 
             SurfaceMeshData disc = RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, Color.blue);
-            for (int i = 1; i < disc.Vertices.Count; i++)
-                Assert.That(new Vector2(disc.Vertices[i].x, disc.Vertices[i].y).magnitude,
-                    Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize).Within(.01f),
-                    "disc perimeter vertex off the radius");
-            Assert.That(square.Colors, Is.All.EqualTo(Color.red));
-            Assert.That(disc.Colors, Is.All.EqualTo(Color.blue));
+            float maxRadius = 0f;
+            foreach (Vector3 vertex in disc.Vertices)
+                maxRadius = Mathf.Max(maxRadius, new Vector2(vertex.x, vertex.y).magnitude);
+            Assert.That(maxRadius, Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize).Within(.01f),
+                "the disc fills the footprint and nothing escapes it");
+            // Both bodies carry the darker nose wedge: rotation must be
+            // readable on each (the disc showed nothing without it).
+            Assert.That(square.Colors, Has.Some.Not.EqualTo(Color.red));
+            Assert.That(disc.Colors, Has.Some.Not.EqualTo(Color.blue));
+            Assert.That(square.Colors, Has.Some.EqualTo(Color.red));
+            Assert.That(disc.Colors, Has.Some.EqualTo(Color.blue));
         }
 
         // The Y-junction pins (issue #107 phase 2): the pit lane meets the track

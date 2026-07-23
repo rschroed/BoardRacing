@@ -458,6 +458,14 @@ namespace BoardRacing.Runtime
             mesh.AddFan(Vector2.zero, playerId == PlayerId.Player1
                 ? RoundedRectPerimeter(CarBodyHalfSize, CarBodyCornerRadius)
                 : DiscPerimeter(CarBodyHalfSize), accent);
+            // A darker cockpit wedge pointing along +X, the body's nose: now
+            // that the bodies rotate to their heading and drift past it
+            // (issue #117), both silhouettes — P2's disc especially — need a
+            // visible front. Inside the footprint, so nothing else moves.
+            mesh.AddFan(new Vector2(11f, 0f), new List<Vector2>
+            {
+                new Vector2(22f, 0f), new Vector2(5f, -11f), new Vector2(5f, 11f)
+            }, Color.Lerp(accent, Color.black, .45f));
             return mesh;
         }
 
@@ -560,11 +568,18 @@ namespace BoardRacing.Runtime
             cars[playerId] = CreateMeshObject("Race Car " + playerId, body);
 
         // Reference-pixel position (Y down), straight onto the transform — world
-        // space is reference space by the camera's projection.
-        public void SetCarPose(PlayerId playerId, Vector2 referencePosition)
+        // space is reference space by the camera's projection. Rotation turns
+        // the body's nose (+X in the mesh) onto the heading: a rotation by the
+        // heading's own atan2 angle maps local (1,0) to the heading vector in
+        // reference coordinates, so the Y flip needs no special casing. Scale
+        // is (along heading, across it) — the brake-dive squash (issue #117).
+        public void SetCarPose(PlayerId playerId, Vector2 referencePosition,
+            float rotationDegrees, Vector2 scale)
         {
-            if (cars.TryGetValue(playerId, out Transform car))
-                car.localPosition = new Vector3(referencePosition.x, referencePosition.y, CarDepth);
+            if (!cars.TryGetValue(playerId, out Transform car)) return;
+            car.localPosition = new Vector3(referencePosition.x, referencePosition.y, CarDepth);
+            car.localRotation = Quaternion.Euler(0f, 0f, rotationDegrees);
+            car.localScale = new Vector3(scale.x, scale.y, 1f);
         }
 
         private Transform CreateMeshObject(string objectName, SurfaceMeshData data)
