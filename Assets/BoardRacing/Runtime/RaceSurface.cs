@@ -152,10 +152,17 @@ namespace BoardRacing.Runtime
             AppendClosedRibbon(mesh, centerline, TrackStripeWidth, StripeColor, StripeColor);
             foreach (TrackCrossing crossing in FindCrossings(track))
                 AppendCrossingDeck(mesh, crossing);
-            Vec2 line = track.Sample(0f).Position;
-            mesh.AddRect(new Rect(line.X - 12f, line.Y - 28f, 24f, 56f), Color.white);
-            AppendPitBox(mesh, pitLayout.PlayerOneBox, playerOneAccent);
-            AppendPitBox(mesh, pitLayout.PlayerTwoBox, playerTwoAccent);
+            // The start line and box quads follow the local travel direction —
+            // horizontal pit straights were a Wedge special case; the phase-4b
+            // courses pit on diagonals.
+            TrackSegment first = track.Segments[0];
+            Vector2 startDirection = (ToVector(first.End) - ToVector(first.Start)).normalized;
+            AppendOrientedRect(mesh, ToVector(track.Sample(0f).Position), startDirection,
+                12f, 28f, Color.white);
+            Vector2 laneDirection =
+                (ToVector(pitLayout.PlayerTwoBox) - ToVector(pitLayout.PlayerOneBox)).normalized;
+            AppendPitBox(mesh, pitLayout.PlayerOneBox, laneDirection, playerOneAccent);
+            AppendPitBox(mesh, pitLayout.PlayerTwoBox, laneDirection, playerTwoAccent);
             return mesh;
         }
 
@@ -410,11 +417,32 @@ namespace BoardRacing.Runtime
             }
         }
 
-        private static void AppendPitBox(SurfaceMeshData mesh, Vec2 center, Color accent)
+        private static void AppendPitBox(SurfaceMeshData mesh, Vec2 center, Vector2 along,
+            Color accent)
         {
-            var box = new Rect(center.X - 70f, center.Y - 32f, 140f, 64f);
-            mesh.AddRect(box, new Color(accent.r, accent.g, accent.b, .22f));
-            mesh.AddRectOutline(box, 3f, accent);
+            AppendOrientedRect(mesh, ToVector(center), along, 70f, 32f,
+                new Color(accent.r, accent.g, accent.b, .22f));
+            AppendOrientedRectOutline(mesh, ToVector(center), along, 70f, 32f, 3f, accent);
+        }
+
+        // An axis-free rect: 2·halfLength along `along`, 2·halfWidth across it.
+        private static void AppendOrientedRect(SurfaceMeshData mesh, Vector2 center, Vector2 along,
+            float halfLength, float halfWidth, Color color)
+        {
+            Vector2 u = along * halfLength;
+            Vector2 n = new Vector2(-along.y, along.x) * halfWidth;
+            mesh.AddQuad(center - u - n, center + u - n, center + u + n, center - u + n, color);
+        }
+
+        private static void AppendOrientedRectOutline(SurfaceMeshData mesh, Vector2 center,
+            Vector2 along, float halfLength, float halfWidth, float thickness, Color color)
+        {
+            Vector2 n = new Vector2(-along.y, along.x);
+            float inset = thickness * .5f;
+            AppendOrientedRect(mesh, center - n * (halfWidth - inset), along, halfLength, inset, color);
+            AppendOrientedRect(mesh, center + n * (halfWidth - inset), along, halfLength, inset, color);
+            AppendOrientedRect(mesh, center - along * (halfLength - inset), along, inset, halfWidth, color);
+            AppendOrientedRect(mesh, center + along * (halfLength - inset), along, inset, halfWidth, color);
         }
 
         // Car bodies (issue #86 round 2), centered on the origin so the renderer

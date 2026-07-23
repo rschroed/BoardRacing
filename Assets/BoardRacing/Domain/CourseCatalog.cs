@@ -87,6 +87,8 @@ namespace BoardRacing.Domain
         {
             yield return Wedge(cornerSafeSpeed);
             yield return Hourglass(cornerSafeSpeed);
+            yield return Infinity(cornerSafeSpeed);
+            yield return Fishhook(cornerSafeSpeed);
         }
 
         // Pit complex re-derived from the Wedge top straight (issue #88): entry
@@ -123,5 +125,31 @@ namespace BoardRacing.Domain
             new PitComplexDefinition(new Vec2(945f, 462f), new Vec2(1080f, 462f),
                 new Vec2(1265f, 462f), new Vec2(1450f, 462f), new Vec2(1385f, 435f), 690f),
             laps: 5);
+
+        // Infinity pit complex hangs off the ascending diagonal (886 px), 52 px
+        // on the interior side, with the crossing at the diagonal's midpoint
+        // (443): entry at 165, boxes at 265 and 610 — FLANKING the crossing at
+        // 186/175 px clear — so the service row passes under the bridge between
+        // them, as the owner sketched. Merge approach 50 px past the second
+        // box's quad edge at 25 px offset (the Wedge phase-2 rule), rejoin at
+        // 815 — 71 before the east lobe. 5 laps × ~3224 ≈ the Wedge's race
+        // distance.
+        public static CourseDefinition Infinity(float cornerSafeSpeed = 190f) => new CourseDefinition(
+            "Infinity",
+            TrackCatalog.Infinity(cornerSafeSpeed),
+            new PitComplexDefinition(new Vec2(724f, 695f), new Vec2(816f, 657f),
+                new Vec2(1134f, 524f), new Vec2(1305f, 452f), new Vec2(1235f, 452f), 815f),
+            laps: 5);
+
+        // Fishhook pit complex on the long climbing diagonal (895 px): entry
+        // 165, boxes 345/545, merge approach 665 (50 past the box quad edge,
+        // 25 px offset), rejoin 755 — 140 before the hook. 4 laps × ~4072 ≈
+        // the Wedge's race distance.
+        public static CourseDefinition Fishhook(float cornerSafeSpeed = 190f) => new CourseDefinition(
+            "Fishhook",
+            TrackCatalog.Fishhook(cornerSafeSpeed),
+            new PitComplexDefinition(new Vec2(628f, 800f), new Vec2(807f, 781f),
+                new Vec2(1006f, 761f), new Vec2(1195f, 742f), new Vec2(1122f, 722f), 755f),
+            laps: 4);
     }
 }
