@@ -21,7 +21,10 @@ namespace BoardRacing.Tests
             AssertVec(course.Pit.PlayerOneBox, 860f, 455f);
             AssertVec(course.Pit.PlayerTwoBox, 1120f, 455f);
             AssertVec(course.Pit.Exit, 1353f, 455f);
-            AssertVec(course.Pit.MergeApproach, 1283f, 452f);
+            // Retuned for the Y-junction meshing (issue #107 phase 2): the merge
+            // approach lifts off the lane center so the climb to the rejoin
+            // stays a shallow slip-road angle.
+            AssertVec(course.Pit.MergeApproach, 1240f, 428f);
             Assert.That(course.Pit.ExitRejoinDistance, Is.EqualTo(850f));
             Assert.That(course.Pit.Box(PlayerId.Player1), Is.EqualTo(course.Pit.PlayerOneBox));
             Assert.That(course.Pit.Box(PlayerId.Player2), Is.EqualTo(course.Pit.PlayerTwoBox));

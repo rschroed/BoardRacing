@@ -164,38 +164,127 @@ namespace BoardRacing.Tests
             Assert.That(disc.Colors, Is.All.EqualTo(Color.blue));
         }
 
+        // The Y-junction pins (issue #107 phase 2): the pit lane meets the track
+        // as clamped shared-edge gores instead of a full ribbon hidden by paint
+        // order — no lane geometry in the roadway, each mouth running along the
+        // track edge, and the merge climbing at a slip-road angle (the ~40°
+        // dive read as the lane vanishing under the track in three hardware
+        // reviews).
+        private const float LaneFloor =
+            RaceSurfaceGeometry.TrackWidth * .5f - RaceSurfaceGeometry.JunctionEdgeOverlap;
+
         [Test]
-        public void MergeLaneRendersUnderTheTrack()
+        public void PitLaneNeverEntersTheRoadway()
         {
-            // The exit spline runs to the rejoin point on the centerline; the
-            // drawn lane must be swallowed by the track fill there, which in the
-            // painter-ordered mesh means every merge-lane triangle precedes the
-            // first track triangle (#86 hardware review, rounds one and two:
-            // overhanging read wrong, and trimming left a floating stub).
             var track = Track;
             SurfaceMeshData mesh = RaceSurfaceGeometry.Build(track, PitLayout(),
                 Color.red, Color.blue);
+            bool sawPit = false;
+            for (int i = 0; i < mesh.Vertices.Count; i++)
+            {
+                if (mesh.Colors[i] != RaceSurfaceGeometry.PitLaneColor &&
+                    mesh.Colors[i] != RaceSurfaceGeometry.PitStripeColor) continue;
+                sawPit = true;
+                // Half a pixel of slack: near a chord seam the clamp and this
+                // re-measurement can disagree about the nearest chord.
+                Assert.That(RaceSurfaceGeometry.InteriorOffset(mesh.Vertices[i], track),
+                    Is.GreaterThanOrEqualTo(LaneFloor - .5f),
+                    $"pit vertex at {mesh.Vertices[i]} crosses into the roadway");
+            }
+            Assert.That(sawPit, Is.True);
+        }
+
+        [Test]
+        public void MergeMouthRunsAlongTheTrackEdge()
+        {
+            AssertMouthHugsTheEdge(x => x > CourseCatalog.Wedge().Pit.PlayerTwoBox.X,
+                minimumExtent: 80f, "merge");
+        }
+
+        [Test]
+        public void EntryMouthRunsAlongTheTrackEdge()
+        {
+            AssertMouthHugsTheEdge(x => x < CourseCatalog.Wedge().Pit.Entry.X,
+                minimumExtent: 50f, "entry");
+        }
+
+        // A junction mouth is a run of clamped boundary vertices riding exactly
+        // JunctionEdgeOverlap inside the track edge — the gore's shared seam.
+        // It must have real length: a point contact would be the old blunt end.
+        private static void AssertMouthHugsTheEdge(System.Func<float, bool> inRegion,
+            float minimumExtent, string junction)
+        {
+            var track = Track;
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(track, PitLayout(),
+                Color.red, Color.blue);
+            float min = float.MaxValue, max = float.MinValue;
+            for (int i = 0; i < mesh.Vertices.Count; i++)
+            {
+                if (mesh.Colors[i] != RaceSurfaceGeometry.PitLaneColor) continue;
+                Vector2 vertex = mesh.Vertices[i];
+                if (!inRegion(vertex.x)) continue;
+                if (Mathf.Abs(RaceSurfaceGeometry.InteriorOffset(vertex, track) - LaneFloor) > .01f)
+                    continue;
+                min = Mathf.Min(min, vertex.x);
+                max = Mathf.Max(max, vertex.x);
+            }
+            Assert.That(max - min, Is.GreaterThanOrEqualTo(minimumExtent),
+                $"the {junction} mouth must run along the track edge, not touch it at a point");
+        }
+
+        [Test]
+        public void MergeClimbsToTheTrackAtASlipRoadAngle()
+        {
+            // The visible leg of the merge — outside the fill (interior offset
+            // beyond half the lane past the edge) but already climbing — must
+            // cross at a shallow angle relative to the straight it joins.
+            var track = Track;
+            var layout = PitLayout();
+            Vector2 straightDirection = (new Vector2(track.Segments[0].End.X, track.Segments[0].End.Y)
+                - new Vector2(track.Segments[0].Start.X, track.Segments[0].Start.Y)).normalized;
+            Vec2 priorPosition = PitLanePresentationMapper
+                .ExitPose(PlayerId.Player2, 0f, false, layout).Position;
+            for (float progress = .02f; progress <= 1.0001f; progress += .02f)
+            {
+                Vec2 position = PitLanePresentationMapper
+                    .ExitPose(PlayerId.Player2, progress, false, layout).Position;
+                var prior = new Vector2(priorPosition.X, priorPosition.Y);
+                var current = new Vector2(position.X, position.Y);
+                priorPosition = position;
+                float offset = RaceSurfaceGeometry.InteriorOffset((prior + current) * .5f, track);
+                if (offset < RaceSurfaceGeometry.TrackWidth * .5f -
+                    RaceSurfaceGeometry.PitLaneWidth * .5f || offset > 60f) continue;
+                Vector2 chord = current - prior;
+                if (chord.sqrMagnitude < 1e-6f) continue;
+                Assert.That(Mathf.Abs(Vector2.Dot(chord.normalized, straightDirection)),
+                    Is.GreaterThan(Mathf.Cos(26f * Mathf.Deg2Rad)),
+                    $"merge crosses too steeply near {current}");
+            }
+        }
+
+        [Test]
+        public void PitLaneRendersUnderTheTrackFill()
+        {
+            // The clamped mouths tuck JunctionEdgeOverlap inside the edge; that
+            // sliver must draw before the fill so the fill covers it and the
+            // visible seam is exactly the track edge.
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(Track, PitLayout(),
+                Color.red, Color.blue);
             int firstTrackVertex = -1;
-            int lastCrossingPitVertex = -1;
+            int lastPitVertex = -1;
             for (int i = 0; i < mesh.Vertices.Count; i++)
             {
                 bool trackFill = mesh.Colors[i] == RaceSurfaceGeometry.CornerColor ||
                     mesh.Colors[i] == RaceSurfaceGeometry.StraightColor;
                 if (trackFill && firstTrackVertex < 0) firstTrackVertex = i;
-                // Pit-colored geometry crossing into the track footprint east of
-                // the pit boxes can only be the merge lane (the entry ramp also
-                // touches the track, but at the start/finish end of the straight).
-                if (mesh.Colors[i] == RaceSurfaceGeometry.PitLaneColor &&
-                    mesh.Vertices[i].x > 1200f &&
-                    RaceSurfaceGeometry.DistanceToCenterline(mesh.Vertices[i], track) <
-                        RaceSurfaceGeometry.TrackWidth * .5f)
-                    lastCrossingPitVertex = i;
+                if (mesh.Colors[i] == RaceSurfaceGeometry.PitLaneColor ||
+                    mesh.Colors[i] == RaceSurfaceGeometry.PitStripeColor)
+                    lastPitVertex = i;
             }
-            Assert.That(lastCrossingPitVertex, Is.GreaterThan(-1),
-                "expected the merge lane to reach the track footprint");
+            Assert.That(lastPitVertex, Is.GreaterThan(-1));
             Assert.That(firstTrackVertex, Is.GreaterThan(-1));
-            Assert.That(lastCrossingPitVertex, Is.LessThan(firstTrackVertex),
-                "merge lane must render before (under) the track fill");
+            Assert.That(lastPitVertex, Is.LessThan(firstTrackVertex),
+                "the pit lane must render before (under) the track fill");
         }
 
         private static float DistanceToPolyline(Vector2 point, TrackDefinition track)
