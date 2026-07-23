@@ -221,8 +221,9 @@ namespace BoardRacing.Tests
             Assert.Throws<ArgumentException>(() => new RaceRules(5, float.NaN, 360f, 220f, 120f, 300f, .55f, 1f,
                 .35f, 180f, 38f, 1f));
             Assert.Throws<ArgumentException>(() => new ConditionRules(.1f, .1f, .7f, 0f, .5f, .01f, .1f, .6f, .75f));
-            Assert.Throws<ArgumentException>(() => new PitRules(0f, .5f));
-            Assert.Throws<ArgumentException>(() => new PitRules(.5f, .5f, -1f));
+            Assert.Throws<ArgumentException>(() => new PitRules(0f, 20f, 20f, 20f, 20f));
+            Assert.Throws<ArgumentException>(() => new PitRules(100f, 20f, 0f, 20f, 20f));
+            Assert.Throws<ArgumentException>(() => new PitRules(100f, 20f, 20f, 20f, 20f, -1f));
             Assert.Throws<ArgumentException>(() => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f,
                 .35f, 180f, 38f, 1f, 0, default, default, 0f));
             Assert.Throws<ArgumentException>(() => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f,
@@ -834,8 +835,11 @@ namespace BoardRacing.Tests
                 new TrackSegment(new Vec2(10f, 0f), new Vec2(0f, 0f), TrackSectionKind.Corner, 50f)
             });
             var conditions = new ConditionRules(.1f, .2f, .8f, .8f, .8f, .2f, .2f, .2f, .8f);
+            // Lane legs of 20 at a crawl of 100 keep the .2 s transits the phase
+            // assertions were written against (issue #110).
             var rules = new RaceRules(laps, 0f, 100f, 1000f, 100f, 100f, .5f, .2f, .5f,
-                5f, 1f, 1f, requiredServiceCount, conditions, new PitRules(.2f, .2f, exitRejoinDistance));
+                5f, 1f, 1f, requiredServiceCount, conditions,
+                new PitRules(100f, 20f, 20f, 20f, 20f, exitRejoinDistance));
             return StartedSimulation(track, rules);
         }
 

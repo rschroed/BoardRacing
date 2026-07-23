@@ -32,8 +32,15 @@ namespace BoardRacing.Runtime
         // with no on-table read for why was worse than no rule — fuel and tires
         // already motivate pitting. The rules machinery stays for a future rethink.
         [Min(0)] public int requiredServiceCount = 0;
-        [Min(.01f)] public float pitEntrySeconds = .75f;
-        [Min(.01f)] public float pitExitSeconds = .75f;
+        // Pit transit is paced by distance (issue #110): the car drives each lane
+        // leg at this crawl — a ratio of the pace dial (issue #116) — so each
+        // player's entry and exit take legLength / speed. The old fixed seconds
+        // (0.75 for every leg) covered Player 1's ~500 px exit at 2-3× racing
+        // top speed, and no single duration could fit both players' different
+        // box positions. 0.3 × 360 ≈ 108 px/s sits under the tightest corner's
+        // safe speed (0.68 × 190 ≈ 129): the pit lane is the slowest driving on
+        // the board. Owner feel review pending (#110).
+        [Range(.05f, 1f)] public float pitLaneSpeedRatio = Pace.PitLaneSpeedRatio;
         [Min(.01f)] public float pitCallHoldSeconds = .75f;
 
         [Header("Crew service regions")]
@@ -55,10 +62,11 @@ namespace BoardRacing.Runtime
             fuelWarningThreshold, emptyMaximumSpeedScale, emptyAccelerationScale,
             tireWearPerCorner, tireWearPerUnsafeSpeed, tirePenaltyThreshold, fullyWornSafeSpeedScale);
 
-        // The rejoin distance is course geometry (issue #107), not a tuning knob:
-        // the simulation must resume the car where the drawn lane physically ends.
-        public PitRules ToPitRules(float exitRejoinDistance) =>
-            new PitRules(pitEntrySeconds, pitExitSeconds, exitRejoinDistance);
+        // The lane legs and rejoin distance are course geometry (issues #107,
+        // #110), not tuning knobs: transit durations derive from where the
+        // course's boxes physically sit, at the crawl the pace dial feeds.
+        public PitRules ToPitRules(CourseDefinition course, float basePace) =>
+            PitRules.ForCourse(course, basePace * pitLaneSpeedRatio);
 
         public static TrancheThreeSettings Defaults()
         {

@@ -20,6 +20,12 @@ namespace BoardRacing.Domain
         public const float DragRatio = 120f / 360f;
         public const float BrakingRatio = 300f / 360f;
         public const float CornerSafeSpeedRatio = 190f / 360f;
+        // The pit-lane crawl (issue #110): under the tightest catalog corner's
+        // safe speed (0.68 × the corner baseline ≈ 0.36 of base pace), so the
+        // lane reads as the slowest driving on the board; even the drawn
+        // ease-in/ease-out, which peaks at 1.5× the mean mid-leg, stays under
+        // the corner-speed baseline. Subject to the #110 owner feel review.
+        public const float PitLaneSpeedRatio = .3f;
 
         // The tuned absolutes at the reference dial position — for domain
         // defaults and test fixtures, so they follow a ratio retune.
@@ -27,5 +33,6 @@ namespace BoardRacing.Domain
         public const float Drag = BasePace * DragRatio;
         public const float Braking = BasePace * BrakingRatio;
         public const float CornerSafeSpeed = BasePace * CornerSafeSpeedRatio;
+        public const float PitLaneSpeed = BasePace * PitLaneSpeedRatio;
     }
 }

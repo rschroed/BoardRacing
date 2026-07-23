@@ -22,8 +22,7 @@ MonoBehaviour:
   tirePenaltyThreshold: 0.6
   fullyWornSafeSpeedScale: 0.75
   requiredServiceCount: 0
-  pitEntrySeconds: 0.75
-  pitExitSeconds: 0.75
+  pitLaneSpeedRatio: 0.3
   pitCallHoldSeconds: 0.75
   playerOneTiresCenter: {x: 1692, y: 321}
   playerOneFuelCenter: {x: 1590, y: 212}

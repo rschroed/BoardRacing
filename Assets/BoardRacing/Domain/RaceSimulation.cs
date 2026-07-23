@@ -191,7 +191,7 @@ namespace BoardRacing.Domain
             {
                 racer.ServiceProgress = 0f;
                 racer.PitTimer += delta;
-                if (racer.PitTimer >= rules.Pit.EntrySeconds)
+                if (racer.PitTimer >= rules.Pit.EntrySeconds(racer.Id))
                 {
                     racer.PitPhase = PitPhase.InService; racer.PitTimer = 0f;
                 }
@@ -227,7 +227,7 @@ namespace BoardRacing.Domain
             }
 
             racer.PitTimer += delta;
-            if (racer.PitTimer < rules.Pit.ExitSeconds) return;
+            if (racer.PitTimer < rules.Pit.ExitSeconds(racer.Id)) return;
             racer.PitPhase = PitPhase.OnTrack; racer.PitTimer = racer.ServiceProgress = 0f;
             racer.SelectedService = PitService.None;
             float finishDistance = track.Length * rules.Laps;
@@ -322,9 +322,9 @@ namespace BoardRacing.Domain
                 var condition = new RacerConditionSnapshot(racer.FuelUsed, racer.TireWear,
                     FuelPenaltyActive(racer), TirePenaltyActive(racer));
                 float phaseProgress = racer.PitPhase == PitPhase.Entering
-                    ? Clamp01(racer.PitTimer / rules.Pit.EntrySeconds)
+                    ? Clamp01(racer.PitTimer / rules.Pit.EntrySeconds(racer.Id))
                     : racer.PitPhase == PitPhase.Exiting
-                        ? Clamp01(racer.PitTimer / rules.Pit.ExitSeconds) : 0f;
+                        ? Clamp01(racer.PitTimer / rules.Pit.ExitSeconds(racer.Id)) : 0f;
                 var pit = new RacerPitSnapshot(racer.SelectedService, racer.PitPhase, racer.ServiceProgress,
                     racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount, phaseProgress);
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
