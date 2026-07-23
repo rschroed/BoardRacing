@@ -1,0 +1,95 @@
+using System;
+
+namespace BoardRacing.Domain
+{
+    /// <summary>
+    /// The pit complex as authored course geometry (issue #107 phase 1): entry
+    /// ramp point, one service box per player, exit, the merge approach the
+    /// exit spline aims through, and the track distance where the lane
+    /// physically rejoins. Previously scattered across RacePrototype constants
+    /// and TrancheThreeSettings.
+    /// </summary>
+    public readonly struct PitComplexDefinition
+    {
+        public PitComplexDefinition(Vec2 entry, Vec2 playerOneBox, Vec2 playerTwoBox,
+            Vec2 exit, Vec2 mergeApproach, float exitRejoinDistance)
+        {
+            if (float.IsNaN(exitRejoinDistance) || float.IsInfinity(exitRejoinDistance) ||
+                exitRejoinDistance <= 0f)
+                throw new ArgumentException("The pit exit must rejoin at a positive track distance.",
+                    nameof(exitRejoinDistance));
+            Entry = entry;
+            PlayerOneBox = playerOneBox;
+            PlayerTwoBox = playerTwoBox;
+            Exit = exit;
+            MergeApproach = mergeApproach;
+            ExitRejoinDistance = exitRejoinDistance;
+        }
+
+        public Vec2 Entry { get; }
+        public Vec2 PlayerOneBox { get; }
+        public Vec2 PlayerTwoBox { get; }
+        public Vec2 Exit { get; }
+        public Vec2 MergeApproach { get; }
+        // The lane blends onto the track just before the rejoin sample — no
+        // return trip: the simulation resumes the car where the pit lane
+        // physically ends.
+        public float ExitRejoinDistance { get; }
+
+        public Vec2 Box(PlayerId playerId) =>
+            playerId == PlayerId.Player1 ? PlayerOneBox : PlayerTwoBox;
+    }
+
+    /// <summary>
+    /// One authored course (issue #107 phase 1): everything a track IS lives in
+    /// one artifact — the racing line (with per-corner safe speeds), the pit
+    /// complex hanging off it, and the lap count that keeps race duration
+    /// consistent across courses of different perimeters. Seat clusters are
+    /// deliberately NOT course data: they are physical geometry (pieces, hand
+    /// reach) and stay fixed whatever course is on the table.
+    /// </summary>
+    public sealed class CourseDefinition
+    {
+        public CourseDefinition(string name, TrackDefinition track, PitComplexDefinition pit,
+            int laps)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("A course needs a name.", nameof(name));
+            Track = track ?? throw new ArgumentNullException(nameof(track));
+            if (laps < 1)
+                throw new ArgumentException("A race needs at least one lap.", nameof(laps));
+            if (pit.ExitRejoinDistance >= track.Length)
+                throw new ArgumentException("The pit exit must rejoin within one lap.",
+                    nameof(pit));
+            Name = name;
+            Pit = pit;
+            Laps = laps;
+        }
+
+        public string Name { get; }
+        public TrackDefinition Track { get; }
+        public PitComplexDefinition Pit { get; }
+        public int Laps { get; }
+    }
+
+    /// <summary>
+    /// The designed course library (issues #88, #107). Racing lines stay in
+    /// TrackCatalog; a course wraps one with its pit complex and race length.
+    /// </summary>
+    public static class CourseCatalog
+    {
+        // Pit complex re-derived from the Wedge top straight (issue #88): entry
+        // ramps off the start/finish line, the lane parallels the straight inside
+        // the loop, and the exit rejoins the straight at 850 of its 911 units —
+        // just before the sweeper.
+        // 6 laps × the Wedge's 2628 perimeter ≈ the placeholder's 5 × 3508 race
+        // distance, keeping race duration roughly where the owner tuned it, with
+        // the tight hairpin adding scrub time per lap (issue #88).
+        public static CourseDefinition Wedge(float cornerSafeSpeed = 190f) => new CourseDefinition(
+            "Wedge",
+            TrackCatalog.Wedge(cornerSafeSpeed),
+            new PitComplexDefinition(new Vec2(680f, 455f), new Vec2(860f, 455f),
+                new Vec2(1120f, 455f), new Vec2(1353f, 455f), new Vec2(1283f, 452f), 850f),
+            laps: 6);
+    }
+}

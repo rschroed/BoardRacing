@@ -14,19 +14,12 @@ namespace BoardRacing.Tests
     // widths and section coloring the IMGUI pass had.
     public sealed class RaceSurfaceGeometryTests
     {
-        private static TrackDefinition Track => TrackCatalog.Wedge();
+        private static TrackDefinition Track => CourseCatalog.Wedge().Track;
 
-        // Mirrors RacePrototype's pit complex constants (issue #88 geometry) and
-        // the default rejoin distance pinned in TrackCatalogTests.
-        private static PitLanePresentationLayout PitLayout()
-        {
-            var track = Track;
-            return new PitLanePresentationLayout(track.Sample(0f).Position,
-                new Vec2(680f, 455f), new Vec2(860f, 455f), new Vec2(1120f, 455f),
-                new Vec2(1353f, 455f), new Vec2(1283f, 452f), track.Sample(850f).Position,
-                TrackPresentation.SmoothHeading(track, 0f),
-                TrackPresentation.SmoothHeading(track, 850f));
-        }
+        // The same course-authored pit complex the prototype renders (issue #107
+        // phase 1) — no more hand-mirrored constants.
+        private static PitLanePresentationLayout PitLayout() =>
+            PitLanePresentationLayout.ForCourse(CourseCatalog.Wedge());
 
         [Test]
         public void SmoothedCenterlineInterpolatesEveryAuthoredPoint()

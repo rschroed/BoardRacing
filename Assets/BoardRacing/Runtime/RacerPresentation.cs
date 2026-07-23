@@ -170,6 +170,17 @@ namespace BoardRacing.Runtime
         public Vec2 EntryDirection { get; }
         public Vec2 RejoinDirection { get; }
         public Vec2 Box(PlayerId playerId) => playerId == PlayerId.Player1 ? PlayerOneBox : PlayerTwoBox;
+
+        // The one way a course's authored pit complex becomes presentation
+        // geometry (issue #107 phase 1) — RacePrototype and the geometry tests
+        // used to each assemble this by hand from duplicated constants.
+        public static PitLanePresentationLayout ForCourse(CourseDefinition course) =>
+            new PitLanePresentationLayout(course.Track.Sample(0f).Position,
+                course.Pit.Entry, course.Pit.PlayerOneBox, course.Pit.PlayerTwoBox,
+                course.Pit.Exit, course.Pit.MergeApproach,
+                course.Track.Sample(course.Pit.ExitRejoinDistance).Position,
+                TrackPresentation.SmoothHeading(course.Track, 0f),
+                TrackPresentation.SmoothHeading(course.Track, course.Pit.ExitRejoinDistance));
     }
 
     public readonly struct CarPresentationPose
