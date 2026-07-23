@@ -91,7 +91,7 @@ namespace BoardRacing.Runtime
 #endif
             foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) CreateCrewAdapter(id);
             AttachResetSource(activeProvider);
-            courseSelection = new CourseSelection(CourseCatalog.All(raceSettings.cornerSafeSpeed));
+            courseSelection = new CourseSelection(CourseCatalog.All(raceSettings.CornerSafeSpeed));
             course = courseSelection.Current;
             BuildRace();
             hud = RaceHud.Create(RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
@@ -108,7 +108,7 @@ namespace BoardRacing.Runtime
         {
             simulation = new RaceSimulation(course.Track,
                 raceSettings.ToRules(course.Laps, strategySettings.requiredServiceCount,
-                    strategySettings.ToConditionRules(),
+                    strategySettings.ToConditionRules(raceSettings.basePace),
                     strategySettings.ToPitRules(course.Pit.ExitRejoinDistance)));
             previousSnapshot = simulation.Snapshot;
             if (surface != null) Destroy(surface.gameObject);

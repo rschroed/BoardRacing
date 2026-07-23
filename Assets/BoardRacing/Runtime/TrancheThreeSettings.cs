@@ -11,6 +11,12 @@ namespace BoardRacing.Runtime
         // recovery. Drive burns at a somewhat sustainable rate (~125 s tank — a 5-lap
         // race at pure Drive takes ~99 s), Boost burns 5× faster, Brake burns nothing.
         // An empty tank is limp mode — power limited, but enough to crawl to the pit.
+        // Pace coupling (issue #116): the burn rates are tuned at the reference
+        // base pace and ToConditionRules scales them with the live dial, so fuel
+        // budgets race DISTANCE, not wall clock — a pace retune must not change
+        // how many stops a race takes. Tire wear needs no such scaling: per-corner
+        // wear is already per-event, and the unsafe-speed surcharge multiplies a
+        // ratio of two speeds that move with the dial together.
         public float fuelBurnPerSecondAtDrive = .008f;
         public float fuelBurnPerSecondAtBoost = .04f;
         [Range(0f, 1f)] public float fuelWarningThreshold = .75f;
@@ -43,8 +49,10 @@ namespace BoardRacing.Runtime
         // at a comfortable ~1 turn per second, a full meter takes ~5 seconds.
         [Min(.1f)] public float serviceStirTurnsForFullService = 5f;
 
-        public ConditionRules ToConditionRules() => new ConditionRules(fuelBurnPerSecondAtDrive,
-            fuelBurnPerSecondAtBoost, fuelWarningThreshold, emptyMaximumSpeedScale, emptyAccelerationScale,
+        public ConditionRules ToConditionRules(float basePace) => new ConditionRules(
+            fuelBurnPerSecondAtDrive * (basePace / Pace.BasePace),
+            fuelBurnPerSecondAtBoost * (basePace / Pace.BasePace),
+            fuelWarningThreshold, emptyMaximumSpeedScale, emptyAccelerationScale,
             tireWearPerCorner, tireWearPerUnsafeSpeed, tirePenaltyThreshold, fullyWornSafeSpeedScale);
 
         // The rejoin distance is course geometry (issue #107), not a tuning knob:

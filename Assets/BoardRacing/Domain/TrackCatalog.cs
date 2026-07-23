@@ -29,7 +29,7 @@ namespace BoardRacing.Domain
         public const float WedgeMediumSpeedFactor = 1f;
         public const float WedgeTightSpeedFactor = .68f;
 
-        public static TrackDefinition Wedge(float cornerSafeSpeed = 190f)
+        public static TrackDefinition Wedge(float cornerSafeSpeed = Pace.CornerSafeSpeed)
         {
             var segments = new List<TrackSegment>(WedgePoints.Length - 1);
             int point = 0;
@@ -85,7 +85,7 @@ namespace BoardRacing.Domain
         public const float HourglassShoulderSpeedFactor = 1.2f;
         public const float HourglassCarouselSpeedFactor = .8f;
 
-        public static TrackDefinition Hourglass(float cornerSafeSpeed = 190f)
+        public static TrackDefinition Hourglass(float cornerSafeSpeed = Pace.CornerSafeSpeed)
         {
             var segments = new List<TrackSegment>(HourglassPoints.Length - 1);
             int point = 0;
@@ -142,7 +142,7 @@ namespace BoardRacing.Domain
         // timing, not braking. Perimeter ≈ 3224.
         public const float InfinityLobeSpeedFactor = 1.35f;
 
-        public static TrackDefinition Infinity(float cornerSafeSpeed = 190f)
+        public static TrackDefinition Infinity(float cornerSafeSpeed = Pace.CornerSafeSpeed)
         {
             var segments = new List<TrackSegment>(InfinityPoints.Length - 1);
             int point = 0;
@@ -197,7 +197,7 @@ namespace BoardRacing.Domain
         public const float FishhookClipTightSpeedFactor = .7f;
         public const float FishhookClipWideSpeedFactor = .8f;
 
-        public static TrackDefinition Fishhook(float cornerSafeSpeed = 190f)
+        public static TrackDefinition Fishhook(float cornerSafeSpeed = Pace.CornerSafeSpeed)
         {
             var segments = new List<TrackSegment>(FishhookPoints.Length - 1);
             int point = 0;

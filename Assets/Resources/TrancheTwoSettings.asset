@@ -15,11 +15,11 @@ MonoBehaviour:
   preferBoardInputOnDevice: 1
   fixedStepSeconds: 0.016666668
   countdownSeconds: 3
-  maximumSpeed: 360
-  acceleration: 220
-  drag: 120
-  braking: 300
-  cornerSafeSpeed: 190
+  basePace: 360
+  accelerationRatio: 0.6111111
+  dragRatio: 0.33333334
+  brakingRatio: 0.8333333
+  cornerSafeSpeedRatio: 0.5277778
   cornerSpeedScrub: 0.55
   cornerRecoverySeconds: 1
   recoveryAccelerationScale: 0.35
