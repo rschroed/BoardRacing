@@ -70,6 +70,26 @@ namespace BoardRacing.Runtime
         }
     }
 
+    // A point where the racing line crosses itself (figure-8 courses, issue
+    // #107 phase 4). The later segment is the bridge deck: appended later in
+    // the ribbon, it draws on top by paint order.
+    internal readonly struct TrackCrossing
+    {
+        public TrackCrossing(int earlierSegment, int laterSegment, Vector2 point,
+            Vector2 laterDirection)
+        {
+            EarlierSegment = earlierSegment;
+            LaterSegment = laterSegment;
+            Point = point;
+            LaterDirection = laterDirection;
+        }
+
+        public int EarlierSegment { get; }
+        public int LaterSegment { get; }
+        public Vector2 Point { get; }
+        public Vector2 LaterDirection { get; }
+    }
+
     internal readonly struct CenterlineSample
     {
         public CenterlineSample(Vector2 position, bool corner)
@@ -98,6 +118,7 @@ namespace BoardRacing.Runtime
         public static readonly Color StripeColor = new Color(.55f, .62f, .7f, .5f);
         public static readonly Color PitLaneColor = new Color(.08f, .11f, .15f);
         public static readonly Color PitStripeColor = new Color(.62f, .68f, .74f, .55f);
+        public static readonly Color CrossingShadowColor = new Color(0f, 0f, 0f, .35f);
         // How far a junction ribbon may tuck under the track fill: deep enough
         // that rasterization can never open a background sliver along the seam,
         // shallow enough that the fill always covers it.
@@ -129,6 +150,8 @@ namespace BoardRacing.Runtime
             List<CenterlineSample> centerline = SmoothCenterline(track, SamplesPerChord);
             AppendClosedRibbon(mesh, centerline, TrackWidth, CornerColor, StraightColor);
             AppendClosedRibbon(mesh, centerline, TrackStripeWidth, StripeColor, StripeColor);
+            foreach (TrackCrossing crossing in FindCrossings(track))
+                AppendCrossingDeck(mesh, crossing);
             Vec2 line = track.Sample(0f).Position;
             mesh.AddRect(new Rect(line.X - 12f, line.Y - 28f, 24f, 56f), Color.white);
             AppendPitBox(mesh, pitLayout.PlayerOneBox, playerOneAccent);
@@ -277,6 +300,70 @@ namespace BoardRacing.Runtime
                 points.Add(ToVector(PitLanePresentationMapper.ExitPose(PlayerId.Player2,
                     i / (float)LaneSteps, false, layout).Position));
             return points;
+        }
+
+        // Where the racing line crosses itself (a figure-8 course, issue #107
+        // phase 4), the ribbon's paint order already builds the bridge: quads
+        // append in lap order, so the strand driven LATER in the lap draws on
+        // top. The deck dressing sells the over/under read: drop shadows just
+        // outside the deck edges darken the strand passing underneath, and
+        // parapet lines mark the deck's own edges across the crossing.
+        public static IReadOnlyList<TrackCrossing> FindCrossings(TrackDefinition track)
+        {
+            var crossings = new List<TrackCrossing>();
+            IReadOnlyList<TrackSegment> segments = track.Segments;
+            for (int i = 0; i < segments.Count; i++)
+            {
+                for (int j = i + 2; j < segments.Count; j++)
+                {
+                    if (i == 0 && j == segments.Count - 1) continue;
+                    if (TryIntersect(segments[i], segments[j], out Vector2 point))
+                        crossings.Add(new TrackCrossing(i, j, point,
+                            (new Vector2(segments[j].End.X, segments[j].End.Y) -
+                             new Vector2(segments[j].Start.X, segments[j].Start.Y)).normalized));
+                }
+            }
+            return crossings;
+        }
+
+        private static bool TryIntersect(TrackSegment a, TrackSegment b, out Vector2 point)
+        {
+            point = default;
+            Vector2 p = new Vector2(a.Start.X, a.Start.Y), q = new Vector2(b.Start.X, b.Start.Y);
+            Vector2 r = new Vector2(a.End.X, a.End.Y) - p, s = new Vector2(b.End.X, b.End.Y) - q;
+            float denominator = r.x * s.y - r.y * s.x;
+            if (Mathf.Abs(denominator) < 1e-6f) return false;
+            Vector2 delta = q - p;
+            float t = (delta.x * s.y - delta.y * s.x) / denominator;
+            float u = (delta.x * r.y - delta.y * r.x) / denominator;
+            if (t <= 0f || t >= 1f || u <= 0f || u >= 1f) return false;
+            point = p + r * t;
+            return true;
+        }
+
+        private const float CrossingDeckReach = 80f;
+
+        private static void AppendCrossingDeck(SurfaceMeshData mesh, TrackCrossing crossing)
+        {
+            // Strips run along the LATER (bridge) strand, centered on the
+            // crossing: shadows a few px outside the deck edges, parapets just
+            // inside them. Both draw after the closed ribbons, over each strand.
+            foreach ((float offset, float width, Color color) in new[]
+            {
+                (TrackWidth * .5f + 6f, 10f, CrossingShadowColor),
+                (-(TrackWidth * .5f + 6f), 10f, CrossingShadowColor),
+                (TrackWidth * .5f - 2f, 3f, StripeColor),
+                (-(TrackWidth * .5f - 2f), 3f, StripeColor),
+            })
+            {
+                Vector2 direction = crossing.LaterDirection;
+                var normal = new Vector2(-direction.y, direction.x);
+                Vector2 center = crossing.Point + normal * offset;
+                Vector2 along = direction * CrossingDeckReach;
+                Vector2 across = normal * (width * .5f);
+                mesh.AddQuad(center - along - across, center + along - across,
+                    center + along + across, center - along + across, color);
+            }
         }
 
         private static Vector2 ClampOutsideRoadway(Vector2 point, TrackDefinition track)

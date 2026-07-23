@@ -67,5 +67,64 @@ namespace BoardRacing.Domain
             new Vec2(430.6f, 468.6f), new Vec2(437.0f, 453.8f), new Vec2(446.3f, 440.6f), new Vec2(458.1f, 429.7f),
             new Vec2(471.9f, 421.4f), new Vec2(487.1f, 416.1f), new Vec2(503.1f, 414.0f),
         };
+
+        // Hourglass — the figure-8 (issue #107 phase 4, owner-selected option A):
+        // the racing line crosses itself once, splitting the lap into two
+        // counter-wound lobes. Generated from tangent circles like the Wedge:
+        // the right lobe is a stadium (top pit straight y=410, east sweeper
+        // R130, sloped bottom straight, west shoulder R140), the left lobe a
+        // R85 carousel wrapping ~263°, and the two crossover straights are the
+        // internal tangents between the counter-wound shoulder and carousel —
+        // so every joint is kink-free and the crossing lands at (568, 550) at
+        // 82.9°, well past the lint's 35° readability floor. Perimeter ≈ 2949.
+        //   · east sweeper, right (R130, 180°): the flat-out feature.
+        //   · west shoulder (R140, two 41° pieces flanking the crossover).
+        //   · carousel, left (R85, ~263°): one long grinding commitment corner —
+        //     a corner character no Wedge lap has.
+        public const float HourglassSweeperSpeedFactor = 1.3f;
+        public const float HourglassShoulderSpeedFactor = 1.2f;
+        public const float HourglassCarouselSpeedFactor = .8f;
+
+        public static TrackDefinition Hourglass(float cornerSafeSpeed = 190f)
+        {
+            var segments = new List<TrackSegment>(HourglassPoints.Length - 1);
+            int point = 0;
+            foreach (var (count, factor) in HourglassRuns)
+                for (int i = 0; i < count; i++, point++)
+                    segments.Add(factor <= 0f
+                        ? new TrackSegment(HourglassPoints[point], HourglassPoints[point + 1],
+                            TrackSectionKind.Straight, float.PositiveInfinity)
+                        : new TrackSegment(HourglassPoints[point], HourglassPoints[point + 1],
+                            TrackSectionKind.Corner, cornerSafeSpeed * factor));
+            return new TrackDefinition(segments);
+        }
+
+        private static readonly (int Count, float Factor)[] HourglassRuns =
+        {
+            (1, 0f), (14, HourglassSweeperSpeedFactor),
+            (1, 0f), (4, HourglassShoulderSpeedFactor),
+            (1, 0f), (21, HourglassCarouselSpeedFactor),
+            (1, 0f), (4, HourglassShoulderSpeedFactor),
+        };
+
+        // Closed polyline; Sample(0) is the start/finish line at the west end of
+        // the top straight. Travel is clockwise around the right lobe and
+        // counterclockwise around the left carousel; the two long diagonals are
+        // the crossover, and the later one (leaving the carousel) draws on top.
+        private static readonly Vec2[] HourglassPoints =
+        {
+            new Vec2(780.0f, 410.0f), new Vec2(1500.0f, 410.0f), new Vec2(1528.8f, 413.2f), new Vec2(1556.2f, 422.8f),
+            new Vec2(1580.8f, 438.1f), new Vec2(1601.3f, 458.5f), new Vec2(1616.8f, 483.0f), new Vec2(1626.6f, 510.3f),
+            new Vec2(1630.0f, 539.1f), new Vec2(1627.0f, 567.9f), new Vec2(1617.6f, 595.4f), new Vec2(1602.4f, 620.0f),
+            new Vec2(1582.2f, 640.7f), new Vec2(1557.8f, 656.4f), new Vec2(1530.6f, 666.4f), new Vec2(1501.8f, 670.0f),
+            new Vec2(781.9f, 690.0f), new Vec2(756.3f, 688.0f), new Vec2(731.4f, 681.3f), new Vec2(708.2f, 670.2f),
+            new Vec2(687.4f, 655.0f), new Vec2(496.2f, 486.3f), new Vec2(481.1f, 475.6f), new Vec2(464.0f, 468.5f),
+            new Vec2(445.8f, 465.2f), new Vec2(427.2f, 466.0f), new Vec2(409.3f, 470.7f), new Vec2(392.9f, 479.3f),
+            new Vec2(378.7f, 491.2f), new Vec2(367.4f, 505.8f), new Vec2(359.5f, 522.6f), new Vec2(355.5f, 540.7f),
+            new Vec2(355.5f, 559.3f), new Vec2(359.5f, 577.4f), new Vec2(367.4f, 594.2f), new Vec2(378.7f, 608.8f),
+            new Vec2(392.9f, 620.7f), new Vec2(409.3f, 629.3f), new Vec2(427.2f, 634.0f), new Vec2(445.8f, 634.8f),
+            new Vec2(464.0f, 631.5f), new Vec2(481.1f, 624.4f), new Vec2(496.2f, 613.7f), new Vec2(687.4f, 445.0f),
+            new Vec2(707.7f, 430.1f), new Vec2(730.5f, 419.1f), new Vec2(754.8f, 412.3f), new Vec2(780.0f, 410.0f),
+        };
     }
 }

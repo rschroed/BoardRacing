@@ -263,6 +263,54 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void WedgeDoesNotCrossItself()
+        {
+            Assert.That(RaceSurfaceGeometry.FindCrossings(Track), Is.Empty);
+        }
+
+        [Test]
+        public void HourglassCrossesItselfOnceWhereTheGeneratorPutIt()
+        {
+            // The figure-8's identity (issue #107 phase 4): exactly one
+            // crossing, at the internal-tangent intersection the tangent-circle
+            // construction places at (568, 550), with the carousel-exit
+            // diagonal as the later (bridge) strand.
+            IReadOnlyList<TrackCrossing> crossings =
+                RaceSurfaceGeometry.FindCrossings(TrackCatalog.Hourglass());
+            Assert.That(crossings.Count, Is.EqualTo(1));
+            Assert.That(Vector2.Distance(crossings[0].Point, new Vector2(568.4f, 550f)),
+                Is.LessThan(2f));
+            Assert.That(crossings[0].LaterSegment, Is.GreaterThan(crossings[0].EarlierSegment));
+        }
+
+        [Test]
+        public void HourglassCrossingDeckDressesTheBridge()
+        {
+            // Paint order alone builds the bridge (later quads draw on top);
+            // the deck dressing must exist to sell it: shadow strips near the
+            // crossing, and parapet lines appended after them.
+            CourseDefinition course = CourseCatalog.Hourglass();
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track,
+                PitLanePresentationLayout.ForCourse(course), Color.red, Color.blue);
+            Vector2 crossing = RaceSurfaceGeometry.FindCrossings(course.Track)[0].Point;
+            int firstShadowVertex = -1;
+            bool parapetAfterShadow = false;
+            for (int i = 0; i < mesh.Vertices.Count; i++)
+            {
+                if (mesh.Colors[i] == RaceSurfaceGeometry.CrossingShadowColor &&
+                    firstShadowVertex < 0 &&
+                    Vector2.Distance(mesh.Vertices[i], crossing) < 150f)
+                    firstShadowVertex = i;
+                if (firstShadowVertex >= 0 && i > firstShadowVertex &&
+                    mesh.Colors[i] == RaceSurfaceGeometry.StripeColor &&
+                    Vector2.Distance(mesh.Vertices[i], crossing) < 150f)
+                    parapetAfterShadow = true;
+            }
+            Assert.That(firstShadowVertex, Is.GreaterThan(-1), "expected crossing shadows");
+            Assert.That(parapetAfterShadow, Is.True, "expected parapet lines over the shadows");
+        }
+
+        [Test]
         public void PitLaneRendersUnderTheTrackFill()
         {
             // The clamped mouths tuck JunctionEdgeOverlap inside the edge; that
