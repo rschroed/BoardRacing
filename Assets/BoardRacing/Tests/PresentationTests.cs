@@ -158,10 +158,12 @@ namespace BoardRacing.Tests
             Assert.That(Dot(end.Tangent, new Vec2(1f, 0f)), Is.GreaterThan(Cos(8f)));
 
             CarPresentationPose prior = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
-            for (float progress = .02f; progress <= 1.0001f; progress += .02f)
+            for (float progress = .005f; progress <= 1.0001f; progress += .005f)
             {
                 var next = PitLanePresentationMapper.ExitPose(PlayerId.Player1, progress, false, layout);
-                // A 0.02 progress step is sub-frame at the real 0.75 s exit; the
+                // A 0.005 progress step over-samples a real frame: the exit legs
+                // run whole seconds at the crawl (issue #110), so a 60 fps frame
+                // spans ≤ ~0.008 progress even on the shortest catalog leg. The
                 // S-bend onto the track legitimately turns ~8 deg per chord, so
                 // the bound guards against snaps, not curvature.
                 Assert.That(Dot(prior.Tangent, next.Tangent), Is.GreaterThan(Cos(20f)),
@@ -193,12 +195,50 @@ namespace BoardRacing.Tests
                 prior = next;
             }
 
-            // The drawn car creeps out of the box and settles onto the track:
-            // the first and last tenths of the stop cover well under their
-            // linear share of the path, the middle well over.
+            // The drawn car creeps out of the box, runs the lane above the mean,
+            // and lands on the track at the crawl (issue #110 feel review — a
+            // settle-to-zero at the merge read as stop-and-go): the first tenth
+            // covers well under its linear share, the middle well over, and the
+            // last tenth roughly its linear share, matching the speed the
+            // simulation resumes the car at.
             Assert.That(Span(layout, 0f, .1f), Is.LessThan(pathLength * .06f));
-            Assert.That(Span(layout, .9f, 1f), Is.LessThan(pathLength * .06f));
+            Assert.That(Span(layout, .9f, 1f), Is.InRange(pathLength * .08f, pathLength * .13f));
             Assert.That(Span(layout, .45f, .55f), Is.GreaterThan(pathLength * .08f));
+        }
+
+        [Test]
+        public void PitEntryMotionArrivesAtTheCrawlAndSettlesIntoTheBox()
+        {
+            // The entry mirror (issue #110 feel review — a start-from-zero at
+            // the line read as the car stopping dead before entering): the
+            // first tenth covers roughly its linear share, because the approach
+            // braking delivers the car to the line already at the crawl; the
+            // last tenth creeps into the box.
+            var layout = DirectedLayout();
+            float pathLength = 0f;
+            CarPresentationPose prior = PitLanePresentationMapper.EntryPose(PlayerId.Player1, 0f, false, layout);
+            for (float progress = .01f; progress <= 1.0001f; progress += .01f)
+            {
+                var next = PitLanePresentationMapper.EntryPose(PlayerId.Player1, progress, false, layout);
+                pathLength += Distance(prior.Position, next.Position);
+                prior = next;
+            }
+
+            Assert.That(EntrySpan(layout, 0f, .1f), Is.InRange(pathLength * .08f, pathLength * .13f));
+            Assert.That(EntrySpan(layout, .9f, 1f), Is.LessThan(pathLength * .06f));
+        }
+
+        private static float EntrySpan(PitLanePresentationLayout layout, float from, float to)
+        {
+            float covered = 0f;
+            CarPresentationPose prior = PitLanePresentationMapper.EntryPose(PlayerId.Player1, from, false, layout);
+            for (float progress = from + .01f; progress <= to + .0001f; progress += .01f)
+            {
+                var next = PitLanePresentationMapper.EntryPose(PlayerId.Player1, progress, false, layout);
+                covered += Distance(prior.Position, next.Position);
+                prior = next;
+            }
+            return covered;
         }
 
         [Test]

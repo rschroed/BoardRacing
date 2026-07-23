@@ -109,7 +109,7 @@ namespace BoardRacing.Runtime
             simulation = new RaceSimulation(course.Track,
                 raceSettings.ToRules(course.Laps, strategySettings.requiredServiceCount,
                     strategySettings.ToConditionRules(raceSettings.basePace),
-                    strategySettings.ToPitRules(course.Pit.ExitRejoinDistance)));
+                    strategySettings.ToPitRules(course, raceSettings.basePace)));
             previousSnapshot = simulation.Snapshot;
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(

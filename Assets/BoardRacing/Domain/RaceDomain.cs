@@ -191,24 +191,74 @@ namespace BoardRacing.Domain
 
     public readonly struct PitRules
     {
-        public PitRules(float entrySeconds, float exitSeconds, float exitRejoinDistance = 0f)
+        private readonly float playerOneEntryLength, playerOneExitLength;
+        private readonly float playerTwoEntryLength, playerTwoExitLength;
+
+        public PitRules(float laneSpeed, float playerOneEntryLength, float playerOneExitLength,
+            float playerTwoEntryLength, float playerTwoExitLength, float exitRejoinDistance = 0f)
         {
-            if (float.IsNaN(entrySeconds) || float.IsInfinity(entrySeconds) ||
-                float.IsNaN(exitSeconds) || float.IsInfinity(exitSeconds) || entrySeconds <= 0f || exitSeconds <= 0f ||
-                float.IsNaN(exitRejoinDistance) || float.IsInfinity(exitRejoinDistance) || exitRejoinDistance < 0f)
+            var values = new[] { laneSpeed, playerOneEntryLength, playerOneExitLength,
+                playerTwoEntryLength, playerTwoExitLength, exitRejoinDistance };
+            if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x)) || laneSpeed <= 0f ||
+                playerOneEntryLength <= 0f || playerOneExitLength <= 0f ||
+                playerTwoEntryLength <= 0f || playerTwoExitLength <= 0f || exitRejoinDistance < 0f)
                 throw new ArgumentException("Pit rules contain invalid values.");
-            Enabled = true; EntrySeconds = entrySeconds; ExitSeconds = exitSeconds;
+            Enabled = true; LaneSpeed = laneSpeed;
+            this.playerOneEntryLength = playerOneEntryLength;
+            this.playerOneExitLength = playerOneExitLength;
+            this.playerTwoEntryLength = playerTwoEntryLength;
+            this.playerTwoExitLength = playerTwoExitLength;
             ExitRejoinDistance = exitRejoinDistance;
         }
         public bool Enabled { get; }
-        public float EntrySeconds { get; }
-        public float ExitSeconds { get; }
+        // The pit-lane crawl in reference px/s — a ratio of the pace dial
+        // (Pace.PitLaneSpeedRatio, issues #110/#116).
+        public float LaneSpeed { get; }
         // Track distance past the start/finish line where the pit lane rejoins the
         // track: the car resumes where the lane physically ends instead of doubling
         // back to the line.
         public float ExitRejoinDistance { get; }
+
+        // Pit transit is paced by distance (issue #110): a leg's duration is its
+        // lane length at the crawl, so the two players' different box positions
+        // get honest, different transit times — and lane-geometry changes (new
+        // courses, #107) keep pacing right automatically. The old shared fixed
+        // duration covered Player 1's ~500 px exit in 0.75 s: the drawn car
+        // launched out of the pit at 2-3× its racing top speed.
+        public float EntrySeconds(PlayerId playerId) => EntryLength(playerId) / LaneSpeed;
+        public float ExitSeconds(PlayerId playerId) => ExitLength(playerId) / LaneSpeed;
+        public float EntryLength(PlayerId playerId) =>
+            playerId == PlayerId.Player1 ? playerOneEntryLength : playerTwoEntryLength;
+        public float ExitLength(PlayerId playerId) =>
+            playerId == PlayerId.Player1 ? playerOneExitLength : playerTwoExitLength;
+
+        // Leg lengths measured along the authored lane anchors — the same points
+        // the drawn splines run through (PitLanePresentationLayout.ForCourse):
+        // pit line → entry ramp → box, and box → merge approach → rejoin. The
+        // anchor polyline stands in for the spline's arc length; the spline hugs
+        // it within a few percent, against the 2-3× error of the fixed duration.
+        public static PitRules ForCourse(CourseDefinition course, float laneSpeed)
+        {
+            Vec2 pitLine = course.Track.Sample(0f).Position;
+            Vec2 rejoin = course.Track.Sample(course.Pit.ExitRejoinDistance).Position;
+            return new PitRules(laneSpeed,
+                Length(pitLine, course.Pit.Entry, course.Pit.PlayerOneBox),
+                Length(course.Pit.PlayerOneBox, course.Pit.MergeApproach, rejoin),
+                Length(pitLine, course.Pit.Entry, course.Pit.PlayerTwoBox),
+                Length(course.Pit.PlayerTwoBox, course.Pit.MergeApproach, rejoin),
+                course.Pit.ExitRejoinDistance);
+        }
+
+        private static float Length(Vec2 a, Vec2 b, Vec2 c)
+        {
+            float abX = b.X - a.X, abY = b.Y - a.Y, bcX = c.X - b.X, bcY = c.Y - b.Y;
+            return (float)(Math.Sqrt(abX * abX + abY * abY) + Math.Sqrt(bcX * bcX + bcY * bcY));
+        }
+
         public static PitRules Disabled => default;
-        public static PitRules Defaults => new PitRules(.75f, .75f);
+        // The Wedge complex at the reference crawl — the pit economics the
+        // balance tests run on.
+        public static PitRules Defaults => ForCourse(CourseCatalog.Wedge(), Pace.PitLaneSpeed);
     }
 
     public readonly struct RacerCommand

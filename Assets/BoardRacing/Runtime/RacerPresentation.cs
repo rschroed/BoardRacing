@@ -211,20 +211,38 @@ namespace BoardRacing.Runtime
             PitLanePresentationLayout layout) => AlongSpline(new[]
             {
                 layout.PitLine, layout.Entry, layout.Box(playerId)
-            }, Ease(progress), finished, layout.EntryDirection, default);
+            }, EaseIntoLane(progress), finished, layout.EntryDirection, default);
 
         public static CarPresentationPose ExitPose(PlayerId playerId, float progress, bool finished,
             PitLanePresentationLayout layout) => AlongSpline(new[]
             {
                 layout.Box(playerId), layout.MergeApproach, layout.ExitRejoin
-            }, Ease(progress), finished, default, layout.RejoinDirection);
+            }, EaseOutOfBox(progress), finished, default, layout.RejoinDirection);
 
-        // The simulation's phase progress is linear time; the drawn car eases out
-        // of one speed and into the next instead of jumping between them.
-        private static float Ease(float progress)
+        // The simulation's phase progress is linear time; the eased progress
+        // shapes the drawn speed so both lane hand-offs stay continuous (issue
+        // #110 hardware feel review: the old symmetric smoothstep started AND
+        // ended every leg at zero velocity, so the car stopped dead on the pit
+        // line and again at the merge). Hermite curves match the boundary
+        // speeds instead: unit slope — the crawl the legs are paced at — on the
+        // track end of each leg, zero slope at the box, peaking at 4/3 of the
+        // crawl mid-leg (still under the corner-speed baseline). The simulation
+        // meets both hand-offs at the same crawl: the approach braking delivers
+        // the car to the line at it, and the exit resumes on track from it.
+        private static float EaseIntoLane(float progress)
         {
-            float clamped = Math.Max(0f, Math.Min(1f, progress));
-            return clamped * clamped * (3f - 2f * clamped);
+            // Hermite with slopes (1, 0): cross the line at the crawl, settle to
+            // a stop at the box.
+            float t = Math.Max(0f, Math.Min(1f, progress));
+            return t + t * t - t * t * t;
+        }
+
+        private static float EaseOutOfBox(float progress)
+        {
+            // Hermite with slopes (0, 1): pull away from the box, land on the
+            // track at the crawl.
+            float t = Math.Max(0f, Math.Min(1f, progress));
+            return 2f * t * t - t * t * t;
         }
 
         private static CarPresentationPose AlongSpline(Vec2[] points, float progress, bool finished,
