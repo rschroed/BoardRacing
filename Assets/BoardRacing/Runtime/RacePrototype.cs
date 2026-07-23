@@ -31,6 +31,9 @@ namespace BoardRacing.Runtime
         // labels, pit text, center overlays, and dev readouts.
         private RaceSurfaceRenderer surface;
         private RaceHud hud;
+        // Everything the current track IS — racing line, pit complex, race
+        // length — comes from one authored artifact (issue #107 phase 1).
+        private CourseDefinition course;
         // One presentation state per frame, computed at the end of Update: the
         // world-space cars and every OnGUI event (IMGUI raises several per
         // frame) read the same blend instead of each rebuilding it.
@@ -46,16 +49,6 @@ namespace BoardRacing.Runtime
         // Player accents from the design authority (frame 40:23): P1 orange, P2 purple.
         private static readonly Color PlayerOneAccent = new Color(.92f, .39f, .12f);
         private static readonly Color PlayerTwoAccent = new Color(.48f, .28f, .72f);
-        // Pit complex re-derived from the Wedge top straight (issue #88): entry
-        // ramps off the start/finish line, the lane parallels the straight inside
-        // the loop, and the exit rejoins the straight at pitExitRejoinDistance.
-        private static readonly Vec2 PitEntry = new Vec2(680f, 455f);
-        private static readonly Vec2 PlayerOnePitBox = new Vec2(860f, 455f);
-        private static readonly Vec2 PlayerTwoPitBox = new Vec2(1120f, 455f);
-        private static readonly Vec2 PitExit = new Vec2(1353f, 455f);
-        // The lane blends onto the track just before the rejoin sample — no return
-        // trip: the simulation resumes the car where the pit lane physically ends.
-        private static readonly Vec2 PitMergeApproach = new Vec2(1283f, 452f);
         // Shared geometry for the pause and race-finished overlays in 1920×1080 GUI
         // space. The button rect doubles as the touch hit-target polled in Update:
         // the project runs the new Input System only, so IMGUI never receives
@@ -92,9 +85,11 @@ namespace BoardRacing.Runtime
 #endif
             foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) CreateCrewAdapter(id);
             AttachResetSource(activeProvider);
-            simulation = new RaceSimulation(TrackCatalog.Wedge(raceSettings.cornerSafeSpeed),
-                raceSettings.ToRules(strategySettings.requiredServiceCount, strategySettings.ToConditionRules(),
-                    strategySettings.ToPitRules()));
+            course = CourseCatalog.Wedge(raceSettings.cornerSafeSpeed);
+            simulation = new RaceSimulation(course.Track,
+                raceSettings.ToRules(course.Laps, strategySettings.requiredServiceCount,
+                    strategySettings.ToConditionRules(),
+                    strategySettings.ToPitRules(course.Pit.ExitRejoinDistance)));
             previousSnapshot = simulation.Snapshot;
             surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
                 simulation.Track, PitLayout(), PlayerOneAccent, PlayerTwoAccent));
@@ -180,14 +175,14 @@ namespace BoardRacing.Runtime
             {
                 RaceUiPreviewFrame preview = RaceUiPreviewFixtures.Create(
                     (RaceUiPreviewScenario)previewScenarioIndex, simulation.Track,
-                    simulation.Rules.Conditions, raceSettings.laps);
+                    simulation.Rules.Conditions, course.Laps);
                 presentedRace = preview.Race;
                 presentedUi = preview.Ui;
                 return;
             }
 #endif
             presentedUi = RaceUiModelBuilder.Build(presentedRace, controls, crewOutputs,
-                simulation.Rules.Conditions, raceSettings.laps);
+                simulation.Rules.Conditions, course.Laps);
         }
 
         private void LateUpdate() => hud.Apply(presentedUi);
@@ -347,10 +342,9 @@ namespace BoardRacing.Runtime
         // stays IMGUI until the migration settles a world-space text stack.
         private void DrawPitLabels()
         {
-            GUI.Label(new Rect(PlayerOnePitBox.X - 70f, PlayerOnePitBox.Y - 32f, 140f, 64f),
-                "▲ P1 BOX", small);
-            GUI.Label(new Rect(PlayerTwoPitBox.X - 70f, PlayerTwoPitBox.Y - 32f, 140f, 64f),
-                "● P2 BOX", small);
+            Vec2 oneBox = course.Pit.PlayerOneBox, twoBox = course.Pit.PlayerTwoBox;
+            GUI.Label(new Rect(oneBox.X - 70f, oneBox.Y - 32f, 140f, 64f), "▲ P1 BOX", small);
+            GUI.Label(new Rect(twoBox.X - 70f, twoBox.Y - 32f, 140f, 64f), "● P2 BOX", small);
             GUI.Label(new Rect(865, 421, 190, 28), "PIT LANE", small);
         }
 
@@ -382,12 +376,8 @@ namespace BoardRacing.Runtime
                 GUI.Label(new Rect(x - 100f, y + 32f, 200f, 28f), CarPitLabel(racer.Pit), small);
         }
 
-        private PitLanePresentationLayout PitLayout() => new PitLanePresentationLayout(
-            simulation.Track.Sample(0f).Position, PitEntry, PlayerOnePitBox,
-            PlayerTwoPitBox, PitExit, PitMergeApproach,
-            simulation.Track.Sample(strategySettings.pitExitRejoinDistance).Position,
-            TrackPresentation.SmoothHeading(simulation.Track, 0f),
-            TrackPresentation.SmoothHeading(simulation.Track, strategySettings.pitExitRejoinDistance));
+        private PitLanePresentationLayout PitLayout() =>
+            PitLanePresentationLayout.ForCourse(course);
 
         private void CarPose(RacerSnapshot racer, out Vector2 position, out Vector2 tangent)
         {

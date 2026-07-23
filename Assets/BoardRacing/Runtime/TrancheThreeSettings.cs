@@ -29,10 +29,6 @@ namespace BoardRacing.Runtime
         [Min(.01f)] public float pitEntrySeconds = .75f;
         [Min(.01f)] public float pitExitSeconds = .75f;
         [Min(.01f)] public float pitCallHoldSeconds = .75f;
-        // The pit lane rejoins the track where it physically ends, not back at the
-        // start/finish line the car entered from: 850 units along the Wedge top
-        // straight (911 long) puts the rejoin just before the sweeper (issue #88).
-        [Min(0f)] public float pitExitRejoinDistance = 850f;
 
         [Header("Crew service regions")]
         // Per-seat dial centers measured from frame 40:23 component 44:124 (wireframe-ui.md,
@@ -51,8 +47,10 @@ namespace BoardRacing.Runtime
             fuelBurnPerSecondAtBoost, fuelWarningThreshold, emptyMaximumSpeedScale, emptyAccelerationScale,
             tireWearPerCorner, tireWearPerUnsafeSpeed, tirePenaltyThreshold, fullyWornSafeSpeedScale);
 
-        public PitRules ToPitRules() =>
-            new PitRules(pitEntrySeconds, pitExitSeconds, pitExitRejoinDistance);
+        // The rejoin distance is course geometry (issue #107), not a tuning knob:
+        // the simulation must resume the car where the drawn lane physically ends.
+        public PitRules ToPitRules(float exitRejoinDistance) =>
+            new PitRules(pitEntrySeconds, pitExitSeconds, exitRejoinDistance);
 
         public static TrancheThreeSettings Defaults()
         {
