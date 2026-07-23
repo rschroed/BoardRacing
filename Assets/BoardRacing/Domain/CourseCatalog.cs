@@ -78,6 +78,15 @@ namespace BoardRacing.Domain
     /// </summary>
     public static class CourseCatalog
     {
+        // Every course the game can put on the table. The course lint sweeps
+        // this (issue #107 phase 3), and the between-race course selection
+        // (phase 5) will draw from it — a new course added here is linted and
+        // offered automatically.
+        public static System.Collections.Generic.IEnumerable<CourseDefinition> All()
+        {
+            yield return Wedge();
+        }
+
         // Pit complex re-derived from the Wedge top straight (issue #88): entry
         // ramps off the start/finish line, the lane parallels the straight inside
         // the loop, and the exit rejoins the straight at 850 of its 911 units —
