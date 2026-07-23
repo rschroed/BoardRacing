@@ -85,6 +85,7 @@ namespace BoardRacing.Domain
         public static System.Collections.Generic.IEnumerable<CourseDefinition> All()
         {
             yield return Wedge();
+            yield return Hourglass();
         }
 
         // Pit complex re-derived from the Wedge top straight (issue #88): entry
@@ -106,5 +107,20 @@ namespace BoardRacing.Domain
             new PitComplexDefinition(new Vec2(680f, 455f), new Vec2(860f, 455f),
                 new Vec2(1120f, 455f), new Vec2(1353f, 455f), new Vec2(1240f, 428f), 850f),
             laps: 6);
+
+        // Hourglass pit complex hangs off the 720 px top straight of the right
+        // lobe (the crossing lives far away at (568, 550)): entry at 165 of the
+        // straight, boxes at 300/485, rejoin at 690 — 30 before the sweeper.
+        // The merge approach follows the Wedge's phase-2 tuning: 50 px past
+        // player two's box QUAD (the 140 px quad ends at 1335), 27 px above the
+        // lane center, for a shallow ~14° climb that starts visibly clear of
+        // the box.
+        // 5 laps × the ~2949 perimeter ≈ the Wedge's 6 × 2628 race distance.
+        public static CourseDefinition Hourglass(float cornerSafeSpeed = 190f) => new CourseDefinition(
+            "Hourglass",
+            TrackCatalog.Hourglass(cornerSafeSpeed),
+            new PitComplexDefinition(new Vec2(945f, 462f), new Vec2(1080f, 462f),
+                new Vec2(1265f, 462f), new Vec2(1450f, 462f), new Vec2(1385f, 435f), 690f),
+            laps: 5);
     }
 }

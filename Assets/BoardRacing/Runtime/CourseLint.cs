@@ -36,6 +36,13 @@ namespace BoardRacing.Runtime
         public const float MinBoxOffset = RaceSurfaceGeometry.TrackWidth * .5f +
             RaceSurfaceGeometry.PitLaneWidth * .5f;
         public const float MaxAnchorOffset = 120f;
+        // A racing line may cross itself (figure-8, issue #107 phase 4) — but
+        // the X must read at 64 px ribbon width, and the crossing must stay
+        // away from the pit complex and the start line: near a crossing,
+        // nearest-chord logic (junction clamping, anchor checks) is ambiguous
+        // between the two strands.
+        public const float MinCrossingAngle = 35f;
+        public const float MinCrossingClearance = 150f;
 
         public static IReadOnlyList<string> Check(CourseDefinition course, RaceLayout seats)
         {
@@ -43,7 +50,41 @@ namespace BoardRacing.Runtime
             CheckChords(course.Track, findings);
             CheckSurfaceFit(course, seats, findings);
             CheckPitComplex(course, findings);
+            CheckCrossings(course, findings);
             return findings;
+        }
+
+        private static void CheckCrossings(CourseDefinition course, List<string> findings)
+        {
+            foreach (TrackCrossing crossing in RaceSurfaceGeometry.FindCrossings(course.Track))
+            {
+                TrackSegment earlier = course.Track.Segments[crossing.EarlierSegment];
+                float angle = Vector2.Angle(
+                    new Vector2(earlier.End.X - earlier.Start.X, earlier.End.Y - earlier.Start.Y),
+                    crossing.LaterDirection);
+                float acute = Mathf.Min(angle, 180f - angle);
+                if (acute < MinCrossingAngle)
+                    findings.Add($"The line crosses itself at {acute:0}° near " +
+                        $"({crossing.Point.x:0}, {crossing.Point.y:0}) (min {MinCrossingAngle}°) — " +
+                        "a shallow X reads as a smudge at ribbon width.");
+                PitComplexDefinition pit = course.Pit;
+                Vec2 start = course.Track.Sample(0f).Position;
+                Vec2 rejoin = course.Track.Sample(pit.ExitRejoinDistance).Position;
+                foreach ((Vec2 point, string name) in new[]
+                {
+                    (start, "start line"), (pit.Entry, "pit entry"),
+                    (pit.PlayerOneBox, "player one box"), (pit.PlayerTwoBox, "player two box"),
+                    (pit.Exit, "pit exit"), (rejoin, "exit rejoin"),
+                })
+                {
+                    float distance = Vector2.Distance(crossing.Point,
+                        new Vector2(point.X, point.Y));
+                    if (distance < MinCrossingClearance)
+                        findings.Add($"The {name} sits {distance:0} px from the crossing at " +
+                            $"({crossing.Point.x:0}, {crossing.Point.y:0}) (min {MinCrossingClearance}) — " +
+                            "nearest-chord logic is ambiguous between the strands there.");
+                }
+            }
         }
 
         private static void CheckChords(TrackDefinition track, List<string> findings)

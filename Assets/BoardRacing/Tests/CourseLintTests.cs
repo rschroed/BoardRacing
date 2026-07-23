@@ -87,6 +87,28 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void LintFlagsAShallowCrossingCrowdingThePit()
+        {
+            // A bowtie whose diagonals cross at ~25°, with the pit boxes parked
+            // right on top of the crossing — both crossing rules must fire.
+            var points = new[]
+            {
+                new Vec2(500f, 450f), new Vec2(1400f, 650f), new Vec2(500f, 650f),
+                new Vec2(1400f, 450f), new Vec2(500f, 450f),
+            };
+            var segments = new List<TrackSegment>();
+            for (int i = 0; i < 4; i++)
+                segments.Add(new TrackSegment(points[i], points[i + 1],
+                    TrackSectionKind.Straight, float.PositiveInfinity));
+            var pit = new PitComplexDefinition(new Vec2(900f, 560f), new Vec2(940f, 560f),
+                new Vec2(980f, 560f), new Vec2(1050f, 560f), new Vec2(1010f, 555f), 800f);
+            IReadOnlyList<string> findings = CourseLint.Check(
+                new CourseDefinition("Bowtie", new TrackDefinition(segments), pit, 6), Layout());
+            Assert.That(findings, Has.Some.Contains("crosses itself at"));
+            Assert.That(findings, Has.Some.Contains("from the crossing"));
+        }
+
+        [Test]
         public void LintFlagsAPitComplexHangingOffACorner()
         {
             TrackDefinition track = TrackCatalog.Wedge();
