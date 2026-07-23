@@ -82,6 +82,12 @@ namespace BoardRacing.Domain
         // ramps off the start/finish line, the lane parallels the straight inside
         // the loop, and the exit rejoins the straight at 850 of its 911 units —
         // just before the sweeper.
+        // The merge approach sits 50 px past player two's box and 27 px above the
+        // lane center: it stretches the exit spline's climb to the rejoin across
+        // ~230 px so the visible crossing stays a shallow slip-road angle (issue
+        // #107 phase 2 — aiming through (1283, 452) packed a 58 px climb into
+        // 70 px of run, a ~40° dive that read as the lane vanishing under the
+        // track in three hardware reviews).
         // 6 laps × the Wedge's 2628 perimeter ≈ the placeholder's 5 × 3508 race
         // distance, keeping race duration roughly where the owner tuned it, with
         // the tight hairpin adding scrub time per lap (issue #88).
@@ -89,7 +95,7 @@ namespace BoardRacing.Domain
             "Wedge",
             TrackCatalog.Wedge(cornerSafeSpeed),
             new PitComplexDefinition(new Vec2(680f, 455f), new Vec2(860f, 455f),
-                new Vec2(1120f, 455f), new Vec2(1353f, 455f), new Vec2(1283f, 452f), 850f),
+                new Vec2(1120f, 455f), new Vec2(1353f, 455f), new Vec2(1240f, 428f), 850f),
             laps: 6);
     }
 }

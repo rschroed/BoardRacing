@@ -98,31 +98,39 @@ namespace BoardRacing.Runtime
         public static readonly Color StripeColor = new Color(.55f, .62f, .7f, .5f);
         public static readonly Color PitLaneColor = new Color(.08f, .11f, .15f);
         public static readonly Color PitStripeColor = new Color(.62f, .68f, .74f, .55f);
-        private const int MergeLaneSteps = 36;
+        // How far a junction ribbon may tuck under the track fill: deep enough
+        // that rasterization can never open a background sliver along the seam,
+        // shallow enough that the fill always covers it.
+        public const float JunctionEdgeOverlap = 2f;
+        private const int LaneSteps = 36;
 
         public static SurfaceMeshData Build(TrackDefinition track,
             PitLanePresentationLayout pitLayout, Color playerOneAccent, Color playerTwoAccent)
         {
             var mesh = new SurfaceMeshData();
-            // The merge lane renders FIRST, under the track fill: the exit
-            // spline runs all the way to the rejoin point on the centerline, and
-            // the opaque track drawn over it swallows the crossing — the lane
-            // reads as sliding under the track edge (#86 hardware review, second
-            // round: trimming the ribbon early left a floating stub instead).
-            List<Vector2> mergeLane = MergeLanePoints(pitLayout);
-            AppendOpenRibbon(mesh, mergeLane, PitLaneWidth, PitLaneColor);
-            AppendOpenRibbon(mesh, mergeLane, PitStripeWidth, PitStripeColor);
+            // The pit lane draws first, under the track fill, as one knot-shared
+            // chain: pit line ~entry spline~> entry -> box row -> ~exit spline~>
+            // rejoin. Where a leg meets the track, AppendJunctionRibbon clamps
+            // its boundary to the track edge so the lane closes as a wedge
+            // running along the edge — a slip-road gore whose seam IS the edge
+            // (issue #107 phase 2; the round-2.2 full ribbon under the fill
+            // crossed at ~40° and read as the lane vanishing under the track).
+            List<Vector2> entry = EntryLanePoints(pitLayout);
+            var serviceRow = new List<Vector2>
+                { ToVector(pitLayout.PlayerOneBox), ToVector(pitLayout.PlayerTwoBox) };
+            List<Vector2> merge = MergeLanePoints(pitLayout);
+            foreach (float width in new[] { PitLaneWidth, PitStripeWidth })
+            {
+                Color color = width == PitLaneWidth ? PitLaneColor : PitStripeColor;
+                AppendJunctionRibbon(mesh, entry, width, color, track);
+                AppendOpenRibbon(mesh, serviceRow, width, color);
+                AppendJunctionRibbon(mesh, merge, width, color, track);
+            }
             List<CenterlineSample> centerline = SmoothCenterline(track, SamplesPerChord);
             AppendClosedRibbon(mesh, centerline, TrackWidth, CornerColor, StraightColor);
             AppendClosedRibbon(mesh, centerline, TrackStripeWidth, StripeColor, StripeColor);
             Vec2 line = track.Sample(0f).Position;
             mesh.AddRect(new Rect(line.X - 12f, line.Y - 28f, 24f, 56f), Color.white);
-            foreach (float width in new[] { PitLaneWidth, PitStripeWidth })
-            {
-                Color color = width == PitLaneWidth ? PitLaneColor : PitStripeColor;
-                AppendOpenRibbon(mesh, new List<Vector2> { ToVector(pitLayout.PitLine), ToVector(pitLayout.Entry) }, width, color);
-                AppendOpenRibbon(mesh, new List<Vector2> { ToVector(pitLayout.Entry), ToVector(pitLayout.Exit) }, width, color);
-            }
             AppendPitBox(mesh, pitLayout.PlayerOneBox, playerOneAccent);
             AppendPitBox(mesh, pitLayout.PlayerTwoBox, playerTwoAccent);
             return mesh;
@@ -222,27 +230,97 @@ namespace BoardRacing.Runtime
             return delta.sqrMagnitude < 1e-8f ? Vector2.zero : delta.normalized;
         }
 
-        private static List<Vector2> MergeLanePoints(PitLanePresentationLayout layout)
+        // A pit-lane leg that meets the track: an open ribbon whose boundary
+        // vertices are clamped to at most JunctionEdgeOverlap inside the track
+        // edge. Where the leg dives toward the centerline the near boundary
+        // locks onto the edge line first and the far boundary follows, so the
+        // lane closes as a wedge running along the edge instead of poking a
+        // blunt end through it; past full absorption the ribbon degenerates to
+        // a zero-width sliver under the fill. The clamp also means no lane
+        // geometry can overhang into the roadway whatever the spline does.
+        public static void AppendJunctionRibbon(SurfaceMeshData mesh, IReadOnlyList<Vector2> points,
+            float width, Color color, TrackDefinition track)
         {
-            var points = new List<Vector2>(MergeLaneSteps + 1);
-            for (int i = 0; i <= MergeLaneSteps; i++)
-                points.Add(ToVector(PitLanePresentationMapper.ExitPose(PlayerId.Player1,
-                    i / (float)MergeLaneSteps, false, layout).Position));
+            int count = points.Count;
+            if (count < 2) return;
+            var left = new Vector2[count];
+            var right = new Vector2[count];
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 offset = MiterOffset(points[Math.Max(0, i - 1)], points[i],
+                    points[Math.Min(count - 1, i + 1)], width * .5f);
+                left[i] = ClampOutsideRoadway(points[i] + offset, track);
+                right[i] = ClampOutsideRoadway(points[i] - offset, track);
+            }
+            for (int i = 0; i < count - 1; i++)
+                mesh.AddQuad(left[i], left[i + 1], right[i + 1], right[i], color);
+        }
+
+        // The drawn lane legs are the very splines the cars drive: entry along
+        // Player1's entering spline (the players' paths only diverge past the
+        // shared straight), merge along Player2's exiting spline (the lane
+        // leaves the service row after the last box). A car in a pit phase is
+        // therefore always over pavement.
+        private static List<Vector2> EntryLanePoints(PitLanePresentationLayout layout)
+        {
+            var points = new List<Vector2>(LaneSteps + 1);
+            for (int i = 0; i <= LaneSteps; i++)
+                points.Add(ToVector(PitLanePresentationMapper.EntryPose(PlayerId.Player1,
+                    i / (float)LaneSteps, false, layout).Position));
             return points;
         }
 
-        internal static float DistanceToCenterline(Vector2 point, TrackDefinition track)
+        private static List<Vector2> MergeLanePoints(PitLanePresentationLayout layout)
+        {
+            var points = new List<Vector2>(LaneSteps + 1);
+            for (int i = 0; i <= LaneSteps; i++)
+                points.Add(ToVector(PitLanePresentationMapper.ExitPose(PlayerId.Player2,
+                    i / (float)LaneSteps, false, layout).Position));
+            return points;
+        }
+
+        private static Vector2 ClampOutsideRoadway(Vector2 point, TrackDefinition track)
+        {
+            NearestCenterline(point, track, out Vector2 nearest, out Vector2 interiorNormal);
+            float floor = TrackWidth * .5f - JunctionEdgeOverlap;
+            return Vector2.Dot(point - nearest, interiorNormal) >= floor
+                ? point
+                : nearest + interiorNormal * floor;
+        }
+
+        // Signed cross-track position: how far the point sits on the interior
+        // side of the authored centerline (negative = across it, toward the
+        // outside of the loop). The pit complex lives on the interior.
+        internal static float InteriorOffset(Vector2 point, TrackDefinition track)
+        {
+            NearestCenterline(point, track, out Vector2 nearest, out Vector2 interiorNormal);
+            return Vector2.Dot(point - nearest, interiorNormal);
+        }
+
+        // Nearest point on the authored centerline polyline plus the unit
+        // normal of its chord pointing at the loop interior — travel is
+        // clockwise in Y-down screen space, so the interior is 90° left of the
+        // chord direction.
+        private static void NearestCenterline(Vector2 point, TrackDefinition track,
+            out Vector2 nearest, out Vector2 interiorNormal)
         {
             float best = float.MaxValue;
+            nearest = default;
+            interiorNormal = default;
             foreach (TrackSegment segment in track.Segments)
             {
                 var start = new Vector2(segment.Start.X, segment.Start.Y);
                 var end = new Vector2(segment.End.X, segment.End.Y);
                 Vector2 direction = end - start;
                 float t = Mathf.Clamp01(Vector2.Dot(point - start, direction) / direction.sqrMagnitude);
-                best = Mathf.Min(best, Vector2.Distance(point, start + direction * t));
+                Vector2 candidate = start + direction * t;
+                float distance = Vector2.Distance(point, candidate);
+                if (distance >= best) continue;
+                best = distance;
+                nearest = candidate;
+                Vector2 unit = direction.normalized;
+                interiorNormal = new Vector2(-unit.y, unit.x);
             }
-            return best;
         }
 
         private static void AppendPitBox(SurfaceMeshData mesh, Vec2 center, Color accent)

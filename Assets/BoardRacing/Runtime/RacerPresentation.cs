@@ -199,14 +199,19 @@ namespace BoardRacing.Runtime
         {
             Vec2 box = layout.Box(racer.PlayerId);
             if (racer.Pit.Phase == PitPhase.Entering)
-                return AlongSpline(new[] { layout.PitLine, layout.Entry, box },
-                    Ease(racer.Pit.PhaseProgress), racer.Finished, layout.EntryDirection, default);
+                return EntryPose(racer.PlayerId, racer.Pit.PhaseProgress, racer.Finished, layout);
             if (racer.Pit.Phase == PitPhase.InService)
                 return new CarPresentationPose(box, Unit(layout.Exit, box), racer.Finished);
             if (racer.Pit.Phase == PitPhase.Exiting)
                 return ExitPose(racer.PlayerId, racer.Pit.PhaseProgress, racer.Finished, layout);
             return new CarPresentationPose(trackPosition, Normalize(trackTangent), racer.Finished);
         }
+
+        public static CarPresentationPose EntryPose(PlayerId playerId, float progress, bool finished,
+            PitLanePresentationLayout layout) => AlongSpline(new[]
+            {
+                layout.PitLine, layout.Entry, layout.Box(playerId)
+            }, Ease(progress), finished, layout.EntryDirection, default);
 
         public static CarPresentationPose ExitPose(PlayerId playerId, float progress, bool finished,
             PitLanePresentationLayout layout) => AlongSpline(new[]
