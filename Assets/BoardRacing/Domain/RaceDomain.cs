@@ -69,7 +69,7 @@ namespace BoardRacing.Domain
                 new Vec2(dx / segment.Length, dy / segment.Length), index, segment.Kind, segment.SafeSpeed);
         }
 
-        public static TrackDefinition Placeholder(float cornerSafeSpeed = 190f)
+        public static TrackDefinition Placeholder(float cornerSafeSpeed = Pace.CornerSafeSpeed)
         {
             var p = new[]
             {
@@ -142,10 +142,13 @@ namespace BoardRacing.Domain
         // before the race pauses — long enough that hands sweeping over the sensors
         // never read as a deliberate table clear.
         public float PauseClearSeconds { get; }
-        public static RaceRules Defaults => new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f);
+        // Speeds derive from the pace scalar (issue #116) so the defaults —
+        // and every balance test built on them — follow a pace retune.
+        public static RaceRules Defaults => new RaceRules(5, 3f, Pace.BasePace, Pace.Acceleration,
+            Pace.Drag, Pace.Braking, .55f, 1f, .35f, 180f, 38f, 1f);
         public static RaceRules TrancheThreeDefaults =>
-            new RaceRules(5, 3f, 360f, 220f, 120f, 300f, .55f, 1f, .35f, 180f, 38f, 1f, 1,
-                ConditionRules.Defaults, PitRules.Defaults);
+            new RaceRules(5, 3f, Pace.BasePace, Pace.Acceleration, Pace.Drag, Pace.Braking,
+                .55f, 1f, .35f, 180f, 38f, 1f, 1, ConditionRules.Defaults, PitRules.Defaults);
     }
 
     public readonly struct ConditionRules

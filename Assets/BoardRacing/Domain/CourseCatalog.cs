@@ -83,7 +83,7 @@ namespace BoardRacing.Domain
         // (phase 5) will draw from it — a new course added here is linted and
         // offered automatically.
         public static System.Collections.Generic.IEnumerable<CourseDefinition> All(
-            float cornerSafeSpeed = 190f)
+            float cornerSafeSpeed = Pace.CornerSafeSpeed)
         {
             yield return Wedge(cornerSafeSpeed);
             yield return Hourglass(cornerSafeSpeed);
@@ -104,7 +104,7 @@ namespace BoardRacing.Domain
         // 6 laps × the Wedge's 2628 perimeter ≈ the placeholder's 5 × 3508 race
         // distance, keeping race duration roughly where the owner tuned it, with
         // the tight hairpin adding scrub time per lap (issue #88).
-        public static CourseDefinition Wedge(float cornerSafeSpeed = 190f) => new CourseDefinition(
+        public static CourseDefinition Wedge(float cornerSafeSpeed = Pace.CornerSafeSpeed) => new CourseDefinition(
             "Wedge",
             TrackCatalog.Wedge(cornerSafeSpeed),
             new PitComplexDefinition(new Vec2(680f, 455f), new Vec2(860f, 455f),
@@ -119,7 +119,7 @@ namespace BoardRacing.Domain
         // lane center, for a shallow ~14° climb that starts visibly clear of
         // the box.
         // 5 laps × the ~2949 perimeter ≈ the Wedge's 6 × 2628 race distance.
-        public static CourseDefinition Hourglass(float cornerSafeSpeed = 190f) => new CourseDefinition(
+        public static CourseDefinition Hourglass(float cornerSafeSpeed = Pace.CornerSafeSpeed) => new CourseDefinition(
             "Hourglass",
             TrackCatalog.Hourglass(cornerSafeSpeed),
             new PitComplexDefinition(new Vec2(945f, 462f), new Vec2(1080f, 462f),
@@ -134,7 +134,7 @@ namespace BoardRacing.Domain
         // box's quad edge at 25 px offset (the Wedge phase-2 rule), rejoin at
         // 815 — 71 before the east lobe. 5 laps × ~3224 ≈ the Wedge's race
         // distance.
-        public static CourseDefinition Infinity(float cornerSafeSpeed = 190f) => new CourseDefinition(
+        public static CourseDefinition Infinity(float cornerSafeSpeed = Pace.CornerSafeSpeed) => new CourseDefinition(
             "Infinity",
             TrackCatalog.Infinity(cornerSafeSpeed),
             new PitComplexDefinition(new Vec2(724f, 695f), new Vec2(816f, 657f),
@@ -145,7 +145,7 @@ namespace BoardRacing.Domain
         // 165, boxes 345/545, merge approach 665 (50 past the box quad edge,
         // 25 px offset), rejoin 755 — 140 before the hook. 4 laps × ~4072 ≈
         // the Wedge's race distance.
-        public static CourseDefinition Fishhook(float cornerSafeSpeed = 190f) => new CourseDefinition(
+        public static CourseDefinition Fishhook(float cornerSafeSpeed = Pace.CornerSafeSpeed) => new CourseDefinition(
             "Fishhook",
             TrackCatalog.Fishhook(cornerSafeSpeed),
             new PitComplexDefinition(new Vec2(628f, 800f), new Vec2(807f, 781f),
