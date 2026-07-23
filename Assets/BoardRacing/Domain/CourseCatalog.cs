@@ -82,10 +82,11 @@ namespace BoardRacing.Domain
         // this (issue #107 phase 3), and the between-race course selection
         // (phase 5) will draw from it — a new course added here is linted and
         // offered automatically.
-        public static System.Collections.Generic.IEnumerable<CourseDefinition> All()
+        public static System.Collections.Generic.IEnumerable<CourseDefinition> All(
+            float cornerSafeSpeed = 190f)
         {
-            yield return Wedge();
-            yield return Hourglass();
+            yield return Wedge(cornerSafeSpeed);
+            yield return Hourglass(cornerSafeSpeed);
         }
 
         // Pit complex re-derived from the Wedge top straight (issue #88): entry
