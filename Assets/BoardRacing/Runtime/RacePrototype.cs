@@ -34,6 +34,9 @@ namespace BoardRacing.Runtime
         // Everything the current track IS — racing line, pit complex, race
         // length — comes from one authored artifact (issue #107 phase 1).
         private CourseDefinition course;
+        // Which artifact that is comes from the between-race tap-to-cycle
+        // choice (issue #107 phase 5).
+        private CourseSelection courseSelection;
         // One presentation state per frame, computed at the end of Update: the
         // world-space cars and every OnGUI event (IMGUI raises several per
         // frame) read the same blend instead of each rebuilding it.
@@ -53,8 +56,11 @@ namespace BoardRacing.Runtime
         // space. The button rect doubles as the touch hit-target polled in Update:
         // the project runs the new Input System only, so IMGUI never receives
         // pointer events in a player build.
-        private static readonly Rect PausePanel = new Rect(460f, 430f, 1000f, 230f);
+        private static readonly Rect PausePanel = new Rect(460f, 430f, 1000f, 290f);
         private static readonly Rect PauseNewRaceButton = new Rect(770f, 560f, 380f, 70f);
+        // The course chip under the button: shows what the next race runs on,
+        // tap to cycle the catalog (issue #107 phase 5).
+        private static readonly Rect NextCourseChip = new Rect(770f, 648f, 380f, 48f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -85,23 +91,33 @@ namespace BoardRacing.Runtime
 #endif
             foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) CreateCrewAdapter(id);
             AttachResetSource(activeProvider);
-            course = CourseCatalog.Wedge(raceSettings.cornerSafeSpeed);
+            courseSelection = new CourseSelection(CourseCatalog.All(raceSettings.cornerSafeSpeed));
+            course = courseSelection.Current;
+            BuildRace();
+            hud = RaceHud.Create(RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
+                ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize),
+                PlayerOneAccent, PlayerTwoAccent);
+            RefreshPresentation();
+            UpdateWorldCars();
+        }
+
+        // Everything owned by the course on the table: the simulation and the
+        // world-space surface. Called at boot and again whenever the between-race
+        // choice lands on a different course (issue #107 phase 5).
+        private void BuildRace()
+        {
             simulation = new RaceSimulation(course.Track,
                 raceSettings.ToRules(course.Laps, strategySettings.requiredServiceCount,
                     strategySettings.ToConditionRules(),
                     strategySettings.ToPitRules(course.Pit.ExitRejoinDistance)));
             previousSnapshot = simulation.Snapshot;
+            if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
                 simulation.Track, PitLayout(), PlayerOneAccent, PlayerTwoAccent));
             surface.AttachCar(PlayerId.Player1,
                 RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, PlayerOneAccent));
             surface.AttachCar(PlayerId.Player2,
                 RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, PlayerTwoAccent));
-            hud = RaceHud.Create(RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
-                ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize),
-                PlayerOneAccent, PlayerTwoAccent);
-            RefreshPresentation();
-            UpdateWorldCars();
         }
 
         private void CreateCrewAdapter(PlayerId id)
@@ -209,6 +225,9 @@ namespace BoardRacing.Runtime
         private void PollNewRaceTouch()
         {
             RacePhase phase = simulation.Snapshot.Phase;
+            // Fed every frame so the selection sees the transition INTO the
+            // overlay and arms its default exactly once (issue #107 phase 5).
+            courseSelection.ObservePhase(phase);
             if (phase != RacePhase.Paused && phase != RacePhase.Finished) return;
             // On the Board every contact — fingers included — arrives through the
             // SDK's native contact pipeline, not Unity's Touchscreen, so a tap is a
@@ -216,23 +235,41 @@ namespace BoardRacing.Runtime
             // Glyph contacts).
             foreach (var finger in BoardInput.GetActiveContacts(BoardContactType.Finger))
                 if (finger.phase == BoardContactPhase.Began &&
-                    ButtonContains(finger.screenPosition))
-                {
-                    simulation.RequestNewRace();
+                    HandleOverlayTap(finger.screenPosition))
                     return;
-                }
             // Desktop editor runs have a mouse and no Board contact stream.
             Mouse mouse = Mouse.current;
-            if (mouse != null && mouse.leftButton.wasPressedThisFrame &&
-                ButtonContains(mouse.position.ReadValue()))
-                simulation.RequestNewRace();
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+                HandleOverlayTap(mouse.position.ReadValue());
         }
 
-        private static bool ButtonContains(Vector2 screenPosition)
+        // The overlay's two touch targets: START NEW RACE confirms the pending
+        // course and races it; the chip below cycles the pending course.
+        private bool HandleOverlayTap(Vector2 screenPosition)
         {
             Vector2 gui = new Vector2(screenPosition.x * 1920f / Screen.width,
                 (Screen.height - screenPosition.y) * 1080f / Screen.height);
-            return PauseNewRaceButton.Contains(gui);
+            if (PauseNewRaceButton.Contains(gui)) { StartNewRace(); return true; }
+            if (NextCourseChip.Contains(gui)) { courseSelection.CycleNext(); return true; }
+            return false;
+        }
+
+        private void StartNewRace()
+        {
+            CourseDefinition next = courseSelection.ConfirmNext();
+            if (ReferenceEquals(next, course))
+            {
+                simulation.RequestNewRace();
+                return;
+            }
+            // A different course means a different track, rules, and surface:
+            // rebuild the race whole rather than teaching the simulation to
+            // swap tracks mid-life.
+            course = next;
+            BuildRace();
+            accumulator = 0f;
+            RefreshPresentation();
+            UpdateWorldCars();
         }
 
         public RaceSnapshot GetRaceSnapshot() => simulation.Snapshot;
@@ -483,6 +520,13 @@ namespace BoardRacing.Runtime
                 true, 0, new Color(.14f, .2f, .3f), 0, 10f);
             DrawOutline(PauseNewRaceButton, 3f, Color.white);
             GUI.Label(PauseNewRaceButton, "START NEW RACE", carLabel);
+            // The tap-to-cycle course chip (issue #107 phase 5): quieter chrome
+            // than the button — it informs by default, invites a tap to change.
+            GUI.DrawTexture(NextCourseChip, Texture2D.whiteTexture, ScaleMode.StretchToFill,
+                true, 0, new Color(.09f, .12f, .18f), 0, 8f);
+            DrawOutline(NextCourseChip, 2f, new Color(.62f, .68f, .74f, .8f));
+            GUI.Label(NextCourseChip,
+                "NEXT COURSE: " + courseSelection.Next.Name.ToUpperInvariant(), carLabel);
         }
 
         private static bool EditorDiagnosticsSuppressed()
