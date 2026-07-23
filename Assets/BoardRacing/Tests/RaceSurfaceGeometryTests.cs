@@ -311,6 +311,75 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void InfinityCrossesItselfExactlyAtTableCenter()
+        {
+            // The symmetric figure-8's identity (issue #107 phase 4b): equal
+            // lobes and internal tangents put the one crossing dead on the
+            // table center, with the return diagonal as the bridge strand.
+            IReadOnlyList<TrackCrossing> crossings =
+                RaceSurfaceGeometry.FindCrossings(TrackCatalog.Infinity());
+            Assert.That(crossings.Count, Is.EqualTo(1));
+            Assert.That(Vector2.Distance(crossings[0].Point, new Vector2(960f, 540f)),
+                Is.LessThan(1f));
+            Assert.That(crossings[0].LaterSegment, Is.GreaterThan(crossings[0].EarlierSegment));
+        }
+
+        [Test]
+        public void InfinityBoxesFlankTheCrossingSoTheLanePassesUnderTheBridge()
+        {
+            // The owner's sketch: pit boxes on both sides of the X, the service
+            // row threading beneath the bridge. Lint keeps ANCHORS 150 px clear
+            // of a crossing; the lane between them is free to pass under.
+            CourseDefinition course = CourseCatalog.Infinity();
+            Vector2 crossing = RaceSurfaceGeometry.FindCrossings(course.Track)[0].Point;
+            Vector2 boxOne = new Vector2(course.Pit.PlayerOneBox.X, course.Pit.PlayerOneBox.Y);
+            Vector2 boxTwo = new Vector2(course.Pit.PlayerTwoBox.X, course.Pit.PlayerTwoBox.Y);
+            Vector2 row = (boxTwo - boxOne).normalized;
+            float alongOne = Vector2.Dot(boxOne - crossing, row);
+            float alongTwo = Vector2.Dot(boxTwo - crossing, row);
+            Assert.That(alongOne * alongTwo, Is.LessThan(0f),
+                "the boxes must sit on opposite sides of the crossing");
+            Assert.That(Vector2.Distance(boxOne, crossing), Is.GreaterThanOrEqualTo(150f));
+            Assert.That(Vector2.Distance(boxTwo, crossing), Is.GreaterThanOrEqualTo(150f));
+        }
+
+        [Test]
+        public void FishhookDoesNotCrossItself()
+        {
+            Assert.That(RaceSurfaceGeometry.FindCrossings(TrackCatalog.Fishhook()), Is.Empty);
+        }
+
+        [Test]
+        public void BoxQuadsAndStartLineFollowADiagonalPitStraight()
+        {
+            // Horizontal pit straights were a Wedge special case: on the
+            // Infinity's diagonal, the box quads and the start line must
+            // rotate with the travel direction instead of staying axis-aligned.
+            CourseDefinition course = CourseCatalog.Infinity();
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track,
+                PitLanePresentationLayout.ForCourse(course), Color.red, Color.blue);
+            Vector2 boxOne = new Vector2(course.Pit.PlayerOneBox.X, course.Pit.PlayerOneBox.Y);
+            Vector2 boxTwo = new Vector2(course.Pit.PlayerTwoBox.X, course.Pit.PlayerTwoBox.Y);
+            Vector2 lane = (boxTwo - boxOne).normalized;
+            Vector2 across = new Vector2(-lane.y, lane.x);
+            Vector2 boxCorner = boxOne + lane * 70f + across * 32f;
+            Vec2 start = course.Track.Sample(0f).Position;
+            TrackSegment first = course.Track.Segments[0];
+            Vector2 travel = (new Vector2(first.End.X, first.End.Y) -
+                new Vector2(first.Start.X, first.Start.Y)).normalized;
+            Vector2 lineCorner = new Vector2(start.X, start.Y) +
+                travel * 12f + new Vector2(-travel.y, travel.x) * 28f;
+            bool boxCornerFound = false, lineCornerFound = false;
+            foreach (Vector3 vertex in mesh.Vertices)
+            {
+                if (Vector2.Distance(vertex, boxCorner) < .5f) boxCornerFound = true;
+                if (Vector2.Distance(vertex, lineCorner) < .5f) lineCornerFound = true;
+            }
+            Assert.That(boxCornerFound, Is.True, $"no box vertex at rotated corner {boxCorner}");
+            Assert.That(lineCornerFound, Is.True, $"no start-line vertex at rotated corner {lineCorner}");
+        }
+
+        [Test]
         public void PitLaneRendersUnderTheTrackFill()
         {
             // The clamped mouths tuck JunctionEdgeOverlap inside the edge; that

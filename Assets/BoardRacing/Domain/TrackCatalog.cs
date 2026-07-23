@@ -126,5 +126,120 @@ namespace BoardRacing.Domain
             new Vec2(464.0f, 631.5f), new Vec2(481.1f, 624.4f), new Vec2(496.2f, 613.7f), new Vec2(687.4f, 445.0f),
             new Vec2(707.7f, 430.1f), new Vec2(730.5f, 419.1f), new Vec2(754.8f, 412.3f), new Vec2(780.0f, 410.0f),
         };
+
+        // Infinity — the symmetric figure-8 (issue #107 phase 4b, from the
+        // owner's sketch): two equal R185 lobes at (480, 540) and (1440, 540),
+        // joined by their internal tangents, so the crossing lands exactly at
+        // table center (960, 540) at 45.3° and the whole course is its own
+        // 180°-rotation. (R195 grazed the seats' tilted TIRES label homes by
+        // 6 px on both diagonally-mirrored corners; R185 clears them.) The
+        // ascending diagonal is the pit straight — the service boxes flank the
+        // crossing (186/175 px clear of it, above the lint's 150 floor), so
+        // the pit lane itself passes UNDER the bridge between them, exactly as
+        // sketched. Each lobe wraps 225.3°; at R185 the lobes are the
+        // catalog's widest arcs and carry the Wedge sweeper's 1.35 factor —
+        // the Infinity is the flat-out course, its challenge is rhythm and pit
+        // timing, not braking. Perimeter ≈ 3224.
+        public const float InfinityLobeSpeedFactor = 1.35f;
+
+        public static TrackDefinition Infinity(float cornerSafeSpeed = 190f)
+        {
+            var segments = new List<TrackSegment>(InfinityPoints.Length - 1);
+            int point = 0;
+            foreach (var (count, factor) in InfinityRuns)
+                for (int i = 0; i < count; i++, point++)
+                    segments.Add(factor <= 0f
+                        ? new TrackSegment(InfinityPoints[point], InfinityPoints[point + 1],
+                            TrackSectionKind.Straight, float.PositiveInfinity)
+                        : new TrackSegment(InfinityPoints[point], InfinityPoints[point + 1],
+                            TrackSectionKind.Corner, cornerSafeSpeed * factor));
+            return new TrackDefinition(segments);
+        }
+
+        private static readonly (int Count, float Factor)[] InfinityRuns =
+        {
+            (1, 0f), (19, InfinityLobeSpeedFactor),
+            (1, 0f), (19, InfinityLobeSpeedFactor),
+        };
+
+        // Closed polyline; Sample(0) is the start/finish line where the west
+        // lobe hands the ascending pit diagonal off toward the east lobe. The
+        // return diagonal is driven later in the lap, so it draws on top at
+        // the center crossing — the bridge.
+        private static readonly Vec2[] InfinityPoints =
+        {
+            new Vec2(551.3f, 710.7f), new Vec2(1368.7f, 369.3f), new Vec2(1405.3f, 358.3f), new Vec2(1443.4f, 355.0f),
+            new Vec2(1481.3f, 359.7f), new Vec2(1517.5f, 372.0f), new Vec2(1550.4f, 391.5f), new Vec2(1578.5f, 417.4f),
+            new Vec2(1600.8f, 448.5f), new Vec2(1616.2f, 483.5f), new Vec2(1624.0f, 520.9f), new Vec2(1624.0f, 559.1f),
+            new Vec2(1616.2f, 596.5f), new Vec2(1600.8f, 631.5f), new Vec2(1578.5f, 662.6f), new Vec2(1550.4f, 688.5f),
+            new Vec2(1517.5f, 708.0f), new Vec2(1481.3f, 720.3f), new Vec2(1443.4f, 725.0f), new Vec2(1405.3f, 721.7f),
+            new Vec2(1368.7f, 710.7f), new Vec2(551.3f, 369.3f), new Vec2(514.7f, 358.3f), new Vec2(476.6f, 355.0f),
+            new Vec2(438.7f, 359.7f), new Vec2(402.5f, 372.0f), new Vec2(369.6f, 391.5f), new Vec2(341.5f, 417.4f),
+            new Vec2(319.2f, 448.5f), new Vec2(303.8f, 483.5f), new Vec2(296.0f, 520.9f), new Vec2(296.0f, 559.1f),
+            new Vec2(303.8f, 596.5f), new Vec2(319.2f, 631.5f), new Vec2(341.5f, 662.6f), new Vec2(369.6f, 688.5f),
+            new Vec2(402.5f, 708.0f), new Vec2(438.7f, 720.3f), new Vec2(476.6f, 725.0f), new Vec2(514.7f, 721.7f),
+            new Vec2(551.3f, 710.7f),
+        };
+
+        // Fishhook — the hook-and-paperclip (issue #107 phase 4b, from the
+        // owner's sketch): a long diagonal pit straight climbs into a big open
+        // R185 hook (173.5°, the catalog's fastest sustained arc), the top arm
+        // runs back west, and the left half is a paperclip of three nested
+        // ~180° hairpins — R105 bulge down, R72 clip back (the catalog's
+        // tightest corner), R80 clip out onto the pit straight. Four distinct
+        // rhythm zones per lap: flat-out diagonal, one fast committed arc, two
+        // long transit arms, then rapid-fire switchbacks. Generated from four
+        // tangent circles ((450,685) R80, (1330,490) R185, (470,400) R105,
+        // (930,555) R72 counter-wound); no crossing. Perimeter ≈ 4072 — the
+        // catalog's longest lap.
+        public const float FishhookHookSpeedFactor = 1.35f;
+        public const float FishhookBulgeSpeedFactor = 1.05f;
+        public const float FishhookClipTightSpeedFactor = .7f;
+        public const float FishhookClipWideSpeedFactor = .8f;
+
+        public static TrackDefinition Fishhook(float cornerSafeSpeed = 190f)
+        {
+            var segments = new List<TrackSegment>(FishhookPoints.Length - 1);
+            int point = 0;
+            foreach (var (count, factor) in FishhookRuns)
+                for (int i = 0; i < count; i++, point++)
+                    segments.Add(factor <= 0f
+                        ? new TrackSegment(FishhookPoints[point], FishhookPoints[point + 1],
+                            TrackSectionKind.Straight, float.PositiveInfinity)
+                        : new TrackSegment(FishhookPoints[point], FishhookPoints[point + 1],
+                            TrackSectionKind.Corner, cornerSafeSpeed * factor));
+            return new TrackDefinition(segments);
+        }
+
+        private static readonly (int Count, float Factor)[] FishhookRuns =
+        {
+            (1, 0f), (14, FishhookHookSpeedFactor),
+            (1, 0f), (15, FishhookBulgeSpeedFactor),
+            (1, 0f), (15, FishhookClipTightSpeedFactor),
+            (1, 0f), (16, FishhookClipWideSpeedFactor),
+        };
+
+        // Closed polyline; Sample(0) is the start/finish line at the southwest
+        // end of the pit diagonal, travel climbs northeast into the hook.
+        private static readonly Vec2[] FishhookPoints =
+        {
+            new Vec2(458.1f, 764.6f), new Vec2(1348.7f, 674.1f), new Vec2(1387.8f, 665.7f), new Vec2(1424.2f, 649.2f),
+            new Vec2(1456.1f, 625.3f), new Vec2(1482.3f, 595.1f), new Vec2(1501.3f, 560.0f), new Vec2(1512.3f, 521.6f),
+            new Vec2(1514.8f, 481.7f), new Vec2(1508.7f, 442.2f), new Vec2(1494.3f, 405.0f), new Vec2(1472.2f, 371.7f),
+            new Vec2(1443.5f, 343.9f), new Vec2(1409.5f, 323.0f), new Vec2(1371.8f, 309.8f), new Vec2(1332.1f, 305.0f),
+            new Vec2(471.2f, 295.0f), new Vec2(449.0f, 297.1f), new Vec2(427.6f, 303.9f), new Vec2(408.3f, 315.1f),
+            new Vec2(391.7f, 330.1f), new Vec2(378.6f, 348.3f), new Vec2(369.7f, 368.8f), new Vec2(365.4f, 390.7f),
+            new Vec2(365.8f, 413.1f), new Vec2(371.0f, 434.9f), new Vec2(380.6f, 455.1f), new Vec2(394.3f, 472.7f),
+            new Vec2(411.4f, 487.1f), new Vec2(431.2f, 497.6f), new Vec2(452.7f, 503.6f), new Vec2(475.1f, 504.9f),
+            new Vec2(926.5f, 483.1f), new Vec2(942.0f, 484.0f), new Vec2(956.9f, 488.2f), new Vec2(970.6f, 495.5f),
+            new Vec2(982.4f, 505.6f), new Vec2(991.7f, 518.0f), new Vec2(998.2f, 532.0f), new Vec2(1001.6f, 547.2f),
+            new Vec2(1001.6f, 562.7f), new Vec2(998.3f, 577.8f), new Vec2(991.8f, 591.9f), new Vec2(982.5f, 604.3f),
+            new Vec2(970.7f, 614.4f), new Vec2(957.1f, 621.7f), new Vec2(942.2f, 626.0f), new Vec2(926.7f, 626.9f),
+            new Vec2(453.7f, 605.1f), new Vec2(437.3f, 606.0f), new Vec2(421.4f, 610.3f), new Vec2(406.8f, 617.7f),
+            new Vec2(394.0f, 627.9f), new Vec2(383.5f, 640.6f), new Vec2(375.8f, 655.1f), new Vec2(371.3f, 670.8f),
+            new Vec2(370.0f, 687.2f), new Vec2(372.2f, 703.5f), new Vec2(377.6f, 719.0f), new Vec2(386.0f, 733.0f),
+            new Vec2(397.2f, 745.1f), new Vec2(410.6f, 754.6f), new Vec2(425.6f, 761.2f), new Vec2(441.7f, 764.6f),
+            new Vec2(458.1f, 764.6f),
+        };
     }
 }

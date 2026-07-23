@@ -44,9 +44,9 @@ namespace BoardRacing.Tests
         {
             CourseSelection selection = Racing();
             selection.ObservePhase(RacePhase.Finished);
-            selection.CycleNext(); // two-course catalog: back around to the Wedge
+            selection.CycleNext(); // past the armed Hourglass to the Infinity
             selection.ObservePhase(RacePhase.Finished);
-            Assert.That(selection.Next.Name, Is.EqualTo("Wedge"),
+            Assert.That(selection.Next.Name, Is.EqualTo("Infinity"),
                 "only the transition into Finished may re-arm the default");
         }
 
@@ -55,13 +55,13 @@ namespace BoardRacing.Tests
         {
             CourseSelection selection = Racing();
             selection.ObservePhase(RacePhase.Finished);
-            string[] seen = Enumerable.Range(0, 2).Select(_ =>
+            string[] seen = Enumerable.Range(0, 4).Select(_ =>
             {
                 string name = selection.Next.Name;
                 selection.CycleNext();
                 return name;
             }).ToArray();
-            Assert.That(seen, Is.EqualTo(new[] { "Hourglass", "Wedge" }));
+            Assert.That(seen, Is.EqualTo(new[] { "Hourglass", "Infinity", "Fishhook", "Wedge" }));
             Assert.That(selection.Next.Name, Is.EqualTo("Hourglass"));
         }
 
@@ -74,7 +74,7 @@ namespace BoardRacing.Tests
             Assert.That(selection.Current.Name, Is.EqualTo("Hourglass"));
             selection.ObservePhase(RacePhase.Racing);
             selection.ObservePhase(RacePhase.Finished);
-            Assert.That(selection.Next.Name, Is.EqualTo("Wedge"));
+            Assert.That(selection.Next.Name, Is.EqualTo("Infinity"));
         }
 
         [Test]
