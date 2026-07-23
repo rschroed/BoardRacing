@@ -134,6 +134,20 @@ namespace BoardRacing.Domain
             bool fuelPenalty = FuelPenaltyActive(racer);
             float maximumSpeed = rules.MaxSpeed * (fuelPenalty ? rules.Conditions.EmptyMaximumSpeedScale : 1f);
             float target = maximumSpeed * throttleFraction;
+            // A car with a pit call brakes on the track toward the lane crawl, so
+            // it crosses the line at pit-lane speed instead of stopping dead on it
+            // (issue #110 hardware feel review). The cap follows the drag curve
+            // into the line (v² = crawl² + 2·drag·distance): far out it exceeds
+            // top speed and does nothing; close in it hands the car to the lane at
+            // exactly the crawl the entry leg drives. A final-lap call that will
+            // lose to the finish line (issue #95) must not slow the run-in.
+            if (racer.PitPhase == PitPhase.Requested && rules.Pit.Enabled && WillDivertAtNextLine(racer))
+            {
+                float toLine = ((int)(racer.Distance / track.Length) + 1) * track.Length - racer.Distance;
+                float allowed = (float)Math.Sqrt(
+                    rules.Pit.LaneSpeed * rules.Pit.LaneSpeed + 2f * rules.Drag * toLine);
+                target = Math.Min(target, allowed);
+            }
             float rate;
             if (target > racer.Speed)
                 rate = rules.Acceleration * (racer.Recovery > 0f ? rules.RecoveryAccelerationScale : 1f) *
@@ -237,10 +251,20 @@ namespace BoardRacing.Domain
                 return;
             }
             // The pit lane rejoins the track where it physically ends, not back at
-            // the start/finish line the car entered from.
+            // the start/finish line the car entered from — and the car merges at
+            // the lane crawl and accelerates away: resuming from a dead stop read
+            // as stop-and-go at the rejoin (issue #110 hardware feel review).
+            racer.Speed = rules.Pit.LaneSpeed;
             racer.Distance += rules.Pit.ExitRejoinDistance;
             racer.PriorKind = track.Sample(racer.Distance).Kind;
         }
+
+        // Whether the next start/finish crossing diverts this racer into the pit:
+        // every mid-race line does; the final line only if the racer is not yet
+        // eligible to classify (issue #95 — an eligible finish beats the call).
+        private bool WillDivertAtNextLine(RacerState racer) =>
+            (int)(racer.Distance / track.Length) + 1 < rules.Laps ||
+            racer.CompletedServices < rules.RequiredServiceCount;
 
         private static void FinishRacer(RacerState racer, float distance, float finishTime)
         {
