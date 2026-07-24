@@ -201,9 +201,11 @@ namespace BoardRacing.Runtime
         // exceeds the nose-to-tail spacing, so a padded car can never be
         // drawn across a line it has not truly crossed: within the span the
         // pad is at most distance-to-line × (spacing / span) < distance.
+        // Public: every drawn embellishment near the line owes this fade
+        // (the duel breath of issue #119 stills under it too).
         public const float LineFadeSpan = 150f;
 
-        private static float LineTruthEnvelope(TrackDefinition track, float distance)
+        public static float LineTruthEnvelope(TrackDefinition track, float distance)
         {
             float wrapped = Wrap(distance, track.Length);
             return Clamp01(Math.Min(wrapped, track.Length - wrapped) / LineFadeSpan);

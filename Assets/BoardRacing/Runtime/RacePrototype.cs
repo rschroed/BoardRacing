@@ -44,6 +44,8 @@ namespace BoardRacing.Runtime
         // Along-track pads that re-space close cars through corners (issue
         // #117 round 2), refreshed once per frame before the cars draw.
         private readonly Dictionary<PlayerId, float> drawnPads = new Dictionary<PlayerId, float>();
+        private float duelBreathDistance;
+        private float duelBreathAmplitude;
         private RaceUiModel presentedUi;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
@@ -218,8 +220,13 @@ namespace BoardRacing.Runtime
                     ? CornerCharacter.Attitude(simulation.Track, DrawnDistance(racer), racer.Speed,
                         Deceleration(racer.PlayerId), simulation.Rules.Braking)
                     : CarAttitude.Neutral;
+                // The duel stance (issue #119): the tucked-in car aims its
+                // nose at the rival. +rotation turns the nose toward +normal
+                // in this Y-down convention, so leaning inward is -sign of
+                // the car's own side.
+                float stance = -Mathf.Sign(racer.LateralOffset) * BreathFor(racer).StanceDegrees;
                 surface.SetCarPose(racer.PlayerId, OffsetCenter(racer, center, tangent),
-                    Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg + attitude.DriftDegrees,
+                    Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg + attitude.DriftDegrees + stance,
                     new Vector2(attitude.SquashAlong, attitude.StretchAcross));
             }
         }
@@ -231,12 +238,32 @@ namespace BoardRacing.Runtime
         private void RefreshDrawnPads()
         {
             drawnPads.Clear();
+            duelBreathAmplitude = 0f;
             var racing = presentedRace.Racers.Where(r => OnRacingLine(r) && !r.Finished).ToArray();
             if (racing.Length < 2) return;
             float[] pads = CornerCharacter.CornerSpacingPads(simulation.Track,
                 racing.Select(r => r.TotalDistance).ToArray(), simulation.Rules.PassingDistance);
             for (int i = 0; i < racing.Length; i++) drawnPads[racing[i].PlayerId] = pads[i];
+
+            // The jockeying breath (issue #119) lives where a split is held.
+            // One shared clock for the duel — the pair's mean travel — and an
+            // amplitude that stills around the start/finish line, where
+            // along-track truth is judged, and through corners, which belong
+            // to #117's character.
+            var duel = racing.Where(r => r.LateralOffset != 0f).ToArray();
+            if (duel.Length < 2) return;
+            duelBreathDistance = duel.Average(r => r.TotalDistance);
+            float amplitude = 1f;
+            foreach (var racer in duel)
+                amplitude *= CornerCharacter.LineTruthEnvelope(simulation.Track, racer.TotalDistance) *
+                    (1f - CornerCharacter.CornerBlend(simulation.Track, racer.TotalDistance));
+            duelBreathAmplitude = amplitude;
         }
+
+        private DuelBreath BreathFor(RacerSnapshot racer) =>
+            duelBreathAmplitude > 0f && racer.LateralOffset != 0f && !racer.Finished && OnRacingLine(racer)
+                ? PresentationLife.Breathe(duelBreathDistance, racer.LateralOffset, duelBreathAmplitude)
+                : DuelBreath.Still;
 
         private float DrawnDistance(RacerSnapshot racer) =>
             racer.TotalDistance + (drawnPads.TryGetValue(racer.PlayerId, out float pad) ? pad : 0f);
@@ -271,8 +298,10 @@ namespace BoardRacing.Runtime
             // The split tapers toward a floor through corners (issue #117):
             // drawn at full width, the outside car swept a wider arc at the
             // same angular rate — a phantom speed-up the sim never granted.
+            // On straights the duel breath (issue #119) flares it outward.
             float lateralOffset = OnRacingLine(racer)
-                ? racer.LateralOffset * CornerCharacter.SplitScale(simulation.Track, DrawnDistance(racer))
+                ? racer.LateralOffset * CornerCharacter.SplitScale(simulation.Track, DrawnDistance(racer)) *
+                    BreathFor(racer).FlareScale
                 : 0f;
             return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }
