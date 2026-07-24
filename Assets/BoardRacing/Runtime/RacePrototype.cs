@@ -41,6 +41,9 @@ namespace BoardRacing.Runtime
         // world-space cars and every OnGUI event (IMGUI raises several per
         // frame) read the same blend instead of each rebuilding it.
         private RaceSnapshot presentedRace;
+        // Along-track pads that re-space close cars through corners (issue
+        // #117 round 2), refreshed once per frame before the cars draw.
+        private readonly Dictionary<PlayerId, float> drawnPads = new Dictionary<PlayerId, float>();
         private RaceUiModel presentedUi;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
@@ -205,17 +208,72 @@ namespace BoardRacing.Runtime
 
         private void UpdateWorldCars()
         {
+            RefreshDrawnPads();
             foreach (var racer in presentedRace.Racers)
-                surface.SetCarPose(racer.PlayerId, CarCenter(racer));
+            {
+                CarPose(racer, out Vector2 center, out Vector2 tangent);
+                // Corner character (issue #117) belongs to a car racing the
+                // track; the pit lane and the finished pose stay composed.
+                CarAttitude attitude = OnRacingLine(racer) && !racer.Finished
+                    ? CornerCharacter.Attitude(simulation.Track, DrawnDistance(racer), racer.Speed,
+                        Deceleration(racer.PlayerId), simulation.Rules.Braking)
+                    : CarAttitude.Neutral;
+                surface.SetCarPose(racer.PlayerId, OffsetCenter(racer, center, tangent),
+                    Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg + attitude.DriftDegrees,
+                    new Vector2(attitude.SquashAlong, attitude.StretchAcross));
+            }
         }
+
+        // Close cars re-space into nose-to-tail through corners (issue #117
+        // round 2). Computed for the whole field at once — the chain needs
+        // every close car, not pairs — then consumed by both the world
+        // meshes and the IMGUI overlays riding them.
+        private void RefreshDrawnPads()
+        {
+            drawnPads.Clear();
+            var racing = presentedRace.Racers.Where(r => OnRacingLine(r) && !r.Finished).ToArray();
+            if (racing.Length < 2) return;
+            float[] pads = CornerCharacter.CornerSpacingPads(simulation.Track,
+                racing.Select(r => r.TotalDistance).ToArray(), simulation.Rules.PassingDistance);
+            for (int i = 0; i < racing.Length; i++) drawnPads[racing[i].PlayerId] = pads[i];
+        }
+
+        private float DrawnDistance(RacerSnapshot racer) =>
+            racer.TotalDistance + (drawnPads.TryGetValue(racer.PlayerId, out float pad) ? pad : 0f);
+
+        // The sim's braking answers "how hard CAN a car slow"; the dive reads
+        // how hard this one is slowing, one fixed step against the last.
+        private float Deceleration(PlayerId playerId)
+        {
+            if (previousSnapshot.Racers == null ||
+                previousSnapshot.Phase != simulation.Snapshot.Phase) return 0f;
+            foreach (var before in previousSnapshot.Racers)
+                foreach (var after in simulation.Snapshot.Racers)
+                    if (before.PlayerId == playerId && after.PlayerId == playerId)
+                        return Mathf.Max(0f, (before.Speed - after.Speed) /
+                            Mathf.Max(.001f, raceSettings.fixedStepSeconds));
+            return 0f;
+        }
+
+        private static bool OnRacingLine(RacerSnapshot racer) =>
+            racer.Pit.Phase == PitPhase.OnTrack || racer.Pit.Phase == PitPhase.Requested;
 
         // The drawn car center: the smoothed pose plus the racing-line lateral
         // offset (suppressed once the car is physically in the pit complex).
         private Vector2 CarCenter(RacerSnapshot racer)
         {
             CarPose(racer, out Vector2 center, out Vector2 tangent);
-            float lateralOffset = racer.Pit.Phase == PitPhase.OnTrack || racer.Pit.Phase == PitPhase.Requested
-                ? racer.LateralOffset : 0f;
+            return OffsetCenter(racer, center, tangent);
+        }
+
+        private Vector2 OffsetCenter(RacerSnapshot racer, Vector2 center, Vector2 tangent)
+        {
+            // The split tapers toward a floor through corners (issue #117):
+            // drawn at full width, the outside car swept a wider arc at the
+            // same angular rate — a phantom speed-up the sim never granted.
+            float lateralOffset = OnRacingLine(racer)
+                ? racer.LateralOffset * CornerCharacter.SplitScale(simulation.Track, DrawnDistance(racer))
+                : 0f;
             return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }
 
@@ -418,8 +476,12 @@ namespace BoardRacing.Runtime
 
         private void CarPose(RacerSnapshot racer, out Vector2 position, out Vector2 tangent)
         {
-            CarPresentationPose pose = PitLanePresentationMapper.From(racer, racer.Track.Position,
-                TrackPresentation.SmoothHeading(simulation.Track, racer.TotalDistance), PitLayout());
+            // The drawn distance folds in the corner-formation pad, so the
+            // track sample, heading, and every overlay riding the car agree.
+            float drawnDistance = DrawnDistance(racer);
+            CarPresentationPose pose = PitLanePresentationMapper.From(racer,
+                simulation.Track.Sample(drawnDistance).Position,
+                TrackPresentation.SmoothHeading(simulation.Track, drawnDistance), PitLayout());
             position = new Vector2(pose.Position.X, pose.Position.Y);
             tangent = new Vector2(pose.Tangent.X, pose.Tangent.Y);
         }

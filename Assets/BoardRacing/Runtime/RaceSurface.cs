@@ -445,44 +445,44 @@ namespace BoardRacing.Runtime
             AppendOrientedRect(mesh, center + along * (halfLength - inset), along, inset, halfWidth, color);
         }
 
-        // Car bodies (issue #86 round 2), centered on the origin so the renderer
-        // moves them by transform: the same 54×54 footprint the IMGUI pass drew —
-        // P1 a rounded square (corner radius 8), P2 a disc (the 27 px "radius"
-        // rounded the square into a circle).
+        // Car bodies, centered on the origin so the renderer moves them by
+        // transform, nose along +X. 54 long × 30 wide (issue #117 round 2,
+        // owner direction — narrowed from the square 54×54 IMGUI footprint):
+        // car proportions make the heading rotation and drift angle read, and
+        // a side-by-side pair now fits the 64 px track ribbon. P1 is a
+        // rounded rectangle (corner radius 8); P2 a capsule (the corner
+        // radius grown to the half width).
         public const float CarBodyHalfSize = 27f;
+        public const float CarBodyHalfWidth = 15f;
         public const float CarBodyCornerRadius = 8f;
 
         public static SurfaceMeshData BuildCarBody(PlayerId playerId, Color accent)
         {
             var mesh = new SurfaceMeshData();
-            mesh.AddFan(Vector2.zero, playerId == PlayerId.Player1
-                ? RoundedRectPerimeter(CarBodyHalfSize, CarBodyCornerRadius)
-                : DiscPerimeter(CarBodyHalfSize), accent);
+            mesh.AddFan(Vector2.zero, RoundedPerimeter(CarBodyHalfSize, CarBodyHalfWidth,
+                playerId == PlayerId.Player1 ? CarBodyCornerRadius : CarBodyHalfWidth), accent);
+            // A darker cockpit wedge pointing along +X, the body's nose: now
+            // that the bodies rotate to their heading and drift past it
+            // (issue #117), both silhouettes need a visible front. Inside the
+            // footprint, so nothing else moves.
+            mesh.AddFan(new Vector2(11f, 0f), new List<Vector2>
+            {
+                new Vector2(23f, 0f), new Vector2(5f, -9f), new Vector2(5f, 9f)
+            }, Color.Lerp(accent, Color.black, .45f));
             return mesh;
         }
 
-        private static List<Vector2> DiscPerimeter(float radius, int segments = 48)
+        private static List<Vector2> RoundedPerimeter(float halfLength, float halfWidth,
+            float cornerRadius, int segmentsPerCorner = 6)
         {
-            var points = new List<Vector2>(segments);
-            for (int i = 0; i < segments; i++)
-            {
-                float angle = i * 2f * Mathf.PI / segments;
-                points.Add(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius);
-            }
-            return points;
-        }
-
-        private static List<Vector2> RoundedRectPerimeter(float halfSize, float cornerRadius,
-            int segmentsPerCorner = 6)
-        {
-            float inset = halfSize - cornerRadius;
+            float insetX = halfLength - cornerRadius, insetY = halfWidth - cornerRadius;
             var points = new List<Vector2>(4 * (segmentsPerCorner + 1));
             for (int corner = 0; corner < 4; corner++)
             {
                 float baseAngle = corner * 90f;
                 var center = new Vector2(
-                    Mathf.Sign(Mathf.Cos((baseAngle + 45f) * Mathf.Deg2Rad)) * inset,
-                    Mathf.Sign(Mathf.Sin((baseAngle + 45f) * Mathf.Deg2Rad)) * inset);
+                    Mathf.Sign(Mathf.Cos((baseAngle + 45f) * Mathf.Deg2Rad)) * insetX,
+                    Mathf.Sign(Mathf.Sin((baseAngle + 45f) * Mathf.Deg2Rad)) * insetY);
                 for (int step = 0; step <= segmentsPerCorner; step++)
                 {
                     float angle = (baseAngle + 90f * step / segmentsPerCorner) * Mathf.Deg2Rad;
@@ -560,11 +560,18 @@ namespace BoardRacing.Runtime
             cars[playerId] = CreateMeshObject("Race Car " + playerId, body);
 
         // Reference-pixel position (Y down), straight onto the transform — world
-        // space is reference space by the camera's projection.
-        public void SetCarPose(PlayerId playerId, Vector2 referencePosition)
+        // space is reference space by the camera's projection. Rotation turns
+        // the body's nose (+X in the mesh) onto the heading: a rotation by the
+        // heading's own atan2 angle maps local (1,0) to the heading vector in
+        // reference coordinates, so the Y flip needs no special casing. Scale
+        // is (along heading, across it) — the brake-dive squash (issue #117).
+        public void SetCarPose(PlayerId playerId, Vector2 referencePosition,
+            float rotationDegrees, Vector2 scale)
         {
-            if (cars.TryGetValue(playerId, out Transform car))
-                car.localPosition = new Vector3(referencePosition.x, referencePosition.y, CarDepth);
+            if (!cars.TryGetValue(playerId, out Transform car)) return;
+            car.localPosition = new Vector3(referencePosition.x, referencePosition.y, CarDepth);
+            car.localRotation = Quaternion.Euler(0f, 0f, rotationDegrees);
+            car.localScale = new Vector3(scale.x, scale.y, 1f);
         }
 
         private Transform CreateMeshObject(string objectName, SurfaceMeshData data)
