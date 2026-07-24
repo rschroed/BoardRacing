@@ -109,6 +109,10 @@ namespace BoardRacing.Tests
             var defaults = RaceRules.TrancheThreeDefaults;
             // 6 laps mirrors the live Wedge race (TrancheTwoSettings, issue #88);
             // the tranche-3 default of 5 belonged to the placeholder's longer lap.
+            // Deliberately NO slipstream (issue #118): these duels measure pit
+            // and condition economics in isolation — a tow between the paired
+            // cars would launder strategy value through racing luck. The tow's
+            // own behavior is pinned in SlipstreamTests.
             return new RaceRules(6, 0f, defaults.MaxSpeed, defaults.Acceleration, defaults.Drag,
                 defaults.Braking, defaults.CornerSpeedScrub, defaults.CornerRecoverySeconds,
                 defaults.RecoveryAccelerationScale, defaults.PassingDistance, defaults.PassingOffset,

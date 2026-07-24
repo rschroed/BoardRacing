@@ -24,6 +24,8 @@ MonoBehaviour:
   cornerRecoverySeconds: 1
   recoveryAccelerationScale: 0.35
   passingDistance: 180
-  passingOffset: 38
+  passingOffset: 16
   rematchHoldSeconds: 1
   pauseClearSeconds: 0.75
+  slipstreamBonusRatio: 0.05
+  slipstreamWindow: 150

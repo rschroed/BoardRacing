@@ -35,10 +35,19 @@ namespace BoardRacing.Runtime
         public float cornerRecoverySeconds = 1f;
         [Range(.1f, 1f)] public float recoveryAccelerationScale = .35f;
         // Reference px tied to car size and track width, which don't move with
-        // the speed dial.
+        // the speed dial. The ±16 split leaves the 54×30 bodies (issue #117
+        // round 2) a 2 px seam of daylight, racing close, fully on the 64 px
+        // ribbon (owner-tightened on hardware review 2026-07-23).
         public float passingDistance = 180f;
-        public float passingOffset = 38f;
+        public float passingOffset = 16f;
         public float rematchHoldSeconds = 1f;
+
+        [Header("Slipstream (issue #118)")]
+        // The tow a close-trailing car gains on a straight, as a ratio of the
+        // pace dial; the window is geometry (like the passing distance) and
+        // reaches beyond the split so the reel-in starts before two-wide.
+        [Range(0f, .5f)] public float slipstreamBonusRatio = Pace.SlipstreamBonusRatio;
+        [Min(0f)] public float slipstreamWindow = RaceRules.DefaultSlipstreamWindow;
         // Every unfinished racer's Ship off the table for this long pauses the race
         // (issue #90). Just enough debounce that hands passing over the sensors don't
         // trigger it — 2 s read as lag on hardware, so the overlay must come up fast.
@@ -53,7 +62,7 @@ namespace BoardRacing.Runtime
             basePace * accelerationRatio, basePace * dragRatio, basePace * brakingRatio,
             cornerSpeedScrub, cornerRecoverySeconds, recoveryAccelerationScale,
             passingDistance, passingOffset, rematchHoldSeconds, requiredServiceCount, conditions, pit,
-            pauseClearSeconds);
+            pauseClearSeconds, basePace * slipstreamBonusRatio, slipstreamWindow);
 
         public static TrancheTwoSettings Defaults() => CreateInstance<TrancheTwoSettings>();
     }
