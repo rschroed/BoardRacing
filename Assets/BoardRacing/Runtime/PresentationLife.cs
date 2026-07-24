@@ -37,12 +37,14 @@ namespace BoardRacing.Runtime
         // The ribbon fixes the lateral budget: a flared car must still fit,
         // splitOffset × (1 + ratio) + bodyHalfWidth ≤ trackHalfWidth (+1px
         // grace, the same tolerance the geometry pin allows the base split) —
-        // 16 × 1.125 + 15 = 33. Two px of travel per car turns the 2px of
-        // tucked daylight into 6px at full flare: the gap visibly pulses.
-        public const float FlareRatio = .125f;
+        // 16 × 1.25 + 13 = 33 with the 26-wide bodies (owner direction
+        // 2026-07-23; the 30-wide bodies capped this at .125). Four px of
+        // travel per car pulses the 6px of tucked daylight to 14px at full
+        // flare: the gap visibly breathes.
+        public const float FlareRatio = .25f;
         // The lean toward the rival while tucked in. Rotation spends the
         // same budget through the body's half-length: tucked, 16 + 27·sin4°
-        // + 15·cos4° ≈ 32.9 ≤ 33, and the lean gives way to the flare as
+        // + 13·cos4° ≈ 30.9 ≤ 33, and the lean gives way to the flare as
         // press rises, so every mid-breath pose fits too.
         public const float MaxStanceDegrees = 4f;
 
