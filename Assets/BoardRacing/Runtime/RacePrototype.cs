@@ -42,8 +42,22 @@ namespace BoardRacing.Runtime
         // frame) read the same blend instead of each rebuilding it.
         private RaceSnapshot presentedRace;
         // Along-track pads that re-space close cars through corners (issue
-        // #117 round 2), refreshed once per frame before the cars draw.
+        // #117 round 2), refreshed once per frame before the cars draw. Not
+        // the raw chain targets: each pad SLIDES toward its target at
+        // PresentationLife.PadSlideRate, so an overtake exchanging the
+        // chain's spatial order flows through instead of teleporting, then
+        // is hard-clamped inside the line-truth bound (a padded car is never
+        // drawn across a line it has not truly crossed, even mid-slide).
         private readonly Dictionary<PlayerId, float> drawnPads = new Dictionary<PlayerId, float>();
+        // How far each drawn body is into an along-track exchange with its
+        // nearest rival: opens the split so a pass swings around the rival's
+        // body rather than sliding through it.
+        private readonly Dictionary<PlayerId, float> passClearance = new Dictionary<PlayerId, float>();
+        // How assembled each car's drawn passing split is (issue #119 round
+        // 3): fades in across the last EngageSpan of closing so the sim
+        // granting/revoking the offset at PassingDistance never teleports a
+        // body sideways.
+        private readonly Dictionary<PlayerId, float> duelEngagement = new Dictionary<PlayerId, float>();
         private float duelBreathDistance;
         private float duelBreathAmplitude;
         private RaceUiModel presentedUi;
@@ -239,13 +253,42 @@ namespace BoardRacing.Runtime
         // meshes and the IMGUI overlays riding them.
         private void RefreshDrawnPads()
         {
-            drawnPads.Clear();
+            duelEngagement.Clear();
+            passClearance.Clear();
             duelBreathAmplitude = 0f;
             var racing = presentedRace.Racers.Where(r => OnRacingLine(r) && !r.Finished).ToArray();
-            if (racing.Length < 2) return;
-            float[] pads = CornerCharacter.CornerSpacingPads(simulation.Track,
+            if (racing.Length < 2 || presentedRace.Phase != RacePhase.Racing)
+            {
+                // A rematch resets every distance; sliding a pad across that
+                // boundary would sweep a car through the whole course.
+                drawnPads.Clear();
+                return;
+            }
+            float[] targets = CornerCharacter.CornerSpacingPads(simulation.Track,
                 racing.Select(r => r.TotalDistance).ToArray(), simulation.Rules.PassingDistance);
-            for (int i = 0; i < racing.Length; i++) drawnPads[racing[i].PlayerId] = pads[i];
+            for (int i = 0; i < racing.Length; i++)
+            {
+                float pad = drawnPads.TryGetValue(racing[i].PlayerId, out float previous)
+                    ? Mathf.MoveTowards(previous, targets[i],
+                        PresentationLife.PadSlideRate * Time.deltaTime)
+                    : targets[i];
+                // The line-truth bound the chain builds into its targets
+                // (CornerCharacter.LineFadeSpan), re-imposed on the slid pad.
+                float wrapped = Mathf.Repeat(racing[i].TotalDistance, simulation.Track.Length);
+                float bound = Mathf.Min(wrapped, simulation.Track.Length - wrapped) *
+                    (CornerCharacter.NoseToTailSpacing / CornerCharacter.LineFadeSpan);
+                drawnPads[racing[i].PlayerId] = Mathf.Clamp(pad, -bound, bound);
+            }
+            foreach (var racer in racing)
+            {
+                duelEngagement[racer.PlayerId] = PresentationLife.DuelEngagement(
+                    racing.Where(other => other.PlayerId != racer.PlayerId)
+                        .Min(other => CircularGap(racer.TotalDistance, other.TotalDistance)),
+                    simulation.Rules.PassingDistance);
+                passClearance[racer.PlayerId] = PresentationLife.PassClearance(
+                    racing.Where(other => other.PlayerId != racer.PlayerId)
+                        .Min(other => CircularGap(DrawnDistance(racer), DrawnDistance(other))));
+            }
 
             // The jockeying breath (issue #119) lives where a split is held.
             // One shared clock for the duel — the pair's mean travel — and an
@@ -258,8 +301,19 @@ namespace BoardRacing.Runtime
             float amplitude = 1f;
             foreach (var racer in duel)
                 amplitude *= CornerCharacter.LineTruthEnvelope(simulation.Track, racer.TotalDistance) *
-                    (1f - CornerCharacter.FormationBlend(simulation.Track, racer.TotalDistance));
+                    (1f - CornerCharacter.FormationBlend(simulation.Track, racer.TotalDistance)) *
+                    EngagementFor(racer);
             duelBreathAmplitude = amplitude;
+        }
+
+        private float EngagementFor(RacerSnapshot racer) =>
+            duelEngagement.TryGetValue(racer.PlayerId, out float engagement) ? engagement : 1f;
+
+        private float CircularGap(float a, float b)
+        {
+            float length = simulation.Track.Length;
+            float wrapped = Mathf.Repeat(a - b, length);
+            return Mathf.Min(wrapped, length - wrapped);
         }
 
         private DuelBreath BreathFor(RacerSnapshot racer) =>
@@ -312,9 +366,15 @@ namespace BoardRacing.Runtime
             // drawn at full width, the outside car swept a wider arc at the
             // same angular rate — a phantom speed-up the sim never granted.
             // On straights the duel breath (issue #119) flares it outward.
+            // Mid-exchange the pass clearance outranks the corner taper: the
+            // passing body swings around its rival at full width even in a
+            // corner — brief, real relative motion — rather than ghosting
+            // through the file.
             float lateralOffset = OnRacingLine(racer)
-                ? racer.LateralOffset * CornerCharacter.SplitScale(simulation.Track, DrawnDistance(racer)) *
-                    BreathFor(racer).FlareScale
+                ? racer.LateralOffset *
+                    Mathf.Max(CornerCharacter.SplitScale(simulation.Track, DrawnDistance(racer)),
+                        passClearance.TryGetValue(racer.PlayerId, out float clearance) ? clearance : 0f) *
+                    BreathFor(racer).FlareScale * EngagementFor(racer)
                 : 0f;
             return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }
