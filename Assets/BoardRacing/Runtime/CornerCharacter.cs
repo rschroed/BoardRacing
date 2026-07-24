@@ -86,12 +86,62 @@ namespace BoardRacing.Runtime
         public static float CornerBlend(TrackDefinition track, float distance) =>
             Clamp01(Math.Abs(SignedCurvature(track, distance)) * BlendRadius);
 
+        // The formation channel — split taper, nose-to-tail pads, and the
+        // duel breath's calm-down — senses corners over a much longer window
+        // than the pose channel. Re-spacing a dead-heat pair invents up to
+        // ±NoseToTailSpacing/2 of drawn travel per car, and doing that
+        // inside the 40px curvature ease made entry/exit a lurch: hardware
+        // capture 2026-07-23 showed side-by-side to a full car-length
+        // stagger in ~200ms, the drawn leader momentarily reading ~75% over
+        // its true speed (owner: the jockeying in and out of corners is
+        // jarring). Gliding the morph over this window keeps every drawn
+        // speed within ~25% of truth at the ramp's steepest instant
+        // (TheFormationGlideKeepsDrawnSpeedsHonest pins it) while the cars
+        // visibly fall into line across the whole approach. Drift, counter-
+        // steer, and dive stay on the tight curvature window: pose belongs
+        // to the corner itself.
+        public const float FormationHalfSpan = 150f;
+
+        // The fraction of the ±FormationHalfSpan window that lies in corner
+        // sections, smoothstepped. NOT the curvature blend: curvature
+        // saturates within ~¾R px of a corner mouth, so tight corners would
+        // still snap (an R72 hairpin in ~54px); section overlap ramps
+        // linearly with distance for every radius. Bonus: on a straight
+        // shorter than the window between two corners, the formation never
+        // fully releases — the pair stays loosely in file through the kink
+        // instead of frantically reopening for a blink (the capture's
+        // open-close-open jar on the Wedge's short left side).
+        public static float FormationBlend(TrackDefinition track, float distance)
+        {
+            var segments = track.Segments;
+            float span = FormationHalfSpan * 2f;
+            float position = Wrap(distance - FormationHalfSpan, track.Length);
+            int index = track.Sample(position).SectionIndex;
+            float segmentStart = 0f;
+            for (int i = 0; i < index; i++) segmentStart += segments[i].Length;
+            float into = position - segmentStart;
+            float remaining = span, corner = 0f;
+            while (remaining > 0f)
+            {
+                TrackSegment segment = segments[index];
+                float take = Math.Min(remaining, segment.Length - into);
+                if (segment.Kind == TrackSectionKind.Corner) corner += take;
+                remaining -= take;
+                into = 0f;
+                index = (index + 1) % segments.Count;
+            }
+            float raw = corner / span;
+            return raw * raw * (3f - 2f * raw);
+        }
+
         // How much of the sim's passing split to draw here. The split exists
         // to keep close cars from overlapping; corners run single-file, and
         // drawing the full split swept the outside car visibly faster than
-        // its sim speed (issue #110's corner artifact).
+        // its sim speed (issue #110's corner artifact). Rides the formation
+        // glide: the pair eases toward the racing line across the whole
+        // approach — on a straight, converging costs no drawn speed at all.
         public static float SplitScale(TrackDefinition track, float distance) =>
-            1f - (1f - SplitFloor) * CornerBlend(track, distance);
+            1f - (1f - SplitFloor) * FormationBlend(track, distance);
 
         public static float DriftDegrees(TrackDefinition track, float distance, float speed)
         {
@@ -186,7 +236,7 @@ namespace BoardRacing.Runtime
             {
                 float gap = positions[i] - positions[i - 1];
                 float middle = (positions[i] + positions[i - 1]) * .5f;
-                float blend = CornerBlend(track, middle) * LineTruthEnvelope(track, middle);
+                float blend = FormationBlend(track, middle) * LineTruthEnvelope(track, middle);
                 drawn[i] = drawn[i - 1] + gap + (Math.Max(NoseToTailSpacing, gap) - gap) * blend;
             }
             float shift = (positions.Sum() - drawn.Sum()) / indices.Count;

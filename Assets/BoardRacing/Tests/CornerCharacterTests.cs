@@ -38,22 +38,51 @@ namespace BoardRacing.Tests
         [Test]
         public void SplitScaleEasesAcrossTheCornerBoundary()
         {
+            // The formation glide (owner feel review 2026-07-23): the split
+            // converges across the whole ±FormationHalfSpan approach — full
+            // width only with the window clear of corners, well toward the
+            // floor deep inside — and every step of the sweep moves it only
+            // a little, never a snap. Sampled at the corner that ends the
+            // longest straight, the one entry guaranteed a clear approach.
             TrackDefinition track = CourseCatalog.Wedge().Track;
-            float boundary = LongestRun(track, TrackSectionKind.Corner).Start;
+            SectionRun straight = LongestRun(track, TrackSectionKind.Straight);
+            float boundary = straight.Start + straight.Length;
+            float approach = CornerCharacter.FormationHalfSpan + 40f;
             float previous = float.MaxValue;
-            for (float d = boundary - 60f; d <= boundary + 60f; d += 4f)
+            for (float d = boundary - approach; d <= boundary + 90f; d += 4f)
             {
                 float scale = CornerCharacter.SplitScale(track, d);
-                // No snap: the window makes the transition a ramp, never a step.
                 Assert.That(Math.Abs(previous == float.MaxValue ? 0f : previous - scale),
-                    Is.LessThan(.15f), "step at " + d);
+                    Is.LessThan(.05f), "step at " + d);
                 Assert.That(scale, Is.LessThanOrEqualTo(
                     (previous == float.MaxValue ? 1f : previous) + .01f), "rises into the corner at " + d);
                 previous = scale;
             }
-            Assert.That(CornerCharacter.SplitScale(track, boundary - 60f), Is.GreaterThan(.95f));
-            Assert.That(CornerCharacter.SplitScale(track, boundary + 60f),
-                Is.LessThan(CornerCharacter.SplitFloor + .1f));
+            Assert.That(CornerCharacter.SplitScale(track, boundary - approach), Is.GreaterThan(.95f));
+            Assert.That(CornerCharacter.SplitScale(track, boundary + 90f), Is.LessThan(.45f));
+        }
+
+        [Test]
+        public void TheFormationGlideKeepsDrawnSpeedsHonest()
+        {
+            // How fast the formation's invention develops IS a drawn speed
+            // error: a dead-heat pair's pads move at NoseToTailSpacing/2 ×
+            // blend slope on top of true motion. The old curvature window
+            // let that spike to ~75% of true speed at a hairpin mouth (the
+            // 2026-07-23 capture's lurch: side-by-side to a car-length
+            // stagger in ~200ms); the glide keeps the worst instant on
+            // every catalog course under a quarter of true speed.
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                TrackDefinition track = course.Track;
+                for (float d = 0f; d < track.Length; d += 5f)
+                {
+                    float slope = Math.Abs(CornerCharacter.FormationBlend(track, d + 2f) -
+                        CornerCharacter.FormationBlend(track, d - 2f)) / 4f;
+                    Assert.That(slope * CornerCharacter.NoseToTailSpacing * .5f, Is.LessThan(.25f),
+                        course.Name + " at " + d);
+                }
+            }
         }
 
         [Test]
