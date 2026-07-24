@@ -258,7 +258,7 @@ namespace BoardRacing.Runtime
             float amplitude = 1f;
             foreach (var racer in duel)
                 amplitude *= CornerCharacter.LineTruthEnvelope(simulation.Track, racer.TotalDistance) *
-                    (1f - CornerCharacter.CornerBlend(simulation.Track, racer.TotalDistance));
+                    (1f - CornerCharacter.FormationBlend(simulation.Track, racer.TotalDistance));
             duelBreathAmplitude = amplitude;
         }
 
