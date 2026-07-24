@@ -26,6 +26,12 @@ namespace BoardRacing.Domain
         // eases, which peak at 4/3 of the crawl mid-leg, stay under the
         // corner-speed baseline. Owner-approved on hardware 2026-07-23.
         public const float PitLaneSpeedRatio = .3f;
+        // The slipstream tow (issue #118): the speed a close-trailing car
+        // gains on a straight, additive over its throttle target — the only
+        // way past a leader running the same throttle. 8% of base pace
+        // closes ~70 px over a 900 px pit straight: a visible reel-in per
+        // straight, not an instant pass.
+        public const float SlipstreamBonusRatio = .08f;
 
         // The tuned absolutes at the reference dial position — for domain
         // defaults and test fixtures, so they follow a ratio retune.
@@ -34,5 +40,6 @@ namespace BoardRacing.Domain
         public const float Braking = BasePace * BrakingRatio;
         public const float CornerSafeSpeed = BasePace * CornerSafeSpeedRatio;
         public const float PitLaneSpeed = BasePace * PitLaneSpeedRatio;
+        public const float SlipstreamBonus = BasePace * SlipstreamBonusRatio;
     }
 }

@@ -22,6 +22,7 @@ namespace BoardRacing.Domain
         private readonly TrackDefinition track;
         private readonly RaceRules rules;
         private readonly RacerState[] racers;
+        private readonly float[] stepStartDistances;
         private RacePhase phase = RacePhase.Grid;
         private float countdown, elapsed, rematchHeld, pauseHeld;
         private bool awaitingRematchRelease, resumingFromPause;
@@ -36,6 +37,7 @@ namespace BoardRacing.Domain
                 new RacerState { Id = PlayerId.Player1, PriorKind = track.Sample(0f).Kind },
                 new RacerState { Id = PlayerId.Player2, PriorKind = track.Sample(0f).Kind }
             };
+            stepStartDistances = new float[racers.Length];
             snapshot = BuildSnapshot();
         }
 
@@ -82,6 +84,13 @@ namespace BoardRacing.Domain
                 }
                 else
                 {
+                    // The slipstream gap check reads every car's PRE-step
+                    // distance: racers advance in sequence, and the live
+                    // distances would show the second car a phantom half-step
+                    // gap behind the first — two dead-heat cars would tow
+                    // each other out of nothing.
+                    for (int i = 0; i < racers.Length; i++)
+                        stepStartDistances[i] = racers[i].Distance;
                     foreach (var racer in racers)
                     {
                         var command = Command(racer.Id);
@@ -134,6 +143,11 @@ namespace BoardRacing.Domain
             bool fuelPenalty = FuelPenaltyActive(racer);
             float maximumSpeed = rules.MaxSpeed * (fuelPenalty ? rules.Conditions.EmptyMaximumSpeedScale : 1f);
             float target = maximumSpeed * throttleFraction;
+            // The slipstream tow (issue #118) rides on top of the throttle
+            // target — additive, because matching the leader's throttle must
+            // still close the gap or no pass ever happens; a braking car is
+            // not dragged forward.
+            if (throttleFraction > 0f) target += SlipstreamBonus(racer);
             // A car with a pit call brakes on the track toward the lane crawl, so
             // it crosses the line at pit-lane speed instead of stopping dead on it
             // (issue #110 hardware feel review). The cap follows the drag curve
@@ -257,6 +271,63 @@ namespace BoardRacing.Domain
             racer.Speed = rules.Pit.LaneSpeed;
             racer.Distance += rules.Pit.ExitRejoinDistance;
             racer.PriorKind = track.Sample(racer.Distance).Kind;
+        }
+
+        // The slipstream tow (issue #118): any car ahead within the window —
+        // by SPATIAL gap, so a leader being lapped still gives a tow — grants
+        // it, provided the trailing car is on a straight with room left in it
+        // and the leader is physically on the racing line. Gaps compare the
+        // cars' PRE-step distances (stepStartDistances) so the in-step update
+        // order cannot manufacture a phantom gap between dead-heat cars.
+        // Checks every other racer, not "the" opponent, so four cars chain
+        // tows the day #124 lands.
+        private float SlipstreamBonus(RacerState racer)
+        {
+            if (rules.SlipstreamBonus <= 0f || rules.SlipstreamWindow <= 0f) return 0f;
+            int self = Array.IndexOf(racers, racer);
+            float distance = stepStartDistances[self];
+            if (track.Sample(distance).Kind != TrackSectionKind.Straight) return 0f;
+            // The tow releases on the corner approach: with the bonus gone,
+            // drag hands the car back its own throttle speed by the entry, so
+            // carrying overspeed into a corner stays a THROTTLE choice — the
+            // tow never converts into an incident the player didn't ask for.
+            float release = (rules.MaxSpeed + rules.SlipstreamBonus * .5f) *
+                rules.SlipstreamBonus / rules.Drag;
+            if (DistanceToNextCorner(distance) <= release) return 0f;
+            for (int i = 0; i < racers.Length; i++)
+            {
+                var other = racers[i];
+                if (i == self || other.Finished) continue;
+                if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
+                float gap = (stepStartDistances[i] - distance) % track.Length;
+                if (gap < 0f) gap += track.Length;
+                if (gap > 0f && gap <= rules.SlipstreamWindow) return rules.SlipstreamBonus;
+            }
+            return 0f;
+        }
+
+        private float DistanceToNextCorner(float distance)
+        {
+            var sample = track.Sample(distance);
+            float wrapped = ((distance % track.Length) + track.Length) % track.Length;
+            float toSectionEnd = 0f;
+            for (int step = 0; step < track.Segments.Count; step++)
+            {
+                int index = (sample.SectionIndex + step) % track.Segments.Count;
+                var segment = track.Segments[index];
+                if (segment.Kind == TrackSectionKind.Corner) return toSectionEnd;
+                float start = SegmentStart(index);
+                float end = start + segment.Length;
+                toSectionEnd = step == 0 ? end - wrapped : toSectionEnd + segment.Length;
+            }
+            return float.MaxValue;
+        }
+
+        private float SegmentStart(int index)
+        {
+            float start = 0f;
+            for (int i = 0; i < index; i++) start += track.Segments[i].Length;
+            return start;
         }
 
         // Whether the next start/finish crossing diverts this racer into the pit:

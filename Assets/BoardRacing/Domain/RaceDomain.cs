@@ -100,11 +100,12 @@ namespace BoardRacing.Domain
         public RaceRules(int laps, float countdownSeconds, float maxSpeed, float acceleration, float drag,
             float braking, float cornerSpeedScrub, float cornerRecoverySeconds, float recoveryAccelerationScale,
             float passingDistance, float passingOffset, float rematchHoldSeconds, int requiredServiceCount = 0,
-            ConditionRules conditionRules = default, PitRules pitRules = default, float pauseClearSeconds = 2f)
+            ConditionRules conditionRules = default, PitRules pitRules = default, float pauseClearSeconds = 2f,
+            float slipstreamBonus = 0f, float slipstreamWindow = 0f)
         {
             var scalarValues = new[] { countdownSeconds, maxSpeed, acceleration, drag, braking, cornerSpeedScrub,
                 cornerRecoverySeconds, recoveryAccelerationScale, passingDistance, passingOffset, rematchHoldSeconds,
-                pauseClearSeconds };
+                pauseClearSeconds, slipstreamBonus, slipstreamWindow };
             if (scalarValues.Any(x => float.IsNaN(x) || float.IsInfinity(x)))
                 throw new ArgumentException("Race rules must contain finite values.");
             if (laps < 1 || countdownSeconds < 0f || maxSpeed <= 0f || acceleration <= 0f || drag <= 0f || braking <= 0f)
@@ -112,7 +113,7 @@ namespace BoardRacing.Domain
             if (cornerSpeedScrub <= 0f || cornerSpeedScrub > 1f || cornerRecoverySeconds < 0f ||
                 recoveryAccelerationScale <= 0f || recoveryAccelerationScale > 1f || passingDistance < 0f ||
                 passingOffset < 0f || rematchHoldSeconds <= 0f || requiredServiceCount < 0 ||
-                pauseClearSeconds <= 0f)
+                pauseClearSeconds <= 0f || slipstreamBonus < 0f || slipstreamWindow < 0f)
                 throw new ArgumentException("Race rules contain invalid strategy or presentation values.");
             if (requiredServiceCount > 0 && !pitRules.Enabled)
                 throw new ArgumentException("A required service count needs an enabled pit lifecycle.");
@@ -122,6 +123,7 @@ namespace BoardRacing.Domain
             PassingDistance = passingDistance; PassingOffset = passingOffset; RematchHoldSeconds = rematchHoldSeconds;
             RequiredServiceCount = requiredServiceCount; Conditions = conditionRules; Pit = pitRules;
             PauseClearSeconds = pauseClearSeconds;
+            SlipstreamBonus = slipstreamBonus; SlipstreamWindow = slipstreamWindow;
         }
         public int Laps { get; }
         public float CountdownSeconds { get; }
@@ -142,6 +144,12 @@ namespace BoardRacing.Domain
         // before the race pauses — long enough that hands sweeping over the sensors
         // never read as a deliberate table clear.
         public float PauseClearSeconds { get; }
+        // The slipstream tow (issue #118): trailing within the window of any
+        // car ahead on a straight adds this to the throttle target — REAL
+        // jockeying, self-balancing because the passer becomes the passee.
+        // Zero disables the mechanic (the pre-#118 sim).
+        public float SlipstreamBonus { get; }
+        public float SlipstreamWindow { get; }
         // Speeds derive from the pace scalar (issue #116) so the defaults —
         // and every balance test built on them — follow a pace retune.
         // The 16 px passing offset pairs with the 54×30 car bodies (issue
@@ -149,11 +157,17 @@ namespace BoardRacing.Domain
         // close): ±16 leaves 30-wide bodies a 2 px seam of daylight and a
         // side-by-side pair stays on the 64 px track ribbon — the old ±38
         // hung both cars off the pavement.
+        // The slipstream window is geometry (like the passing distance), not
+        // pace: it reaches beyond the passing split so the reel-in starts
+        // before the cars go two-wide.
+        public const float DefaultSlipstreamWindow = 150f;
         public static RaceRules Defaults => new RaceRules(5, 3f, Pace.BasePace, Pace.Acceleration,
-            Pace.Drag, Pace.Braking, .55f, 1f, .35f, 180f, 16f, 1f);
+            Pace.Drag, Pace.Braking, .55f, 1f, .35f, 180f, 16f, 1f,
+            slipstreamBonus: Pace.SlipstreamBonus, slipstreamWindow: DefaultSlipstreamWindow);
         public static RaceRules TrancheThreeDefaults =>
             new RaceRules(5, 3f, Pace.BasePace, Pace.Acceleration, Pace.Drag, Pace.Braking,
-                .55f, 1f, .35f, 180f, 16f, 1f, 1, ConditionRules.Defaults, PitRules.Defaults);
+                .55f, 1f, .35f, 180f, 16f, 1f, 1, ConditionRules.Defaults, PitRules.Defaults,
+                slipstreamBonus: Pace.SlipstreamBonus, slipstreamWindow: DefaultSlipstreamWindow);
     }
 
     public readonly struct ConditionRules
