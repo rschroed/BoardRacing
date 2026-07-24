@@ -86,6 +86,31 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void TheFormationRestsOnlyOnStraightsLongEnoughToRaceAcross()
+        {
+            // The formation corridor (Fishhook jitter, 2026-07-23): fully
+            // releasing and re-forming costs a FormationHalfSpan·2 ramp each
+            // way, so a straight shorter than the rest span buys a blink of
+            // side-by-side at most — on Fishhook's paperclip the pair churned
+            // open-closed-open twice back to back, every lap. Short straights
+            // stay part of one corner complex (the file HOLDS through them);
+            // straights long enough to race across still rest completely.
+            foreach (CourseDefinition course in CourseCatalog.All())
+                foreach (SectionRun straight in Runs(course.Track)
+                    .Where(run => run.Kind == TrackSectionKind.Straight))
+                {
+                    if (straight.Length < CornerCharacter.FormationRestSpan)
+                        for (float d = straight.Start; d <= straight.Start + straight.Length; d += 10f)
+                            Assert.That(CornerCharacter.FormationBlend(course.Track, d),
+                                Is.GreaterThan(.8f), course.Name + " holds file at " + d);
+                    else
+                        Assert.That(CornerCharacter.FormationBlend(course.Track,
+                                straight.Start + straight.Length * .5f),
+                            Is.LessThan(.01f), course.Name + " rests at " + straight.Start);
+                }
+        }
+
+        [Test]
         public void TaperCapsTheOutsideCarsPhantomCornerSpeed()
         {
             float offset = RaceRules.Defaults.PassingOffset;
