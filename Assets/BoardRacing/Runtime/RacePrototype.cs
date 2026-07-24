@@ -223,10 +223,12 @@ namespace BoardRacing.Runtime
                 // The duel stance (issue #119): the tucked-in car aims its
                 // nose at the rival. +rotation turns the nose toward +normal
                 // in this Y-down convention, so leaning inward is -sign of
-                // the car's own side.
+                // the car's own side. The launch twitch adds its wheelspin
+                // shimmy through the same channel for the first second.
                 float stance = -Mathf.Sign(racer.LateralOffset) * BreathFor(racer).StanceDegrees;
                 surface.SetCarPose(racer.PlayerId, OffsetCenter(racer, center, tangent),
-                    Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg + attitude.DriftDegrees + stance,
+                    Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg + attitude.DriftDegrees + stance +
+                    LaunchTwitchFor(racer).YawDegrees,
                     new Vector2(attitude.SquashAlong, attitude.StretchAcross));
             }
         }
@@ -266,7 +268,18 @@ namespace BoardRacing.Runtime
                 : DuelBreath.Still;
 
         private float DrawnDistance(RacerSnapshot racer) =>
-            racer.TotalDistance + (drawnPads.TryGetValue(racer.PlayerId, out float pad) ? pad : 0f);
+            racer.TotalDistance + (drawnPads.TryGetValue(racer.PlayerId, out float pad) ? pad : 0f) -
+            Mathf.Min(LaunchTwitchFor(racer).Lag, racer.TotalDistance);
+
+        // The launch twitch (issue #119): drawn hesitation off the line,
+        // gone within a second of GO. ElapsedSeconds accumulates only in the
+        // Racing phase and resets on rematch, so it IS time-since-GO — the
+        // grid, countdown, and every later read see exact stillness. The lag
+        // clamp in DrawnDistance pins a slow-digging car AT the line rather
+        // than ever drawing it behind where it started.
+        private LaunchTwitch LaunchTwitchFor(RacerSnapshot racer) =>
+            PresentationLife.Launch(presentedRace.ElapsedSeconds,
+                PresentationLife.LaunchPhase((int)racer.PlayerId, simulation.Track.Length));
 
         // The sim's braking answers "how hard CAN a car slow"; the dive reads
         // how hard this one is slowing, one fixed step against the last.
