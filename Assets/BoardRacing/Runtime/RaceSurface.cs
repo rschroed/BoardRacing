@@ -446,14 +446,15 @@ namespace BoardRacing.Runtime
         }
 
         // Car bodies, centered on the origin so the renderer moves them by
-        // transform, nose along +X. 54 long × 30 wide (issue #117 round 2,
-        // owner direction — narrowed from the square 54×54 IMGUI footprint):
-        // car proportions make the heading rotation and drift angle read, and
-        // a side-by-side pair now fits the 64 px track ribbon. P1 is a
-        // rounded rectangle (corner radius 8); P2 a capsule (the corner
-        // radius grown to the half width).
+        // transform, nose along +X. 54 long × 26 wide (owner direction
+        // 2026-07-23, narrowed twice from the square 54×54 IMGUI footprint:
+        // 30 made a pair fit the 64 px ribbon, 26 gives the duel visible
+        // daylight — 6 px tucked instead of 2 — and frees breath budget):
+        // car proportions make the heading rotation and drift angle read.
+        // P1 is a rounded rectangle (corner radius 8); P2 a capsule (the
+        // corner radius grown to the half width).
         public const float CarBodyHalfSize = 27f;
-        public const float CarBodyHalfWidth = 15f;
+        public const float CarBodyHalfWidth = 13f;
         public const float CarBodyCornerRadius = 8f;
 
         public static SurfaceMeshData BuildCarBody(PlayerId playerId, Color accent)
