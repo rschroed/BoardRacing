@@ -28,10 +28,11 @@ namespace BoardRacing.Domain
         public const float PitLaneSpeedRatio = .3f;
         // The slipstream tow (issue #118): the speed a close-trailing car
         // gains on a straight, additive over its throttle target — the only
-        // way past a leader running the same throttle. 8% of base pace
-        // closes ~70 px over a 900 px pit straight: a visible reel-in per
-        // straight, not an instant pass.
-        public const float SlipstreamBonusRatio = .08f;
+        // way past a leader running the same throttle. 5% of base pace
+        // closes ~45 px over a 900 px pit straight — a pass takes most of a
+        // lap of drafting to convert (owner-tuned down from 8% on hardware,
+        // 2026-07-23: the catch-up read as too easy).
+        public const float SlipstreamBonusRatio = .05f;
 
         // The tuned absolutes at the reference dial position — for domain
         // defaults and test fixtures, so they follow a ratio retune.

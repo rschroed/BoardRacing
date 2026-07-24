@@ -27,5 +27,5 @@ MonoBehaviour:
   passingOffset: 16
   rematchHoldSeconds: 1
   pauseClearSeconds: 0.75
-  slipstreamBonusRatio: 0.08
+  slipstreamBonusRatio: 0.05
   slipstreamWindow: 150
