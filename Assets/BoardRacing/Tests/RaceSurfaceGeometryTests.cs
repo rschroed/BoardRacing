@@ -186,9 +186,10 @@ namespace BoardRacing.Tests
             // the straightaway two-wide formation stopped being a fiction.
             Assert.That(RaceRules.Defaults.PassingOffset + RaceSurfaceGeometry.CarBodyHalfWidth,
                 Is.LessThanOrEqualTo(RaceSurfaceGeometry.TrackWidth * .5f + 1f));
-            // And the split still separates the bodies with daylight.
+            // And the split still separates the bodies — a seam of daylight,
+            // racing close (owner-tightened on hardware review).
             Assert.That(RaceRules.Defaults.PassingOffset * 2f,
-                Is.GreaterThan(RaceSurfaceGeometry.CarBodyHalfWidth * 2f + 4f));
+                Is.GreaterThan(RaceSurfaceGeometry.CarBodyHalfWidth * 2f + 1f));
         }
 
         // The Y-junction pins (issue #107 phase 2): the pit lane meets the track
