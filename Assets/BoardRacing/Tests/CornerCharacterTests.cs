@@ -128,6 +128,105 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void ADeadHeatDrawsNoseToTailThroughACorner()
+        {
+            TrackDefinition track = CourseCatalog.Wedge().Track;
+            float mid = MidOfLongest(track, TrackSectionKind.Corner);
+            float[] pads = CornerCharacter.CornerSpacingPads(track, new[] { mid, mid }, 180f);
+            Assert.That(pads[1] - pads[0], Is.EqualTo(CornerCharacter.NoseToTailSpacing).Within(1f));
+            // Input order breaks the tie the same way every frame, and the
+            // battle stays centered on its true spot.
+            Assert.That(pads[0], Is.LessThan(0f));
+            Assert.That(pads[0] + pads[1], Is.EqualTo(0f).Within(.001f));
+        }
+
+        [Test]
+        public void AnHonestGapIsDrawnUnchanged()
+        {
+            TrackDefinition track = CourseCatalog.Wedge().Track;
+            float mid = MidOfLongest(track, TrackSectionKind.Corner);
+            float half = CornerCharacter.NoseToTailSpacing * .5f + 5f;
+            float[] pads = CornerCharacter.CornerSpacingPads(track,
+                new[] { mid - half, mid + half }, 180f);
+            Assert.That(pads[0], Is.EqualTo(0f).Within(.001f));
+            Assert.That(pads[1], Is.EqualTo(0f).Within(.001f));
+        }
+
+        [Test]
+        public void TheFormationOnlyPushesApartAndKeepsTheBattleCentered()
+        {
+            TrackDefinition track = CourseCatalog.Wedge().Track;
+            float mid = MidOfLongest(track, TrackSectionKind.Corner);
+            float[] pads = CornerCharacter.CornerSpacingPads(track,
+                new[] { mid - 10f, mid + 10f }, 180f);
+            Assert.That(pads[0], Is.LessThan(0f), "the trailing car draws further back");
+            Assert.That(pads[1], Is.GreaterThan(0f), "the leader draws further ahead");
+            Assert.That(pads[0] + pads[1], Is.EqualTo(0f).Within(.001f), "the pack never advances");
+            Assert.That(20f + pads[1] - pads[0],
+                Is.EqualTo(CornerCharacter.NoseToTailSpacing).Within(1f));
+        }
+
+        [Test]
+        public void TheFormationRelaxesOnStraightsAndAtEveryStartLine()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                float straight = MidOfLongest(course.Track, TrackSectionKind.Straight);
+                float[] pads = CornerCharacter.CornerSpacingPads(course.Track,
+                    new[] { straight, straight }, 180f);
+                Assert.That(pads[0], Is.EqualTo(0f).Within(.001f), course.Name + " straight");
+                // The line-truth envelope zeroes the pad at every start/finish
+                // crossing — laps, pit diversions, and the finish are judged
+                // there — even where a course runs its line straight out of a
+                // corner (the Wedge hairpin ends AT the line).
+                float[] linePads = CornerCharacter.CornerSpacingPads(course.Track,
+                    new[] { 0f, 0f }, 180f);
+                Assert.That(linePads[0], Is.EqualTo(0f).Within(.001f), course.Name + " line");
+            }
+        }
+
+        [Test]
+        public void SpatialOrderOutranksLapCount()
+        {
+            // A lapping leader approaches from physically behind: the drawn
+            // pad must follow ribbon order, or the bodies would swap through
+            // each other.
+            TrackDefinition track = CourseCatalog.Wedge().Track;
+            float mid = MidOfLongest(track, TrackSectionKind.Corner);
+            float[] pads = CornerCharacter.CornerSpacingPads(track,
+                new[] { mid + track.Length, mid + 20f }, 180f);
+            Assert.That(pads[0], Is.LessThan(0f), "the lap-ahead car is spatially behind");
+            Assert.That(pads[1], Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void FourCarsChainNoseToTailThroughTheLongestCorner()
+        {
+            // N-car pin (issue #124): the pads are a chain, not a pairwise
+            // hack — four bunched cars space into one legible train.
+            CourseDefinition course = CourseCatalog.All()
+                .OrderByDescending(c => LongestRun(c.Track, TrackSectionKind.Corner).Length).First();
+            float mid = MidOfLongest(course.Track, TrackSectionKind.Corner);
+            float[] distances = { mid - 15f, mid - 5f, mid + 5f, mid + 15f };
+            float[] pads = CornerCharacter.CornerSpacingPads(course.Track, distances, 180f);
+            for (int i = 1; i < 4; i++)
+                Assert.That(distances[i] + pads[i] - distances[i - 1] - pads[i - 1],
+                    Is.EqualTo(CornerCharacter.NoseToTailSpacing).Within(2f), "gap " + i);
+            Assert.That(pads.Sum(), Is.EqualTo(0f).Within(.01f));
+        }
+
+        [Test]
+        public void FarApartCarsAreNoFormation()
+        {
+            TrackDefinition track = CourseCatalog.Wedge().Track;
+            float mid = MidOfLongest(track, TrackSectionKind.Corner);
+            float[] pads = CornerCharacter.CornerSpacingPads(track,
+                new[] { mid, mid + 300f }, 180f);
+            Assert.That(pads[0], Is.EqualTo(0f).Within(.001f));
+            Assert.That(pads[1], Is.EqualTo(0f).Within(.001f));
+        }
+
+        [Test]
         public void BrakeDiveScalesWithDecelerationAndCaps()
         {
             Assert.That(CornerCharacter.BrakeDive(0f, Pace.Braking), Is.EqualTo(0f));

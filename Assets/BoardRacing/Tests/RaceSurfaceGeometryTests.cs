@@ -139,36 +139,56 @@ namespace BoardRacing.Tests
         [Test]
         public void CarBodiesKeepTheDrawnFootprint()
         {
-            // P1 is the rounded square, P2 the disc — both fill the same 54×54
-            // footprint the IMGUI pass drew (issue #86 round 2). The cockpit
-            // wedge (issue #117) lives strictly inside it, so the footprint
-            // pin is an upper bound plus proof the body still reaches it.
-            SurfaceMeshData square = RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, Color.red);
-            float maxAxis = 0f, maxDiagonal = 0f;
-            foreach (Vector3 vertex in square.Vertices)
+            // Both bodies are 54×30, nose along +X (issue #117 round 2, owner
+            // direction): car proportions make the heading rotation read, and
+            // a side-by-side pair fits the track ribbon. P1 the rounded
+            // rectangle, P2 the capsule; the darker cockpit wedge lives
+            // strictly inside the footprint.
+            foreach (PlayerId playerId in new[] { PlayerId.Player1, PlayerId.Player2 })
             {
-                maxAxis = Mathf.Max(maxAxis, Mathf.Max(Mathf.Abs(vertex.x), Mathf.Abs(vertex.y)));
-                maxDiagonal = Mathf.Max(maxDiagonal, new Vector2(vertex.x, vertex.y).magnitude);
+                Color accent = playerId == PlayerId.Player1 ? Color.red : Color.blue;
+                SurfaceMeshData body = RaceSurfaceGeometry.BuildCarBody(playerId, accent);
+                float maxAlong = 0f, maxAcross = 0f, maxDiagonal = 0f;
+                foreach (Vector3 vertex in body.Vertices)
+                {
+                    maxAlong = Mathf.Max(maxAlong, Mathf.Abs(vertex.x));
+                    maxAcross = Mathf.Max(maxAcross, Mathf.Abs(vertex.y));
+                    maxDiagonal = Mathf.Max(maxDiagonal, new Vector2(vertex.x, vertex.y).magnitude);
+                }
+                Assert.That(maxAlong, Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize).Within(.01f), playerId + " length");
+                Assert.That(maxAcross, Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfWidth).Within(.01f), playerId + " width");
+                // The corner rounding must actually cut the sharp corner.
+                float sharpCorner = new Vector2(RaceSurfaceGeometry.CarBodyHalfSize,
+                    RaceSurfaceGeometry.CarBodyHalfWidth).magnitude;
+                Assert.That(maxDiagonal, Is.LessThan(sharpCorner - 1f), playerId + " corner");
+                // Both bodies carry the darker nose wedge: rotation must be
+                // readable on each.
+                Assert.That(body.Colors, Has.Some.Not.EqualTo(accent), playerId + " wedge");
+                Assert.That(body.Colors, Has.Some.EqualTo(accent), playerId + " body");
             }
-            Assert.That(maxAxis, Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize).Within(.01f));
-            // The corner radius must actually cut the diagonal: strictly inside
-            // the sharp corner, strictly outside the inscribed circle.
-            float sharpCorner = RaceSurfaceGeometry.CarBodyHalfSize * Mathf.Sqrt(2f);
-            Assert.That(maxDiagonal, Is.LessThan(sharpCorner - 1f));
-            Assert.That(maxDiagonal, Is.GreaterThan(RaceSurfaceGeometry.CarBodyHalfSize + 1f));
+            // P2's capsule rounds the whole end; P1's rectangle keeps a
+            // shoulder outside the capsule's arc — the silhouettes differ.
+            float capsuleReach = 0f, rectangleReach = 0f;
+            foreach (Vector3 vertex in RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, Color.blue).Vertices)
+                if (Mathf.Abs(vertex.x) > RaceSurfaceGeometry.CarBodyHalfSize - 3f)
+                    capsuleReach = Mathf.Max(capsuleReach, Mathf.Abs(vertex.y));
+            foreach (Vector3 vertex in RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, Color.red).Vertices)
+                if (Mathf.Abs(vertex.x) > RaceSurfaceGeometry.CarBodyHalfSize - 3f)
+                    rectangleReach = Mathf.Max(rectangleReach, Mathf.Abs(vertex.y));
+            Assert.That(rectangleReach, Is.GreaterThan(capsuleReach + 2f));
+        }
 
-            SurfaceMeshData disc = RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, Color.blue);
-            float maxRadius = 0f;
-            foreach (Vector3 vertex in disc.Vertices)
-                maxRadius = Mathf.Max(maxRadius, new Vector2(vertex.x, vertex.y).magnitude);
-            Assert.That(maxRadius, Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize).Within(.01f),
-                "the disc fills the footprint and nothing escapes it");
-            // Both bodies carry the darker nose wedge: rotation must be
-            // readable on each (the disc showed nothing without it).
-            Assert.That(square.Colors, Has.Some.Not.EqualTo(Color.red));
-            Assert.That(disc.Colors, Has.Some.Not.EqualTo(Color.blue));
-            Assert.That(square.Colors, Has.Some.EqualTo(Color.red));
-            Assert.That(disc.Colors, Has.Some.EqualTo(Color.blue));
+        [Test]
+        public void ASideBySidePairFitsTheTrackRibbon()
+        {
+            // The point of narrowing the bodies (issue #117 round 2): the
+            // full passing split plus a half body stays on the pavement, so
+            // the straightaway two-wide formation stopped being a fiction.
+            Assert.That(RaceRules.Defaults.PassingOffset + RaceSurfaceGeometry.CarBodyHalfWidth,
+                Is.LessThanOrEqualTo(RaceSurfaceGeometry.TrackWidth * .5f + 1f));
+            // And the split still separates the bodies with daylight.
+            Assert.That(RaceRules.Defaults.PassingOffset * 2f,
+                Is.GreaterThan(RaceSurfaceGeometry.CarBodyHalfWidth * 2f + 4f));
         }
 
         // The Y-junction pins (issue #107 phase 2): the pit lane meets the track

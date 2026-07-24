@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using BoardRacing.Domain;
 
 namespace BoardRacing.Runtime
@@ -110,6 +112,107 @@ namespace BoardRacing.Runtime
             float dive = BrakeDive(deceleration, brakingRate);
             return new CarAttitude(DriftDegrees(track, distance, speed),
                 1f - DiveSquash * dive, 1f + DiveSquash * .5f * dive);
+        }
+
+        // Corner formation (round 2, owner direction): side-by-side is the
+        // straight formation; corners run nose-to-tail. Close cars whose true
+        // along-track gap is smaller than one drawn car length get their
+        // DRAWN gaps padded up to this spacing, scaled by the corner blend —
+        // so with any real gap the formation is simply the truth, and the
+        // pad only invents when bodies would overlap.
+        public const float NoseToTailSpacing = 60f;
+
+        // Per-car along-track pad (px, aligned to the input) that re-spaces
+        // close cars through corners. The pad is honest by construction: it
+        // only ever pushes cars apart in their existing SPATIAL order (a
+        // lapping leader is physically behind the car it approaches — bodies
+        // cannot pass through each other; dead heats keep input order, so
+        // P1/P2 resolve the same way every frame), each cluster stays
+        // centered on its true midpoint so the pack never advances, the
+        // corner blend zeroes it on straights, and the line-truth envelope
+        // zeroes it around the start/finish line, where laps, pit diversions,
+        // and the finish are judged. Chain-based, not pairwise: four close
+        // cars space into one legible train (issue #124).
+        public static float[] CornerSpacingPads(TrackDefinition track, float[] distances,
+            float passingDistance)
+        {
+            var pads = new float[distances.Length];
+            if (distances.Length < 2) return pads;
+            float lap = track.Length;
+            int count = distances.Length;
+            int[] order = Enumerable.Range(0, count)
+                .OrderBy(i => Wrap(distances[i], lap)).ThenBy(i => i).ToArray();
+            // Walk the field starting just past the widest circular gap, so
+            // the arbitrary lap origin never splits a cluster in two.
+            int start = 0;
+            float widest = -1f;
+            for (int i = 0; i < count; i++)
+            {
+                float here = Wrap(distances[order[i]], lap);
+                float next = Wrap(distances[order[(i + 1) % count]], lap);
+                float gap = i == count - 1 ? next - here + lap : next - here;
+                if (gap > widest) { widest = gap; start = (i + 1) % count; }
+            }
+            var indices = new List<int>();
+            var positions = new List<float>();
+            for (int step = 0; step < count; step++)
+            {
+                int index = order[(start + step) % count];
+                float wrapped = Wrap(distances[index], lap);
+                float position = positions.Count == 0
+                    ? wrapped
+                    : positions[positions.Count - 1] +
+                        Wrap(wrapped - positions[positions.Count - 1], lap);
+                if (positions.Count > 0 && position - positions[positions.Count - 1] > passingDistance)
+                {
+                    ApplyClusterPads(track, indices, positions, pads);
+                    indices.Clear(); positions.Clear();
+                    position = wrapped;
+                }
+                indices.Add(index);
+                positions.Add(position);
+            }
+            ApplyClusterPads(track, indices, positions, pads);
+            return pads;
+        }
+
+        private static void ApplyClusterPads(TrackDefinition track, List<int> indices,
+            List<float> positions, float[] pads)
+        {
+            if (indices.Count < 2) return;
+            var drawn = new float[indices.Count];
+            drawn[0] = positions[0];
+            for (int i = 1; i < indices.Count; i++)
+            {
+                float gap = positions[i] - positions[i - 1];
+                float middle = (positions[i] + positions[i - 1]) * .5f;
+                float blend = CornerBlend(track, middle) * LineTruthEnvelope(track, middle);
+                drawn[i] = drawn[i - 1] + gap + (Math.Max(NoseToTailSpacing, gap) - gap) * blend;
+            }
+            float shift = (positions.Sum() - drawn.Sum()) / indices.Count;
+            for (int i = 0; i < indices.Count; i++)
+                pads[indices[i]] = drawn[i] + shift - positions[i];
+        }
+
+        // Along-track truth is judged at the start/finish line — laps, pit
+        // diversions, and the finish — and a course may run its line right
+        // out of a corner (the Wedge hairpin ends AT the line), so the pad
+        // fades explicitly around it rather than trusting geometry. The span
+        // exceeds the nose-to-tail spacing, so a padded car can never be
+        // drawn across a line it has not truly crossed: within the span the
+        // pad is at most distance-to-line × (spacing / span) < distance.
+        public const float LineFadeSpan = 150f;
+
+        private static float LineTruthEnvelope(TrackDefinition track, float distance)
+        {
+            float wrapped = Wrap(distance, track.Length);
+            return Clamp01(Math.Min(wrapped, track.Length - wrapped) / LineFadeSpan);
+        }
+
+        private static float Wrap(float value, float length)
+        {
+            value %= length;
+            return value < 0f ? value + length : value;
         }
 
         private static float Slip(TrackDefinition track, float distance, float speed)

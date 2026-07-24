@@ -144,11 +144,15 @@ namespace BoardRacing.Domain
         public float PauseClearSeconds { get; }
         // Speeds derive from the pace scalar (issue #116) so the defaults —
         // and every balance test built on them — follow a pace retune.
+        // The 18 px passing offset pairs with the 54×30 car bodies (issue
+        // #117 round 2): ±18 gives 30-wide bodies visible daylight while a
+        // side-by-side pair stays on the 64 px track ribbon — the old ±38
+        // hung both cars off the pavement.
         public static RaceRules Defaults => new RaceRules(5, 3f, Pace.BasePace, Pace.Acceleration,
-            Pace.Drag, Pace.Braking, .55f, 1f, .35f, 180f, 38f, 1f);
+            Pace.Drag, Pace.Braking, .55f, 1f, .35f, 180f, 18f, 1f);
         public static RaceRules TrancheThreeDefaults =>
             new RaceRules(5, 3f, Pace.BasePace, Pace.Acceleration, Pace.Drag, Pace.Braking,
-                .55f, 1f, .35f, 180f, 38f, 1f, 1, ConditionRules.Defaults, PitRules.Defaults);
+                .55f, 1f, .35f, 180f, 18f, 1f, 1, ConditionRules.Defaults, PitRules.Defaults);
     }
 
     public readonly struct ConditionRules
