@@ -80,6 +80,8 @@ namespace BoardRacing.Runtime
         // their accents from whichever Ships claimed the named seats.
         private static readonly Color PlayerOneAccent = new Color(.92f, .39f, .12f);
         private static readonly Color PlayerTwoAccent = new Color(.48f, .28f, .72f);
+        private static readonly Color PlayerThreeAccent = new Color(.88f, .18f, .52f);
+        private static readonly Color PlayerFourAccent = new Color(.96f, .73f, .12f);
         // Shared geometry for the pause and race-finished overlays in 1920×1080 GUI
         // space. The button rect doubles as the touch hit-target polled in Update:
         // the project runs the new Input System only, so IMGUI never receives
@@ -161,7 +163,8 @@ namespace BoardRacing.Runtime
             previousSnapshot = simulation.Snapshot;
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
-                simulation.Track, PitLayout(), raceSeats.Select(x => PlayerAccent(x.PlayerId)).ToArray()));
+                simulation.Track, PitLayout(), raceSeats.ToDictionary(
+                    x => x.PlayerId, x => PlayerAccent(x.PlayerId))));
             foreach (PlayerSeat seat in raceSeats)
                 surface.AttachCar(seat.PlayerId,
                     RaceSurfaceGeometry.BuildCarBody(seat.PlayerId, PlayerAccent(seat.PlayerId)));
@@ -767,7 +770,7 @@ namespace BoardRacing.Runtime
             string Reading(PieceState piece) => piece.Present
                 ? Mathf.RoundToInt(Mathf.Repeat(piece.OrientationRadians * Mathf.Rad2Deg, 360f)) + "°"
                 : "—";
-            string text = (layout.PlayerId == PlayerId.Player1 ? "▲ SHIP RAW " : "● SHIP RAW ") +
+            string text = PlayerSymbol(layout.PlayerId) + " SHIP RAW " +
                 Reading(control.Car) + " · ROBOT " + Reading(control.Crew) +
                 // Frame pacing readout for the #86 motion review: rendered fps
                 // vs the target the Awake unlock requested vs the sim tick.
@@ -780,7 +783,14 @@ namespace BoardRacing.Runtime
 
         private Color PlayerAccent(PlayerId id) =>
             playerAccents.TryGetValue(id, out Color accent) ? accent :
-            id == PlayerId.Player1 ? PlayerOneAccent : PlayerTwoAccent;
+            id == PlayerId.Player1 ? PlayerOneAccent :
+            id == PlayerId.Player2 ? PlayerTwoAccent :
+            id == PlayerId.Player3 ? PlayerThreeAccent : PlayerFourAccent;
+
+        private static string PlayerSymbol(PlayerId id) =>
+            id == PlayerId.Player1 ? "▲" :
+            id == PlayerId.Player2 ? "●" :
+            id == PlayerId.Player3 ? "◆" : "■";
 
         // The pit geometry itself is world-space mesh (RaceSurfaceGeometry); text
         // stays IMGUI until the migration settles a world-space text stack.
@@ -789,8 +799,11 @@ namespace BoardRacing.Runtime
             for (int i = 0; i < course.Pit.Boxes.Count; i++)
             {
                 Vec2 box = course.Pit.Boxes[i];
-                string prefix = i < raceSeats.Length
-                    ? raceSeats[i].PieceIdentity.Value.Symbol + " " : "";
+                PlayerId boxOwner = (PlayerId)(i + 1);
+                PlayerSeat? seat = raceSeats.Where(x => x.PlayerId == boxOwner)
+                    .Select(x => (PlayerSeat?)x).FirstOrDefault();
+                string prefix = seat.HasValue
+                    ? seat.Value.PieceIdentity.Value.Symbol + " " : "";
                 GUI.Label(new Rect(box.X - RaceSurfaceGeometry.PitBoxHalfLength,
                     box.Y - RaceSurfaceGeometry.PitBoxHalfWidth,
                     RaceSurfaceGeometry.PitBoxHalfLength * 2f,

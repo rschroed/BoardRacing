@@ -192,6 +192,23 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void NonContiguousRosterAccentsOnlyItsOwnedPitBoxes()
+        {
+            PitLanePresentationLayout layout = PitLayout();
+            var accents = new Dictionary<PlayerId, Color>
+            {
+                [PlayerId.Player2] = Color.blue,
+                [PlayerId.Player4] = Color.yellow
+            };
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(Track, layout, accents);
+
+            AssertAccentCenteredOn(mesh, Color.blue, layout.Box(PlayerId.Player2));
+            AssertAccentCenteredOn(mesh, Color.yellow, layout.Box(PlayerId.Player4));
+            Assert.That(mesh.Colors, Has.Some.EqualTo(RaceSurfaceGeometry.InactivePitBoxAccent),
+                "inactive P1/P3 boxes stay neutral");
+        }
+
+        [Test]
         public void ASideBySidePairFitsTheTrackRibbon()
         {
             // The point of narrowing the bodies (issue #117 round 2): the
@@ -241,6 +258,18 @@ namespace BoardRacing.Tests
         // reviews).
         private const float LaneFloor =
             RaceSurfaceGeometry.TrackWidth * .5f - RaceSurfaceGeometry.JunctionEdgeOverlap;
+
+        private static void AssertAccentCenteredOn(SurfaceMeshData mesh, Color accent,
+            Vec2 expected)
+        {
+            Vector3[] vertices = mesh.Vertices
+                .Where((vertex, index) => mesh.Colors[index] == accent).ToArray();
+            Assert.That(vertices, Is.Not.Empty);
+            Vector3 center = vertices.Aggregate(Vector3.zero, (sum, vertex) => sum + vertex) /
+                vertices.Length;
+            Assert.That(Vector2.Distance(center, new Vector2(expected.X, expected.Y)),
+                Is.LessThan(.01f));
+        }
 
         [Test]
         public void PitLaneNeverEntersTheRoadway()

@@ -162,6 +162,73 @@ namespace BoardRacing.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator FourPlayersKeepEightSimultaneousSdkContactsAssociatedAndFailSafe()
+        {
+            using (var provider = new BoardContactInputProvider(
+                MeasuredStops, 8f * Mathf.Deg2Rad, 540f))
+            {
+                PlayerId[] roster =
+                {
+                    PlayerId.Player1, PlayerId.Player2,
+                    PlayerId.Player3, PlayerId.Player4
+                };
+                PieceAssignment[] assignments =
+                {
+                    new PieceAssignment(PlayerId.Player1, PieceRole.Car, 7, "Orange Ship", "Orange / Ship"),
+                    new PieceAssignment(PlayerId.Player1, PieceRole.Crew, 2, "Orange Robot", "Orange / Robot"),
+                    new PieceAssignment(PlayerId.Player2, PieceRole.Car, 6, "Purple Ship", "Purple / Ship"),
+                    new PieceAssignment(PlayerId.Player2, PieceRole.Crew, 1, "Purple Robot", "Purple / Robot"),
+                    new PieceAssignment(PlayerId.Player3, PieceRole.Car, 4, "Pink Ship", "Pink / Ship"),
+                    new PieceAssignment(PlayerId.Player3, PieceRole.Crew, 3, "Pink Robot", "Pink / Robot"),
+                    new PieceAssignment(PlayerId.Player4, PieceRole.Car, 5, "Yellow Ship", "Yellow / Ship"),
+                    new PieceAssignment(PlayerId.Player4, PieceRole.Crew, 0, "Yellow Robot", "Yellow / Robot")
+                };
+                provider.Configure(assignments, roster, roster.Select(FourSeatLayout.InputFor));
+
+                var p1Car = CreateContact("BoardArcadeShipOrange", new Vector2(1700f, 150f), false);
+                CreateContact("BoardArcadeRobotOrange", new Vector2(1500f, 300f), false);
+                var p2Car = CreateContact("BoardArcadeShipPurple", new Vector2(200f, 900f), false);
+                var p2Crew = CreateContact("BoardArcadeRobotPurple", new Vector2(400f, 760f), false);
+                var p3Car = CreateContact("BoardArcadeShipPink", new Vector2(200f, 150f), false);
+                CreateContact("BoardArcadeRobotPink", new Vector2(400f, 300f), false);
+                var p4Car = CreateContact("BoardArcadeShipYellow", new Vector2(1700f, 900f), false);
+                CreateContact("BoardArcadeRobotYellow", new Vector2(1500f, 760f), false);
+                Call(p1Car, "Rotate", 225f);
+                Call(p2Car, "Rotate", 45f);
+                Call(p3Car, "Rotate", 135f);
+                Call(p4Car, "Rotate", 315f);
+                yield return null;
+
+                IReadOnlyList<PlayerControlSnapshot> active = provider.ReadSnapshots();
+                Assert.That(active.Select(x => x.PlayerId), Is.EqualTo(roster));
+                Assert.That(active.All(x => x.Car.Present && x.Crew.Present), Is.True);
+                Assert.That(active.All(x => x.Throttle == ThrottleStep.Drive), Is.True);
+                Assert.That(active.SelectMany(x => new[] { x.Car.ContactId, x.Crew.ContactId })
+                    .Distinct().Count(), Is.EqualTo(8));
+
+                int p3Contact = Player(active, PlayerId.Player3).Car.ContactId;
+                Call(p3Car, "MoveTo", new Vector2(1700f, 900f));
+                yield return null;
+                IReadOnlyList<PlayerControlSnapshot> crossed = provider.ReadSnapshots();
+                PlayerControlSnapshot p3 = Player(crossed, PlayerId.Player3);
+                Assert.That(p3.Car.ContactId, Is.EqualTo(p3Contact),
+                    "crossing a quadrant must not reassign the Pink Ship");
+                Assert.That(p3.Warnings.HasFlag(InputWarning.WrongRegion), Is.True);
+                Assert.That(p3.Throttle, Is.EqualTo(ThrottleStep.Brake));
+                Assert.That(Player(crossed, PlayerId.Player4).Throttle,
+                    Is.EqualTo(ThrottleStep.Drive));
+
+                Call(p3Car, "MoveTo", new Vector2(200f, 150f));
+                Call(p2Crew, "Cancel");
+                yield return null;
+                IReadOnlyList<PlayerControlSnapshot> loss = provider.ReadSnapshots();
+                Assert.That(Player(loss, PlayerId.Player2).Crew.Present, Is.False);
+                Assert.That(loss.Where(x => x.PlayerId != PlayerId.Player2)
+                    .All(x => x.Car.Present && x.Crew.Present), Is.True);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator CrewCallPitSupportsPhysicalLiftPlaceAfterSafeRelease()
         {
             using (var provider = new BoardContactInputProvider(MeasuredStops, 8f * Mathf.Deg2Rad, 540f))
