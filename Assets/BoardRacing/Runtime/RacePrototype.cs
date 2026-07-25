@@ -59,6 +59,12 @@ namespace BoardRacing.Runtime
         // nearest rival: opens the split so a pass swings around the rival's
         // body rather than sliding through it.
         private readonly Dictionary<PlayerId, float> passClearance = new Dictionary<PlayerId, float>();
+        // The width each car's split may not drop below without its body
+        // touching a rival's, as a scale on the offset the sim granted. Read
+        // off the drawn along-gap to the nearest car on the OTHER side of the
+        // line, since widening the split is the only separation that pair
+        // has; cars sharing a side are held apart along the ribbon instead.
+        private readonly Dictionary<PlayerId, float> bodyClearance = new Dictionary<PlayerId, float>();
         // How assembled each car's drawn passing split is (issue #119 round
         // 3): fades in across the last EngageSpan of closing so the sim
         // granting/revoking the offset at PassingDistance never teleports a
@@ -443,6 +449,7 @@ namespace BoardRacing.Runtime
         {
             duelEngagement.Clear();
             passClearance.Clear();
+            bodyClearance.Clear();
             duelBreathAmplitude = 0f;
             var racing = presentedRace.Racers.Where(r => OnRacingLine(r) && !r.Finished).ToArray();
             if (racing.Length < 2 || presentedRace.Phase != RacePhase.Racing)
@@ -477,6 +484,16 @@ namespace BoardRacing.Runtime
                 passClearance[racer.PlayerId] = PresentationLife.PassClearance(
                     racing.Where(other => other.PlayerId != racer.PlayerId)
                         .Min(other => CircularGap(DrawnDistance(racer), DrawnDistance(other))));
+                // Only a rival across the line is held off by width; the
+                // required separation is the pair's, so each car carries half
+                // of it — which is exactly a scale on its own offset.
+                float[] across = racing
+                    .Where(other => other.LateralOffset * racer.LateralOffset < 0f)
+                    .Select(other => RaceSurfaceGeometry.SplitForBodyClearance(
+                        CircularGap(DrawnDistance(racer), DrawnDistance(other))))
+                    .ToArray();
+                bodyClearance[racer.PlayerId] = across.Length == 0 ? 0f
+                    : Mathf.Clamp01(across.Max() / (2f * Mathf.Abs(racer.LateralOffset)));
             }
 
             // The jockeying breath (issue #119) lives where a split is held.
@@ -559,12 +576,17 @@ namespace BoardRacing.Runtime
             // Mid-exchange the pass clearance outranks the corner taper: the
             // passing body swings around its rival at full width even in a
             // corner — brief, real relative motion — rather than ghosting
-            // through the file.
+            // through the file. Under all of it sits the body floor (issue
+            // #143): the taper and the nose-to-tail pad ramp independently,
+            // and halfway through a corner approach neither has finished its
+            // job, so the split holds whatever width the two bodies need
+            // until the file itself is long enough to keep them apart.
             float lateralOffset = OnRacingLine(racer)
-                ? racer.LateralOffset *
-                    Mathf.Max(CornerCharacter.SplitScale(simulation.Track, DrawnDistance(racer)),
-                        passClearance.TryGetValue(racer.PlayerId, out float clearance) ? clearance : 0f) *
-                    BreathFor(racer).FlareScale * EngagementFor(racer)
+                ? racer.LateralOffset * PresentationLife.DrawnSplitScale(
+                    CornerCharacter.SplitScale(simulation.Track, DrawnDistance(racer)),
+                    passClearance.TryGetValue(racer.PlayerId, out float clearance) ? clearance : 0f,
+                    BreathFor(racer).FlareScale, EngagementFor(racer),
+                    bodyClearance.TryGetValue(racer.PlayerId, out float floor) ? floor : 0f)
                 : 0f;
             return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }

@@ -487,6 +487,52 @@ namespace BoardRacing.Runtime
         public const float CarBodyHalfWidth = 13f;
         public const float CarBodyCornerRadius = 8f;
 
+        // A seam of daylight is what "not touching" means on the board: the
+        // straightaway split is sized for 6 px of it (the two-wide formation
+        // pin below), so the corner floor asks for a single pixel — enough
+        // that bodies never share a texel, small enough that holding it
+        // costs the drawn car almost nothing sideways.
+        public const float BodyDaylight = 1f;
+
+        // Two drawn bodies always share a heading, so whether they touch is a
+        // question about their footprints alone. Every body is an inner box
+        // grown by its corner radius, so a pair clears exactly when the
+        // vector between their centers escapes the summed inner box grown by
+        // the summed radii. The worst pair in a four-car field is Player 1's
+        // boxy rounded rect against a round-ended body, and that is the pair
+        // both of these answer for — one rule covers every pairing.
+        private const float PairBoxAlong =
+            (CarBodyHalfSize - CarBodyCornerRadius) + (CarBodyHalfSize - CarBodyHalfWidth);
+        private const float PairBoxAcross =
+            (CarBodyHalfWidth - CarBodyCornerRadius) + (CarBodyHalfWidth - CarBodyHalfWidth);
+        private const float PairRadii = CarBodyCornerRadius + CarBodyHalfWidth;
+
+        public static float BodyClearance(float alongGap, float acrossGap)
+        {
+            float dx = Mathf.Max(Mathf.Abs(alongGap) - PairBoxAlong, 0f);
+            float dy = Mathf.Max(Mathf.Abs(acrossGap) - PairBoxAcross, 0f);
+            return Mathf.Sqrt(dx * dx + dy * dy) - PairRadii;
+        }
+
+        // The lateral center separation that keeps BodyDaylight between two
+        // bodies at this along-track gap — the exact inverse of BodyClearance
+        // — and zero once the along-gap alone clears them. The floor under
+        // the corner taper (issue #143, from the owner report 2026-07-25:
+        // cars overlapping in four-player races): the taper and the
+        // nose-to-tail pad are independent ramps, and in the middle of a
+        // corner approach neither has finished its job. At blend .75 the drawn
+        // pair sat 45 px apart along a 54 px body with 18 px of split across
+        // a 26 px width — the round bodies grazed, and Player 1's squarer
+        // one clipped its rival by 6 px. Reading the floor off the gap that
+        // is actually DRAWN, not off the blend, makes it hold through the
+        // pad's slide, its line-truth clamp, and any field size.
+        public static float SplitForBodyClearance(float alongGap)
+        {
+            float dx = Mathf.Max(Mathf.Abs(alongGap) - PairBoxAlong, 0f);
+            float reach = PairRadii + BodyDaylight;
+            return dx >= reach ? 0f : PairBoxAcross + Mathf.Sqrt(reach * reach - dx * dx);
+        }
+
         public static SurfaceMeshData BuildCarBody(PlayerId playerId, Color accent)
         {
             var mesh = new SurfaceMeshData();

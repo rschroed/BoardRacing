@@ -152,6 +152,17 @@ namespace BoardRacing.Runtime
             return t * t * (3f - 2f * t);
         }
 
+        // The drawn passing split (issue #143), as a scale on the offset the
+        // simulation granted. The corner taper and the pass clearance compete for the
+        // width (whichever wants more of it wins), the breath flare and the
+        // engagement fade multiply through — and the body floor outranks
+        // every one of them, because no embellishment may be paid for by
+        // driving two bodies through each other. One definition: the drawn
+        // cars, the jitter probe, and the geometry pins all read it here.
+        public static float DrawnSplitScale(float taper, float clearance, float flare,
+            float engagement, float bodyFloor) =>
+            Math.Max(Math.Max(taper, clearance) * flare * engagement, bodyFloor);
+
         // side = the sign of the car's own lateral offset. The two sides
         // breathe in anti-phase: one car pulls out for a look while the
         // other tucks in and aims its nose — trading feints, not
