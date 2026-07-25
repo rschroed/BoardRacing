@@ -28,14 +28,13 @@ namespace BoardRacing.Runtime
         private readonly Dictionary<PlayerId, CrewStrategyOutput> crewOutputs =
             new Dictionary<PlayerId, CrewStrategyOutput>();
         private float accumulator;
-        // The sim state one fixed step behind Snapshot: OnGUI draws the blend of
-        // the two by the accumulator fraction (SnapshotInterpolation, issue #89).
+        // The sim state one fixed step behind Snapshot: the canvas and world
+        // renderer draw the blend by the accumulator fraction (#89).
         private RaceSnapshot previousSnapshot;
-        private GUIStyle title, carLabel, warning, small, cue;
         // The static racing surface (track, pit complex) is a world-space mesh
         // since issue #86 round 1, and the car bodies since round 2; the seat
-        // clusters are a uGUI canvas since round 3. OnGUI keeps the car-riding
-        // labels, pit text, center overlays, and dev readouts.
+        // clusters and the remaining player-facing overlays are one uGUI
+        // canvas. ControlLab is the sole IMGUI diagnostic exemption.
         private RaceSurfaceRenderer surface;
         private RaceHud hud;
         // Everything the current track IS — racing line, pit complex, race
@@ -45,9 +44,8 @@ namespace BoardRacing.Runtime
         // choice (issue #107 phase 5).
         private CourseSelection courseSelection;
         private bool exitConfirmationOpen;
-        // One presentation state per frame, computed at the end of Update: the
-        // world-space cars and every OnGUI event (IMGUI raises several per
-        // frame) read the same blend instead of each rebuilding it.
+        // One presentation state per frame, computed at the end of Update:
+        // world-space cars and the canvas read the same blend.
         private RaceSnapshot presentedRace;
         // Along-track pads that re-space close cars through corners (issue
         // #117 round 2), refreshed once per frame before the cars draw. Not
@@ -71,9 +69,6 @@ namespace BoardRacing.Runtime
         private RaceUiModel presentedUi;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
-        // Set by the capture harness (BoardRacingCaptures) so review captures show
-        // only the player-facing UI — no provider/preview labels, no raw readouts.
-        public static bool SuppressEditorDiagnostics;
 #endif
 
         // Legacy defaults remain the two-player preview colors; live races take
@@ -82,11 +77,9 @@ namespace BoardRacing.Runtime
         private static readonly Color PlayerTwoAccent = new Color(.48f, .28f, .72f);
         private static readonly Color PlayerThreeAccent = new Color(.88f, .18f, .52f);
         private static readonly Color PlayerFourAccent = new Color(.96f, .73f, .12f);
-        // Shared geometry for the pause and race-finished overlays in 1920×1080 GUI
-        // space. The button rect doubles as the touch hit-target polled in Update:
-        // the project runs the new Input System only, so IMGUI never receives
-        // pointer events in a player build.
-        private static readonly Rect PausePanel = new Rect(460f, 430f, 1000f, 290f);
+        // Shared touch geometry for the canvas buttons in 1920×1080 reference
+        // space. Board contacts are polled directly because they share the same
+        // SDK stream as physical pieces.
         private static readonly Rect OverlayPrimaryButton = new Rect(700f, 560f, 520f, 70f);
         private static readonly Rect OverlaySecondaryButton = new Rect(700f, 648f, 520f, 48f);
         private static readonly Rect RaceExitButton = new Rect(855f, 20f, 210f, 52f);
@@ -385,10 +378,12 @@ namespace BoardRacing.Runtime
                     lobby.AccentFor(PlayerId.Player2),
                     lobby.AccentFor(PlayerId.Player3),
                     lobby.AccentFor(PlayerId.Player4));
-                hud.Apply(BuildLobbyCockpitUi());
+                hud.ApplyLobby(BuildLobbyCockpitUi(), lobby.BuildUiModel());
                 return;
             }
-            if (presentedUi.Players != null) hud.Apply(presentedUi);
+            if (presentedUi.Players != null)
+                hud.ApplyRace(presentedUi, exitConfirmationOpen,
+                    BuildCarAnnotations(), BuildPitAnnotations());
         }
 
         private RaceUiModel BuildLobbyCockpitUi()
@@ -694,152 +689,43 @@ namespace BoardRacing.Runtime
             foreach (PlayerId id in crewOutputs.Keys.ToArray()) crewOutputs[id] = default;
         }
 
-        private void EnsureStyles()
-        {
-            if (title != null) return;
-            title = Style(42, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            carLabel = Style(22, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            warning = Style(26, FontStyle.Bold, new Color(1f, .75f, .2f), TextAnchor.MiddleCenter);
-            small = Style(15, FontStyle.Bold, new Color(.87f, .9f, .94f), TextAnchor.MiddleCenter);
-            cue = Style(13, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        }
-
-        private static GUIStyle Style(int size, FontStyle fontStyle, Color color, TextAnchor anchor) => new GUIStyle(GUI.skin.label)
-        { fontSize = size, fontStyle = fontStyle, normal = { textColor = color }, alignment = anchor, wordWrap = true };
-
-        private void OnGUI()
-        {
-            // Repaint only: everything draws at explicit rects, so the Layout
-            // pass (and any input events — touch is polled in Update) would just
-            // re-issue the same thousand draw calls for nothing. IMGUI raises
-            // several events per frame and the seat HUD is draw-call bound on
-            // device (#86 hardware review: 9-20 fps).
-            if (Event.current.type != EventType.Repaint) return;
-            EnsureStyles();
-            Matrix4x4 original = GUI.matrix;
-            GUI.matrix = Matrix4x4.Scale(new Vector3(Screen.width / 1920f, Screen.height / 1080f, 1f));
-            if (lobby != null)
-            {
-                lobby.Draw();
-                GUI.matrix = original;
-                return;
-            }
-            RaceLayout layout = FourSeatRaceLayout();
-            RaceUiModel ui = presentedUi;
-            DrawPitLabels();
-            foreach (var racer in presentedRace.Racers) DrawCar(racer);
-#if UNITY_EDITOR
-            // The rotated glyph stands in for the physical Ship on desktop only;
-            // on Board hardware the real piece sits on the uGUI seat's well ring.
-            foreach (PlayerSeat seat in raceSeats)
-            {
-                PlayerLayout playerLayout = layout.For(seat.PlayerId);
-                DrawShipGlyph(playerLayout.Controller, playerLayout,
-                    PlayerAccent(seat.PlayerId), ui.For(seat.PlayerId).ShipPresent);
-            }
-#endif
-            DrawCenterMessage(ui, layout);
-            if (!exitConfirmationOpen &&
-                simulation.Snapshot.Phase != RacePhase.Paused &&
-                simulation.Snapshot.Phase != RacePhase.Finished)
-                DrawRaceExitButton();
-            // Development builds only: raw Ship orientation per seat so the throttle
-            // mapper can be calibrated against the rendered wedges on real hardware
-            // (issue #77 hardware review). Never present in release builds.
-            if (Debug.isDebugBuild && !EditorDiagnosticsSuppressed())
-            {
-                foreach (PlayerSeat seat in raceSeats)
-                    DrawRawAngleReadout(layout.For(seat.PlayerId));
-            }
-#if UNITY_EDITOR
-            if (!SuppressEditorDiagnostics)
-            {
-                GUI.Label(new Rect(1500, 8, 412, 24),
-                    (activeProvider == boardProvider ? "BOARD INPUT" : "KEYBOARD FALLBACK") + " · F1 provider", small);
-                GUI.Label(new Rect(1500, 34, 412, 24), previewScenarioIndex < 0
-                    ? "LIVE PRESENTATION · F2 preview"
-                    : "PREVIEW: " + ((RaceUiPreviewScenario)previewScenarioIndex) + " · F2 next", small);
-            }
-#endif
-            GUI.matrix = original;
-        }
-
-        private void DrawRawAngleReadout(PlayerLayout layout)
-        {
-            PlayerControlSnapshot control = controls.FirstOrDefault(x => x.PlayerId == layout.PlayerId);
-            string Reading(PieceState piece) => piece.Present
-                ? Mathf.RoundToInt(Mathf.Repeat(piece.OrientationRadians * Mathf.Rad2Deg, 360f)) + "°"
-                : "—";
-            string text = PlayerSymbol(layout.PlayerId) + " SHIP RAW " +
-                Reading(control.Car) + " · ROBOT " + Reading(control.Crew) +
-                // Frame pacing readout for the #86 motion review: rendered fps
-                // vs the target the Awake unlock requested vs the sim tick.
-                " · FPS " + Mathf.RoundToInt(1f / Mathf.Max(.001f, Time.smoothDeltaTime)) +
-                "/" + Application.targetFrameRate +
-                " · SIM " + Mathf.RoundToInt(1f / Mathf.Max(.001f, raceSettings.fixedStepSeconds)) + "Hz";
-            Rect bounds = layout.Opposite ? new Rect(530f, 6f, 360f, 30f) : new Rect(1030f, 1044f, 360f, 30f);
-            DrawRotatedLabel(bounds, text, layout.RotationDegrees, small, Color.white);
-        }
-
         private Color PlayerAccent(PlayerId id) =>
             playerAccents.TryGetValue(id, out Color accent) ? accent :
             id == PlayerId.Player1 ? PlayerOneAccent :
             id == PlayerId.Player2 ? PlayerTwoAccent :
             id == PlayerId.Player3 ? PlayerThreeAccent : PlayerFourAccent;
 
-        private static string PlayerSymbol(PlayerId id) =>
-            id == PlayerId.Player1 ? "▲" :
-            id == PlayerId.Player2 ? "●" :
-            id == PlayerId.Player3 ? "◆" : "■";
-
-        // The pit geometry itself is world-space mesh (RaceSurfaceGeometry); text
-        // stays IMGUI until the migration settles a world-space text stack.
-        private void DrawPitLabels()
+        private IReadOnlyList<PitAnnotationUiModel> BuildPitAnnotations()
         {
-            for (int i = 0; i < course.Pit.Boxes.Count; i++)
+            var result = new List<PitAnnotationUiModel>();
+            foreach (PlayerSeat seat in raceSeats)
             {
-                Vec2 box = course.Pit.Boxes[i];
-                PlayerId boxOwner = (PlayerId)(i + 1);
-                PlayerSeat? seat = raceSeats.Where(x => x.PlayerId == boxOwner)
-                    .Select(x => (PlayerSeat?)x).FirstOrDefault();
-                string prefix = seat.HasValue
-                    ? seat.Value.PieceIdentity.Value.Symbol + " " : "";
-                GUI.Label(new Rect(box.X - RaceSurfaceGeometry.PitBoxHalfLength,
-                    box.Y - RaceSurfaceGeometry.PitBoxHalfWidth,
-                    RaceSurfaceGeometry.PitBoxHalfLength * 2f,
-                    RaceSurfaceGeometry.PitBoxHalfWidth * 2f),
-                    prefix + "P" + (i + 1) + " BOX", small);
+                Vec2 box = course.Pit.Boxes[(int)seat.PlayerId - 1];
+                result.Add(new PitAnnotationUiModel(seat.PlayerId,
+                    new Vector2(box.X, box.Y), seat.PieceIdentity.Value.Symbol));
             }
-            GUI.Label(new Rect(865, 421, 190, 28), "PIT LANE", small);
+            return result;
         }
 
-        private static void DrawOutline(Rect rect, float width, Color color)
+        private IReadOnlyList<CarAnnotationUiModel> BuildCarAnnotations()
         {
-            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, width), Texture2D.whiteTexture,
-                ScaleMode.StretchToFill, true, 0, color, 0, 0);
-            GUI.DrawTexture(new Rect(rect.x, rect.yMax - width, rect.width, width), Texture2D.whiteTexture,
-                ScaleMode.StretchToFill, true, 0, color, 0, 0);
-            GUI.DrawTexture(new Rect(rect.x, rect.y, width, rect.height), Texture2D.whiteTexture,
-                ScaleMode.StretchToFill, true, 0, color, 0, 0);
-            GUI.DrawTexture(new Rect(rect.xMax - width, rect.y, width, rect.height), Texture2D.whiteTexture,
-                ScaleMode.StretchToFill, true, 0, color, 0, 0);
-        }
-
-        // The car body is a world-space mesh (issue #86 round 2); IMGUI keeps the
-        // piece glyph, condition cues, and status labels riding the same pose.
-        private void DrawCar(RacerSnapshot racer)
-        {
-            Vector2 carCenter = CarCenter(racer);
-            float x = carCenter.x, y = carCenter.y;
-            Rect rect = new Rect(x - 27f, y - 27f, 54f, 54f);
-            GUI.Label(rect, raceSeats.Single(x => x.PlayerId == racer.PlayerId)
-                .PieceIdentity.Value.Symbol, carLabel);
-            DrawConditionCues(racer, x, y);
-            if (racer.RecoveryRemaining > 0f) GUI.Label(new Rect(x - 100f, y - 72f, 200f, 36f), "SLOWDOWN!", warning);
-            if (racer.Finished)
-                GUI.Label(new Rect(x - 110f, y + 32f, 220f, 30f), "FINISHED · " + Ordinal(racer.Place), warning);
-            else if (racer.Pit.Phase != PitPhase.OnTrack)
-                GUI.Label(new Rect(x - 100f, y + 32f, 200f, 28f), CarPitLabel(racer.Pit), small);
+            return presentedRace.Racers.Select(racer =>
+            {
+                string status = null;
+                bool statusAbove = false;
+                if (racer.RecoveryRemaining > 0f)
+                {
+                    status = "SLOWDOWN!";
+                    statusAbove = true;
+                }
+                else if (racer.Finished)
+                    status = "FINISHED · " + Ordinal(racer.Place);
+                else if (racer.Pit.Phase != PitPhase.OnTrack)
+                    status = CarPitLabel(racer.Pit);
+                PlayerSeat seat = raceSeats.Single(x => x.PlayerId == racer.PlayerId);
+                return new CarAnnotationUiModel(racer.PlayerId, CarCenter(racer),
+                    seat.PieceIdentity.Value.Symbol, status, statusAbove);
+            }).ToArray();
         }
 
         private PitLanePresentationLayout PitLayout() =>
@@ -857,22 +743,6 @@ namespace BoardRacing.Runtime
             tangent = new Vector2(pose.Tangent.X, pose.Tangent.Y);
         }
 
-        private void DrawConditionCues(RacerSnapshot racer, float x, float y)
-        {
-            CarConditionVisualState visual = CarConditionVisualMapper.From(racer, simulation.Rules.Conditions);
-            DrawConditionCue(new Rect(x - 39f, y - 42f, 32f, 24f), "F", visual.FuelLevel, true);
-            DrawConditionCue(new Rect(x + 7f, y - 42f, 32f, 24f), "T", visual.TireLevel, false);
-        }
-
-        private void DrawConditionCue(Rect rect, string symbol, ConditionVisualLevel level, bool rounded)
-        {
-            Color color = RaceHud.ConditionColor(level);
-            GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, 0,
-                rounded ? rect.height * .5f : 2f);
-            GUI.Label(rect, symbol + (level == ConditionVisualLevel.Critical ? "!!" :
-                level == ConditionVisualLevel.Warning ? "!" : ""), cue);
-        }
-
         private static string CarPitLabel(RacerPitSnapshot pit)
         {
             if (pit.Phase == PitPhase.Requested) return "PIT @ LINE";
@@ -881,109 +751,6 @@ namespace BoardRacing.Runtime
                 ? "CAR PARKED · REPAIR OR LEAVE" : "IN BOX · " + ServiceName(pit.SelectedService);
             if (pit.Phase == PitPhase.Exiting) return "PIT EXIT";
             return string.Empty;
-        }
-
-        private static void DrawShipGlyph(CornerControllerLayout controller, PlayerLayout layout,
-            Color accent, bool present)
-        {
-            // True Ship piece proportions (146×244 px) on the corner diagonal, nose toward
-            // the board center; matches the piece overlay in the design frames.
-            Rect rect = new Rect(controller.ShipWellCenter.x - 73f,
-                controller.ShipWellCenter.y - 122f, 146f, 244f);
-            Matrix4x4 original = GUI.matrix;
-            Vector3 pivot = new Vector3(controller.ShipWellCenter.x, controller.ShipWellCenter.y, 0f);
-            GUI.matrix = original * Matrix4x4.Translate(pivot) *
-                Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, -45f + layout.RotationDegrees)) *
-                Matrix4x4.Translate(-pivot);
-            GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                new Color(accent.r, accent.g, accent.b, present ? .92f : .25f), 0, 40f);
-            GUI.matrix = original;
-        }
-
-        private static void DrawRotatedLabel(Rect rect, string text, float rotationDegrees,
-            GUIStyle style, Color color)
-        {
-            Color prior = GUI.contentColor;
-            GUI.contentColor = color;
-            DrawRotatedLabel(rect, text, rotationDegrees, style);
-            GUI.contentColor = prior;
-        }
-
-        private static void DrawRotatedLabel(Rect rect, string text, float rotationDegrees,
-            GUIStyle style)
-        {
-            Matrix4x4 original = GUI.matrix;
-            Vector3 pivot = new Vector3(rect.center.x, rect.center.y, 0f);
-            GUI.matrix = original * Matrix4x4.Translate(pivot) *
-                Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, rotationDegrees)) *
-                Matrix4x4.Translate(-pivot);
-            GUI.Label(rect, text, style);
-            GUI.matrix = original;
-        }
-
-        private void DrawCenterMessage(RaceUiModel ui, RaceLayout layout)
-        {
-            if (exitConfirmationOpen)
-            {
-                DrawRaceOverlay("RETURN TO SETUP?",
-                    "THE CURRENT RACE WILL END", "RETURN TO PLAYER SETUP", "RESUME RACE");
-                return;
-            }
-            if (ui.CenterMessage == null) return;
-            if (ui.CenterMessageKind == CenterMessageKind.Paused)
-            {
-                DrawRaceOverlay("RACE PAUSED", ui.CenterMessage,
-                    "RETURN TO PLAYER SETUP", null);
-                return;
-            }
-            if (ui.CenterMessageKind == CenterMessageKind.Winner)
-            {
-                // A finished race owns the center (owner decision, issue #97): the
-                // winner plus the way into the next race.
-                DrawRaceOverlay("RACE FINISHED", ui.CenterMessage,
-                    "REMATCH", "PLAYER / COURSE SETUP");
-                return;
-            }
-            GUI.Label(layout.CenterOverlayBounds, ui.CenterMessage, title);
-        }
-
-        private void DrawRaceExitButton()
-        {
-            GUI.DrawTexture(RaceExitButton, Texture2D.whiteTexture, ScaleMode.StretchToFill,
-                true, 0, new Color(.09f, .12f, .18f, .9f), 0, 8f);
-            DrawOutline(RaceExitButton, 2f, new Color(.62f, .68f, .74f, .8f));
-            GUI.Label(RaceExitButton, "EXIT TO SETUP", small);
-        }
-
-        // Presentation only — these tap targets are polled in Update.
-        private void DrawRaceOverlay(string heading, string subLine,
-            string primaryLabel, string secondaryLabel)
-        {
-            GUI.DrawTexture(PausePanel, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                new Color(.03f, .04f, .06f, .93f), 0, 12f);
-            DrawOutline(PausePanel, 2f, new Color(.62f, .68f, .74f, .8f));
-            GUI.Label(new Rect(PausePanel.x, PausePanel.y + 16f, PausePanel.width, 52f),
-                heading, title);
-            GUI.Label(new Rect(PausePanel.x, PausePanel.y + 76f, PausePanel.width, 40f),
-                subLine, warning);
-            GUI.DrawTexture(OverlayPrimaryButton, Texture2D.whiteTexture, ScaleMode.StretchToFill,
-                true, 0, new Color(.14f, .2f, .3f), 0, 10f);
-            DrawOutline(OverlayPrimaryButton, 3f, Color.white);
-            GUI.Label(OverlayPrimaryButton, primaryLabel, carLabel);
-            if (string.IsNullOrEmpty(secondaryLabel)) return;
-            GUI.DrawTexture(OverlaySecondaryButton, Texture2D.whiteTexture,
-                ScaleMode.StretchToFill, true, 0, new Color(.09f, .12f, .18f), 0, 8f);
-            DrawOutline(OverlaySecondaryButton, 2f, new Color(.62f, .68f, .74f, .8f));
-            GUI.Label(OverlaySecondaryButton, secondaryLabel, carLabel);
-        }
-
-        private static bool EditorDiagnosticsSuppressed()
-        {
-#if UNITY_EDITOR
-            return SuppressEditorDiagnostics;
-#else
-            return false;
-#endif
         }
 
         private static string ServiceName(PitService service) =>

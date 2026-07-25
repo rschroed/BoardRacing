@@ -52,7 +52,6 @@ public static class BoardRacingCaptures
         {
             prototype = UnityEngine.Object.FindObjectOfType<RacePrototype>();
             if (prototype == null) return;
-            RacePrototype.SuppressEditorDiagnostics = true;
             ApplyScenario(0);
             return;
         }
@@ -83,7 +82,6 @@ public static class BoardRacingCaptures
     private static void Finish()
     {
         EditorApplication.update -= Step;
-        RacePrototype.SuppressEditorDiagnostics = false;
         EditorSettings.enterPlayModeOptionsEnabled = prevOptionsEnabled;
         EditorSettings.enterPlayModeOptions = prevOptions;
         EditorApplication.Exit(0);
