@@ -179,6 +179,19 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void CompactPitBoxesKeepTheApprovedCarClearance()
+        {
+            Assert.That(RaceSurfaceGeometry.PitBoxHalfLength -
+                RaceSurfaceGeometry.CarBodyHalfSize, Is.EqualTo(20f),
+                "front/rear clearance");
+            Assert.That(RaceSurfaceGeometry.PitBoxHalfWidth -
+                RaceSurfaceGeometry.CarBodyHalfWidth, Is.EqualTo(10f),
+                "side clearance");
+            Assert.That(CourseLint.MinBoxGap, Is.EqualTo(20f),
+                "edge-to-edge clearance between neighboring boxes");
+        }
+
+        [Test]
         public void ASideBySidePairFitsTheTrackRibbon()
         {
             // The point of narrowing the bodies (issue #117 round 2): the
@@ -253,7 +266,7 @@ namespace BoardRacing.Tests
         [Test]
         public void MergeMouthRunsAlongTheTrackEdge()
         {
-            AssertMouthHugsTheEdge(x => x > CourseCatalog.Wedge().Pit.PlayerTwoBox.X,
+            AssertMouthHugsTheEdge(x => x > CourseCatalog.Wedge().Pit.Boxes[3].X,
                 minimumExtent: 80f, "merge");
         }
 
@@ -384,19 +397,28 @@ namespace BoardRacing.Tests
         public void InfinityBoxesFlankTheCrossingSoTheLanePassesUnderTheBridge()
         {
             // The owner's sketch: pit boxes on both sides of the X, the service
-            // row threading beneath the bridge. Lint keeps ANCHORS 150 px clear
-            // of a crossing; the lane between them is free to pass under.
+            // row threading beneath the bridge. The compact inner boxes keep
+            // their painted quads outside the crossing ribbon while the lane
+            // itself remains free to pass under.
             CourseDefinition course = CourseCatalog.Infinity();
             Vector2 crossing = RaceSurfaceGeometry.FindCrossings(course.Track)[0].Point;
-            Vector2 boxOne = new Vector2(course.Pit.PlayerOneBox.X, course.Pit.PlayerOneBox.Y);
-            Vector2 boxTwo = new Vector2(course.Pit.PlayerTwoBox.X, course.Pit.PlayerTwoBox.Y);
-            Vector2 row = (boxTwo - boxOne).normalized;
+            Vector2 boxOne = new Vector2(course.Pit.Boxes[0].X, course.Pit.Boxes[0].Y);
+            Vector2 boxFour = new Vector2(course.Pit.Boxes[3].X, course.Pit.Boxes[3].Y);
+            Vector2 row = (boxFour - boxOne).normalized;
+            Vector2 across = new Vector2(-row.y, row.x);
             float alongOne = Vector2.Dot(boxOne - crossing, row);
-            float alongTwo = Vector2.Dot(boxTwo - crossing, row);
-            Assert.That(alongOne * alongTwo, Is.LessThan(0f),
+            float alongFour = Vector2.Dot(boxFour - crossing, row);
+            Assert.That(alongOne * alongFour, Is.LessThan(0f),
                 "the boxes must sit on opposite sides of the crossing");
-            Assert.That(Vector2.Distance(boxOne, crossing), Is.GreaterThanOrEqualTo(150f));
-            Assert.That(Vector2.Distance(boxTwo, crossing), Is.GreaterThanOrEqualTo(150f));
+            foreach (Vec2 box in course.Pit.Boxes)
+                Assert.That(Vector2.Distance(new Vector2(box.X, box.Y), crossing),
+                    Is.GreaterThanOrEqualTo(CourseLint.MinCrossingBoxClearance));
+            float paintedEdgeClearance =
+                Mathf.Abs(Vector2.Dot(boxOne - crossing, across)) -
+                RaceSurfaceGeometry.PitBoxHalfWidth;
+            Assert.That(paintedEdgeClearance,
+                Is.GreaterThanOrEqualTo(RaceSurfaceGeometry.TrackWidth * .5f),
+                "the compact pit-box paint must remain outside the bridge ribbon");
         }
 
         [Test]
@@ -414,11 +436,12 @@ namespace BoardRacing.Tests
             CourseDefinition course = CourseCatalog.Infinity();
             SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track,
                 PitLanePresentationLayout.ForCourse(course), Color.red, Color.blue);
-            Vector2 boxOne = new Vector2(course.Pit.PlayerOneBox.X, course.Pit.PlayerOneBox.Y);
-            Vector2 boxTwo = new Vector2(course.Pit.PlayerTwoBox.X, course.Pit.PlayerTwoBox.Y);
-            Vector2 lane = (boxTwo - boxOne).normalized;
+            Vector2 boxOne = new Vector2(course.Pit.Boxes[0].X, course.Pit.Boxes[0].Y);
+            Vector2 boxFour = new Vector2(course.Pit.Boxes[3].X, course.Pit.Boxes[3].Y);
+            Vector2 lane = (boxFour - boxOne).normalized;
             Vector2 across = new Vector2(-lane.y, lane.x);
-            Vector2 boxCorner = boxOne + lane * 70f + across * 32f;
+            Vector2 boxCorner = boxOne + lane * RaceSurfaceGeometry.PitBoxHalfLength +
+                across * RaceSurfaceGeometry.PitBoxHalfWidth;
             Vec2 start = course.Track.Sample(0f).Position;
             TrackSegment first = course.Track.Segments[0];
             Vector2 travel = (new Vector2(first.End.X, first.End.Y) -
@@ -433,6 +456,32 @@ namespace BoardRacing.Tests
             }
             Assert.That(boxCornerFound, Is.True, $"no box vertex at rotated corner {boxCorner}");
             Assert.That(lineCornerFound, Is.True, $"no start-line vertex at rotated corner {lineCorner}");
+        }
+
+        [Test]
+        public void EveryCatalogPitBoxRendersAtTheAuthoredCompactFootprint()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout = PitLanePresentationLayout.ForCourse(course);
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track, layout,
+                    Color.red, Color.blue);
+                Vector2 first = new Vector2(layout.Boxes[0].X, layout.Boxes[0].Y);
+                Vec2 lastBox = layout.Boxes[layout.Boxes.Count - 1];
+                Vector2 along = (new Vector2(lastBox.X, lastBox.Y) - first).normalized;
+                Vector2 across = new Vector2(-along.y, along.x);
+                foreach (Vec2 box in layout.Boxes)
+                {
+                    Vector2 center = new Vector2(box.X, box.Y);
+                    Vector2 expectedCorner = center +
+                        along * RaceSurfaceGeometry.PitBoxHalfLength +
+                        across * RaceSurfaceGeometry.PitBoxHalfWidth;
+                    Assert.That(mesh.Vertices.Any(vertex =>
+                            Vector2.Distance(vertex, expectedCorner) < .02f),
+                        Is.True,
+                        $"{course.Name} is missing the compact quad for box {box}");
+                }
+            }
         }
 
         [Test]

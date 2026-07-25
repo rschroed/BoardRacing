@@ -545,9 +545,16 @@ namespace BoardRacing.Runtime
         // stays IMGUI until the migration settles a world-space text stack.
         private void DrawPitLabels()
         {
-            Vec2 oneBox = course.Pit.PlayerOneBox, twoBox = course.Pit.PlayerTwoBox;
-            GUI.Label(new Rect(oneBox.X - 70f, oneBox.Y - 32f, 140f, 64f), "▲ P1 BOX", small);
-            GUI.Label(new Rect(twoBox.X - 70f, twoBox.Y - 32f, 140f, 64f), "● P2 BOX", small);
+            for (int i = 0; i < course.Pit.Boxes.Count; i++)
+            {
+                Vec2 box = course.Pit.Boxes[i];
+                string prefix = i == 0 ? "▲ " : i == 1 ? "● " : "";
+                GUI.Label(new Rect(box.X - RaceSurfaceGeometry.PitBoxHalfLength,
+                    box.Y - RaceSurfaceGeometry.PitBoxHalfWidth,
+                    RaceSurfaceGeometry.PitBoxHalfLength * 2f,
+                    RaceSurfaceGeometry.PitBoxHalfWidth * 2f),
+                    prefix + "P" + (i + 1) + " BOX", small);
+            }
             GUI.Label(new Rect(865, 421, 190, 28), "PIT LANE", small);
         }
 

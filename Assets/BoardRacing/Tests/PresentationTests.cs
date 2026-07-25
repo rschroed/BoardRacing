@@ -89,13 +89,17 @@ namespace BoardRacing.Tests
             var layout = Layout();
             var p1MidEntry = Pose(Racer(PlayerId.Player1, PitPhase.Entering, .5f), layout);
             var p1Box = Pose(Racer(PlayerId.Player1, PitPhase.InService), layout);
-            var p2Box = Pose(Racer(PlayerId.Player2, PitPhase.InService), layout);
-            var p2MidExit = Pose(Racer(PlayerId.Player2, PitPhase.Exiting, .5f), layout);
-
-            Assert.That(p1MidEntry.Position.X, Is.InRange(layout.PitLine.X, layout.PlayerOneBox.X));
-            AssertPosition(p1Box, layout.PlayerOneBox);
-            AssertPosition(p2Box, layout.PlayerTwoBox);
-            Assert.That(p2MidExit.Position.X, Is.Not.EqualTo(p2Box.Position.X).Within(.001f));
+            Assert.That(p1MidEntry.Position.X, Is.InRange(layout.PitLine.X, layout.Box(PlayerId.Player1).X));
+            AssertPosition(p1Box, layout.Box(PlayerId.Player1));
+            foreach (PlayerId player in new[]
+                { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
+            {
+                CarPresentationPose parked = Pose(Racer(player, PitPhase.InService), layout);
+                CarPresentationPose midExit = Pose(Racer(player, PitPhase.Exiting, .5f), layout);
+                AssertPosition(parked, layout.Box(player));
+                Assert.That(midExit.Position.X, Is.Not.EqualTo(parked.Position.X).Within(.001f),
+                    player.ToString());
+            }
         }
 
         [Test]
@@ -109,9 +113,9 @@ namespace BoardRacing.Tests
             var switchedFuel = Pose(Racer(PlayerId.Player1, PitPhase.InService, 0f,
                 PitService.Fuel, 0f), layout);
 
-            AssertPosition(undecided, layout.PlayerOneBox);
-            AssertPosition(holdingTires, layout.PlayerOneBox);
-            AssertPosition(switchedFuel, layout.PlayerOneBox);
+            AssertPosition(undecided, layout.Box(PlayerId.Player1));
+            AssertPosition(holdingTires, layout.Box(PlayerId.Player1));
+            AssertPosition(switchedFuel, layout.Box(PlayerId.Player1));
         }
 
         [Test]
@@ -143,7 +147,7 @@ namespace BoardRacing.Tests
             Assert.That(mid.Tangent.X, Is.GreaterThan(0f));
             Assert.That(end.Tangent.X, Is.GreaterThan(0f));
             Assert.That(mid.Position.X,
-                Is.InRange(layout.PlayerOneBox.X, layout.ExitRejoin.X));
+                Is.InRange(layout.Box(PlayerId.Player1).X, layout.ExitRejoin.X));
             AssertPosition(end, layout.ExitRejoin);
         }
 
@@ -392,9 +396,12 @@ namespace BoardRacing.Tests
                     finished ? 1 : 0, finished, phaseProgress));
 
         private static PitLanePresentationLayout Layout() => new PitLanePresentationLayout(
-            new Vec2(5f, 5f), new Vec2(10f, 10f), new Vec2(20f, 10f),
-            new Vec2(30f, 10f), new Vec2(40f, 10f), new Vec2(38f, 8f),
-            new Vec2(42f, 5f));
+            new Vec2(5f, 5f), new Vec2(10f, 10f), new[]
+            {
+                new Vec2(20f, 10f), new Vec2(30f, 10f),
+                new Vec2(40f, 10f), new Vec2(50f, 10f)
+            },
+            new Vec2(60f, 10f), new Vec2(58f, 8f), new Vec2(62f, 5f));
 
         private static CarPresentationPose Pose(RacerSnapshot racer, PitLanePresentationLayout layout) =>
             Pose(racer, layout, new Vec2(5f, 5f));

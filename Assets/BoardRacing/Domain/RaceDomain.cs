@@ -374,23 +374,33 @@ namespace BoardRacing.Domain
 
     public readonly struct PitRules
     {
-        private readonly float playerOneEntryLength, playerOneExitLength;
-        private readonly float playerTwoEntryLength, playerTwoExitLength;
+        private readonly float[] entryLengths, exitLengths;
 
         public PitRules(float laneSpeed, float playerOneEntryLength, float playerOneExitLength,
             float playerTwoEntryLength, float playerTwoExitLength, float exitRejoinDistance = 0f)
+            : this(laneSpeed,
+                new[] { playerOneEntryLength, playerTwoEntryLength },
+                new[] { playerOneExitLength, playerTwoExitLength },
+                exitRejoinDistance)
         {
-            var values = new[] { laneSpeed, playerOneEntryLength, playerOneExitLength,
-                playerTwoEntryLength, playerTwoExitLength, exitRejoinDistance };
+        }
+
+        public PitRules(float laneSpeed, IReadOnlyList<float> entryLengths,
+            IReadOnlyList<float> exitLengths, float exitRejoinDistance = 0f)
+        {
+            if (entryLengths == null) throw new ArgumentNullException(nameof(entryLengths));
+            if (exitLengths == null) throw new ArgumentNullException(nameof(exitLengths));
+            if (entryLengths.Count < 2 || entryLengths.Count > 4 ||
+                exitLengths.Count != entryLengths.Count)
+                throw new ArgumentException("Pit rules require matching lengths for two to four racers.");
+            float[] entries = entryLengths.ToArray(), exits = exitLengths.ToArray();
+            var values = entries.Concat(exits).Concat(new[] { laneSpeed, exitRejoinDistance });
             if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x)) || laneSpeed <= 0f ||
-                playerOneEntryLength <= 0f || playerOneExitLength <= 0f ||
-                playerTwoEntryLength <= 0f || playerTwoExitLength <= 0f || exitRejoinDistance < 0f)
+                entries.Any(x => x <= 0f) || exits.Any(x => x <= 0f) || exitRejoinDistance < 0f)
                 throw new ArgumentException("Pit rules contain invalid values.");
             Enabled = true; LaneSpeed = laneSpeed;
-            this.playerOneEntryLength = playerOneEntryLength;
-            this.playerOneExitLength = playerOneExitLength;
-            this.playerTwoEntryLength = playerTwoEntryLength;
-            this.playerTwoExitLength = playerTwoExitLength;
+            this.entryLengths = entries;
+            this.exitLengths = exits;
             ExitRejoinDistance = exitRejoinDistance;
         }
         public bool Enabled { get; }
@@ -410,10 +420,8 @@ namespace BoardRacing.Domain
         // launched out of the pit at 2-3× its racing top speed.
         public float EntrySeconds(PlayerId playerId) => EntryLength(playerId) / LaneSpeed;
         public float ExitSeconds(PlayerId playerId) => ExitLength(playerId) / LaneSpeed;
-        public float EntryLength(PlayerId playerId) =>
-            playerId == PlayerId.Player1 ? playerOneEntryLength : playerTwoEntryLength;
-        public float ExitLength(PlayerId playerId) =>
-            playerId == PlayerId.Player1 ? playerOneExitLength : playerTwoExitLength;
+        public float EntryLength(PlayerId playerId) => LengthFor(entryLengths, playerId);
+        public float ExitLength(PlayerId playerId) => LengthFor(exitLengths, playerId);
 
         // Leg lengths measured along the authored lane anchors — the same points
         // the drawn splines run through (PitLanePresentationLayout.ForCourse):
@@ -425,11 +433,18 @@ namespace BoardRacing.Domain
             Vec2 pitLine = course.Track.Sample(0f).Position;
             Vec2 rejoin = course.Track.Sample(course.Pit.ExitRejoinDistance).Position;
             return new PitRules(laneSpeed,
-                Length(pitLine, course.Pit.Entry, course.Pit.PlayerOneBox),
-                Length(course.Pit.PlayerOneBox, course.Pit.MergeApproach, rejoin),
-                Length(pitLine, course.Pit.Entry, course.Pit.PlayerTwoBox),
-                Length(course.Pit.PlayerTwoBox, course.Pit.MergeApproach, rejoin),
+                course.Pit.Boxes.Select(box => Length(pitLine, course.Pit.Entry, box)).ToArray(),
+                course.Pit.Boxes.Select(box => Length(box, course.Pit.MergeApproach, rejoin)).ToArray(),
                 course.Pit.ExitRejoinDistance);
+        }
+
+        private static float LengthFor(float[] lengths, PlayerId playerId)
+        {
+            int index = (int)playerId - 1;
+            if (lengths == null || index < 0 || index >= lengths.Length)
+                throw new ArgumentOutOfRangeException(nameof(playerId),
+                    "Pit rules have no route for that racer.");
+            return lengths[index];
         }
 
         private static float Length(Vec2 a, Vec2 b, Vec2 c)

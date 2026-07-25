@@ -164,6 +164,49 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void FourRacersCompleteIndependentSimultaneousPitLifecycles()
+        {
+            var roster = new[]
+            {
+                PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4
+            };
+            var track = new TrackDefinition(new[]
+            {
+                new TrackSegment(new Vec2(0f, 0f), new Vec2(100f, 0f),
+                    TrackSectionKind.Straight, float.PositiveInfinity),
+                new TrackSegment(new Vec2(100f, 0f), new Vec2(0f, 0f),
+                    TrackSectionKind.Corner, 50f)
+            });
+            var pit = new PitRules(100f,
+                new[] { 20f, 30f, 40f, 50f },
+                new[] { 50f, 40f, 30f, 20f });
+            var rules = new RaceRules(3, 0f, 100f, 1000f, 100f, 100f,
+                .5f, .2f, .5f, 5f, 1f, 1f, 0, default, pit);
+            var simulation = new RaceSimulation(track, rules, roster);
+            RacerCommand[] CommandsFor(bool requestPit = false, bool requestExit = false) =>
+                roster.Select(id => new RacerCommand(id, ThrottleStep.Boost, true, false,
+                    PitService.None, requestPit, 0f, requestExit)).ToArray();
+            simulation.Step(.01f, CommandsFor());
+            simulation.Step(.01f, CommandsFor());
+            simulation.Step(.01f, CommandsFor(requestPit: true));
+            int guard = 0;
+            while (simulation.Snapshot.Racers.Any(x => x.Pit.Phase != PitPhase.InService) &&
+                guard++ < 10000)
+                simulation.Step(.01f, CommandsFor());
+            Assert.That(guard, Is.LessThan(10000));
+            Assert.That(simulation.Snapshot.Racers.All(x => x.Pit.Phase == PitPhase.InService),
+                Is.True);
+
+            simulation.Step(.01f, CommandsFor(requestExit: true));
+            while (simulation.Snapshot.Racers.Any(x => x.Pit.Phase != PitPhase.OnTrack) &&
+                guard++ < 10000)
+                simulation.Step(.01f, CommandsFor());
+            Assert.That(guard, Is.LessThan(10000));
+            Assert.That(simulation.Snapshot.Racers.All(x => x.Pit.Phase == PitPhase.OnTrack),
+                Is.True);
+        }
+
+        [Test]
         public void RacingLineAllocatorLeavesIsolatedCarsCenteredAndSplitsOnlyTheClosePair()
         {
             RacingLinePlacement[] placements = RacingLineAllocator.Allocate(new[]

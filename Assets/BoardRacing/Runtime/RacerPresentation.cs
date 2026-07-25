@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using BoardRacing.Domain;
 
 namespace BoardRacing.Runtime
@@ -140,7 +142,8 @@ namespace BoardRacing.Runtime
     {
         public PitLanePresentationLayout(Vec2 pitLine, Vec2 entry, Vec2 playerOneBox,
             Vec2 playerTwoBox, Vec2 exit, Vec2 mergeApproach, Vec2 exitRejoin)
-            : this(pitLine, entry, playerOneBox, playerTwoBox, exit, mergeApproach, exitRejoin,
+            : this(pitLine, entry, new[] { playerOneBox, playerTwoBox },
+                exit, mergeApproach, exitRejoin,
                 default, default)
         {
         }
@@ -148,16 +151,27 @@ namespace BoardRacing.Runtime
         public PitLanePresentationLayout(Vec2 pitLine, Vec2 entry, Vec2 playerOneBox,
             Vec2 playerTwoBox, Vec2 exit, Vec2 mergeApproach, Vec2 exitRejoin,
             Vec2 entryDirection, Vec2 rejoinDirection)
+            : this(pitLine, entry, new[] { playerOneBox, playerTwoBox },
+                exit, mergeApproach, exitRejoin, entryDirection, rejoinDirection)
         {
-            PitLine = pitLine; Entry = entry; PlayerOneBox = playerOneBox;
-            PlayerTwoBox = playerTwoBox; Exit = exit;
+        }
+
+        public PitLanePresentationLayout(Vec2 pitLine, Vec2 entry, IReadOnlyList<Vec2> boxes,
+            Vec2 exit, Vec2 mergeApproach, Vec2 exitRejoin,
+            Vec2 entryDirection = default, Vec2 rejoinDirection = default)
+        {
+            Vec2[] authoredBoxes = boxes?.ToArray() ??
+                throw new ArgumentNullException(nameof(boxes));
+            if (authoredBoxes.Length < 2 || authoredBoxes.Length > 4)
+                throw new ArgumentException("Pit presentation requires two to four boxes.",
+                    nameof(boxes));
+            PitLine = pitLine; Entry = entry; Boxes = Array.AsReadOnly(authoredBoxes); Exit = exit;
             MergeApproach = mergeApproach; ExitRejoin = exitRejoin;
             EntryDirection = entryDirection; RejoinDirection = rejoinDirection;
         }
         public Vec2 PitLine { get; }
         public Vec2 Entry { get; }
-        public Vec2 PlayerOneBox { get; }
-        public Vec2 PlayerTwoBox { get; }
+        public IReadOnlyList<Vec2> Boxes { get; }
         public Vec2 Exit { get; }
         public Vec2 MergeApproach { get; }
         // Where the pit lane physically meets the track again — the simulation
@@ -170,14 +184,21 @@ namespace BoardRacing.Runtime
         // Left default (zero), the splines fall back to endpoint extrapolation.
         public Vec2 EntryDirection { get; }
         public Vec2 RejoinDirection { get; }
-        public Vec2 Box(PlayerId playerId) => playerId == PlayerId.Player1 ? PlayerOneBox : PlayerTwoBox;
+        public Vec2 Box(PlayerId playerId)
+        {
+            int index = (int)playerId - 1;
+            if (index < 0 || index >= Boxes.Count)
+                throw new ArgumentOutOfRangeException(nameof(playerId),
+                    "The pit layout has no box for that racer.");
+            return Boxes[index];
+        }
 
         // The one way a course's authored pit complex becomes presentation
         // geometry (issue #107 phase 1) — RacePrototype and the geometry tests
         // used to each assemble this by hand from duplicated constants.
         public static PitLanePresentationLayout ForCourse(CourseDefinition course) =>
             new PitLanePresentationLayout(course.Track.Sample(0f).Position,
-                course.Pit.Entry, course.Pit.PlayerOneBox, course.Pit.PlayerTwoBox,
+                course.Pit.Entry, course.Pit.Boxes,
                 course.Pit.Exit, course.Pit.MergeApproach,
                 course.Track.Sample(course.Pit.ExitRejoinDistance).Position,
                 TrackPresentation.SmoothHeading(course.Track, 0f),

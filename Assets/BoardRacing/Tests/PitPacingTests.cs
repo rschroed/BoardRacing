@@ -13,11 +13,25 @@ namespace BoardRacing.Tests
         [Test]
         public void TransitDurationsDeriveFromLaneLengthAtTheCrawl()
         {
-            var rules = new PitRules(100f, 20f, 30f, 40f, 50f);
+            var rules = new PitRules(100f,
+                new[] { 20f, 40f, 60f, 80f },
+                new[] { 30f, 50f, 70f, 90f });
             Assert.That(rules.EntrySeconds(PlayerId.Player1), Is.EqualTo(.2f).Within(1e-5f));
             Assert.That(rules.ExitSeconds(PlayerId.Player1), Is.EqualTo(.3f).Within(1e-5f));
             Assert.That(rules.EntrySeconds(PlayerId.Player2), Is.EqualTo(.4f).Within(1e-5f));
             Assert.That(rules.ExitSeconds(PlayerId.Player2), Is.EqualTo(.5f).Within(1e-5f));
+            Assert.That(rules.EntrySeconds(PlayerId.Player3), Is.EqualTo(.6f).Within(1e-5f));
+            Assert.That(rules.ExitSeconds(PlayerId.Player4), Is.EqualTo(.9f).Within(1e-5f));
+        }
+
+        [Test]
+        public void PitRoutesRejectMismatchedCountsAndMissingRacers()
+        {
+            Assert.Throws<ArgumentException>(() => new PitRules(100f,
+                new[] { 20f, 40f, 60f }, new[] { 30f, 50f }));
+            var twoRacerRules = new PitRules(100f, 20f, 30f, 40f, 50f);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                twoRacerRules.EntryLength(PlayerId.Player3));
         }
 
         [Test]
@@ -28,7 +42,8 @@ namespace BoardRacing.Tests
                 PitRules rules = PitRules.ForCourse(course, Pace.PitLaneSpeed);
                 Vec2 pitLine = course.Track.Sample(0f).Position;
                 Vec2 rejoin = course.Track.Sample(course.Pit.ExitRejoinDistance).Position;
-                foreach (PlayerId player in new[] { PlayerId.Player1, PlayerId.Player2 })
+                foreach (PlayerId player in new[]
+                    { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
                 {
                     Vec2 box = course.Pit.Box(player);
                     float entry = Distance(pitLine, course.Pit.Entry) + Distance(course.Pit.Entry, box);
