@@ -29,14 +29,18 @@ namespace BoardRacing.Domain
         private RaceSnapshot snapshot;
 
         public RaceSimulation(TrackDefinition track, RaceRules rules)
+            : this(track, rules, RacerRosters.Default)
+        {
+        }
+
+        public RaceSimulation(TrackDefinition track, RaceRules rules,
+            IReadOnlyList<PlayerId> racerRoster)
         {
             this.track = track ?? throw new ArgumentNullException(nameof(track));
             this.rules = rules;
-            racers = new[]
-            {
-                new RacerState { Id = PlayerId.Player1, PriorKind = track.Sample(0f).Kind },
-                new RacerState { Id = PlayerId.Player2, PriorKind = track.Sample(0f).Kind }
-            };
+            PlayerId[] roster = RacerRosters.ValidateAndCopy(racerRoster);
+            racers = roster.Select(id =>
+                new RacerState { Id = id, PriorKind = track.Sample(0f).Kind }).ToArray();
             stepStartDistances = new float[racers.Length];
             snapshot = BuildSnapshot();
         }
@@ -408,12 +412,20 @@ namespace BoardRacing.Domain
         private RaceSnapshot BuildSnapshot()
         {
             var ordered = racers.OrderBy(x => x.Finished ? 0 : 1)
-                .ThenBy(x => x.Finished ? x.FinishTime : -x.Distance).ThenBy(x => x.Id).ToArray();
-            bool close = CircularDistance(racers[0].Distance, racers[1].Distance, track.Length) <= rules.PassingDistance;
+                .ThenBy(x => x.Finished ? x.FinishTime : -x.Distance)
+                .ThenBy(x => Array.IndexOf(racers, x)).ToArray();
+            var candidates = racers.Select((racer, index) =>
+                    new RacingLineCandidate(racer.Id, index, racer.Distance))
+                .Where((candidate, index) => !racers[index].Finished &&
+                    (racers[index].PitPhase == PitPhase.OnTrack ||
+                     racers[index].PitPhase == PitPhase.Requested))
+                .ToArray();
+            RacingLinePlacement[] placements = RacingLineAllocator.Allocate(candidates,
+                track.Length, rules.PassingDistance, rules.PassingOffset);
             var result = racers.Select(racer =>
             {
                 int place = Array.IndexOf(ordered, racer) + 1;
-                float offset = close ? (racer.Id == PlayerId.Player1 ? -rules.PassingOffset : rules.PassingOffset) : 0f;
+                RacingLinePlacement placement = placements.FirstOrDefault(x => x.PlayerId == racer.Id);
                 var condition = new RacerConditionSnapshot(racer.FuelUsed, racer.TireWear,
                     FuelPenaltyActive(racer), TirePenaltyActive(racer));
                 float phaseProgress = racer.PitPhase == PitPhase.Entering
@@ -424,8 +436,8 @@ namespace BoardRacing.Domain
                     racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount, phaseProgress);
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
                     Math.Min(rules.Laps, (int)(racer.Distance / track.Length)), place, racer.Finished, racer.FinishTime,
-                    track.Sample(racer.Distance), offset, racer.IncidentThisStep, racer.Recovery, racer.Incidents,
-                    condition, pit);
+                    track.Sample(racer.Distance), placement.LateralOffset, racer.IncidentThisStep,
+                    racer.Recovery, racer.Incidents, condition, pit, placement.LongitudinalOffset);
             }).ToArray();
             float progress = rules.RematchHoldSeconds <= 0f ? 1f : Math.Min(1f, rematchHeld / rules.RematchHoldSeconds);
             return new RaceSnapshot(phase, countdown, elapsed, result, progress, awaitingRematchRelease);
@@ -436,10 +448,5 @@ namespace BoardRacing.Domain
 
         private static float Clamp01(float value) => Math.Max(0f, Math.Min(1f, value));
 
-        private static float CircularDistance(float a, float b, float length)
-        {
-            float delta = Math.Abs((a % length) - (b % length));
-            return Math.Min(delta, length - delta);
-        }
     }
 }

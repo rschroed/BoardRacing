@@ -18,16 +18,17 @@ namespace BoardRacing.Tests
             Assert.That(course.Name, Is.EqualTo("Wedge"));
             Assert.That(course.Laps, Is.EqualTo(6));
             AssertVec(course.Pit.Entry, 680f, 455f);
-            AssertVec(course.Pit.PlayerOneBox, 860f, 455f);
-            AssertVec(course.Pit.PlayerTwoBox, 1120f, 455f);
+            Assert.That(course.Pit.Boxes.Count, Is.EqualTo(4));
+            AssertVec(course.Pit.Box(PlayerId.Player1), 778f, 455f);
+            AssertVec(course.Pit.Box(PlayerId.Player2), 892f, 455f);
+            AssertVec(course.Pit.Box(PlayerId.Player3), 1006f, 455f);
+            AssertVec(course.Pit.Box(PlayerId.Player4), 1120f, 455f);
             AssertVec(course.Pit.Exit, 1353f, 455f);
             // Retuned for the Y-junction meshing (issue #107 phase 2): the merge
             // approach lifts off the lane center so the climb to the rejoin
             // stays a shallow slip-road angle.
             AssertVec(course.Pit.MergeApproach, 1240f, 428f);
             Assert.That(course.Pit.ExitRejoinDistance, Is.EqualTo(850f));
-            Assert.That(course.Pit.Box(PlayerId.Player1), Is.EqualTo(course.Pit.PlayerOneBox));
-            Assert.That(course.Pit.Box(PlayerId.Player2), Is.EqualTo(course.Pit.PlayerTwoBox));
         }
 
         [Test]
@@ -38,10 +39,37 @@ namespace BoardRacing.Tests
             // for the exit spline to read as a forward merge.
             CourseDefinition course = CourseCatalog.Wedge();
             Assert.That(course.Pit.ExitRejoinDistance, Is.LessThan(course.Track.Length));
-            Assert.That(course.Pit.Entry.X, Is.LessThan(course.Pit.PlayerOneBox.X));
-            Assert.That(course.Pit.PlayerOneBox.X, Is.LessThan(course.Pit.PlayerTwoBox.X));
-            Assert.That(course.Pit.PlayerTwoBox.X, Is.LessThan(course.Pit.MergeApproach.X));
+            Assert.That(course.Pit.Entry.X, Is.LessThan(course.Pit.Boxes[0].X));
+            for (int i = 1; i < course.Pit.Boxes.Count; i++)
+                Assert.That(course.Pit.Boxes[i - 1].X, Is.LessThan(course.Pit.Boxes[i].X));
+            Assert.That(course.Pit.Boxes[3].X, Is.LessThan(course.Pit.MergeApproach.X));
             Assert.That(course.Pit.MergeApproach.X, Is.LessThan(course.Pit.Exit.X));
+        }
+
+        [Test]
+        public void EveryCourseOwnsFourOrderedBoxesWithTheApprovedGap()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                Assert.That(course.Pit.Boxes.Count, Is.EqualTo(4), course.Name);
+                for (int i = 1; i < course.Pit.Boxes.Count; i++)
+                {
+                    float dx = course.Pit.Boxes[i].X - course.Pit.Boxes[i - 1].X;
+                    float dy = course.Pit.Boxes[i].Y - course.Pit.Boxes[i - 1].Y;
+                    float spacing = (float)Math.Sqrt(dx * dx + dy * dy);
+                    Assert.That(spacing, Is.EqualTo(114f).Within(.01f),
+                        course.Name + " boxes " + i + "/" + (i + 1));
+                }
+            }
+        }
+
+        [Test]
+        public void HourglassLeavesAVisibleRunFromEntryToFirstBox()
+        {
+            CourseDefinition course = CourseCatalog.Hourglass();
+            Assert.That(course.Pit.Box(PlayerId.Player1).X - course.Pit.Entry.X,
+                Is.EqualTo(20f));
+            Assert.That(course.Pit.ExitRejoinDistance, Is.EqualTo(712f));
         }
 
         [Test]
@@ -74,12 +102,15 @@ namespace BoardRacing.Tests
             Assert.Throws<ArgumentException>(() => new CourseDefinition("X", track, pit, 0),
                 "a race needs at least one lap");
             Assert.Throws<ArgumentException>(() => new CourseDefinition("X", track,
-                new PitComplexDefinition(pit.Entry, pit.PlayerOneBox, pit.PlayerTwoBox,
+                new PitComplexDefinition(pit.Entry, pit.Boxes,
                     pit.Exit, pit.MergeApproach, track.Length + 1f), 6),
                 "the rejoin must land inside the lap");
             Assert.Throws<ArgumentException>(() => new PitComplexDefinition(pit.Entry,
-                pit.PlayerOneBox, pit.PlayerTwoBox, pit.Exit, pit.MergeApproach, 0f),
+                pit.Boxes, pit.Exit, pit.MergeApproach, 0f),
                 "the rejoin distance must be positive");
+            Assert.Throws<ArgumentException>(() => new PitComplexDefinition(pit.Entry,
+                new[] { pit.Boxes[0] }, pit.Exit, pit.MergeApproach, pit.ExitRejoinDistance),
+                "at least two boxes are required");
         }
 
         private static void AssertVec(Vec2 actual, float x, float y)

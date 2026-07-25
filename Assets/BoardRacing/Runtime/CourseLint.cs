@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using BoardRacing.Domain;
 using UnityEngine;
 
@@ -27,8 +28,11 @@ namespace BoardRacing.Runtime
         // box to the rejoin (issue #107 phase 2 landed at ~230 px and ≤26°).
         public const float MinEntryRun = 150f;
         public const float MinMergeRun = 200f;
-        // Service boxes are 140 px wide; closer than this and they collide.
-        public const float MinBoxSpacing = 180f;
+        // Four-car pit review (#134): 94 px painted boxes keep 20 px of clear
+        // pavement between neighboring edges, hence 114 px center spacing.
+        public const float MinBoxGap = 20f;
+        public const float MinBoxSpacing = RaceSurfaceGeometry.PitBoxHalfLength * 2f + MinBoxGap;
+        private const float DistanceTolerance = .01f;
         // Pit anchors must sit off the pavement (entry/exit may hug the edge
         // mid-taper; parked boxes need the full lane width clear) but must not
         // wander into the middle of the infield either.
@@ -43,6 +47,10 @@ namespace BoardRacing.Runtime
         // between the two strands.
         public const float MinCrossingAngle = 35f;
         public const float MinCrossingClearance = 150f;
+        // Infinity deliberately runs the service row beneath its bridge. A box
+        // center may approach more closely than other anchors provided its
+        // 94×46 quad stays visibly outside the 64 px crossing ribbon.
+        public const float MinCrossingBoxClearance = 75f;
 
         public static IReadOnlyList<string> Check(CourseDefinition course, RaceLayout seats)
         {
@@ -70,18 +78,23 @@ namespace BoardRacing.Runtime
                 PitComplexDefinition pit = course.Pit;
                 Vec2 start = course.Track.Sample(0f).Position;
                 Vec2 rejoin = course.Track.Sample(pit.ExitRejoinDistance).Position;
-                foreach ((Vec2 point, string name) in new[]
+                var anchors = new List<(Vec2 point, string name, float clearance)>
                 {
-                    (start, "start line"), (pit.Entry, "pit entry"),
-                    (pit.PlayerOneBox, "player one box"), (pit.PlayerTwoBox, "player two box"),
-                    (pit.Exit, "pit exit"), (rejoin, "exit rejoin"),
-                })
+                    (start, "start line", MinCrossingClearance),
+                    (pit.Entry, "pit entry", MinCrossingClearance),
+                    (pit.Exit, "pit exit", MinCrossingClearance),
+                    (rejoin, "exit rejoin", MinCrossingClearance)
+                };
+                for (int i = 0; i < pit.Boxes.Count; i++)
+                    anchors.Add((pit.Boxes[i], $"player {i + 1} box",
+                        MinCrossingBoxClearance));
+                foreach ((Vec2 point, string name, float clearance) in anchors)
                 {
                     float distance = Vector2.Distance(crossing.Point,
                         new Vector2(point.X, point.Y));
-                    if (distance < MinCrossingClearance)
+                    if (distance < clearance)
                         findings.Add($"The {name} sits {distance:0} px from the crossing at " +
-                            $"({crossing.Point.x:0}, {crossing.Point.y:0}) (min {MinCrossingClearance}) — " +
+                            $"({crossing.Point.x:0}, {crossing.Point.y:0}) (min {clearance}) — " +
                             "nearest-chord logic is ambiguous between the strands there.");
                 }
             }
@@ -160,9 +173,13 @@ namespace BoardRacing.Runtime
         private static void CheckPitComplex(CourseDefinition course, List<string> findings)
         {
             PitComplexDefinition pit = course.Pit;
+            if (pit.Boxes.Count != 4)
+                findings.Add($"The production pit complex has {pit.Boxes.Count} boxes (requires exactly 4).");
             CheckAnchor(course.Track, pit.Entry, "entry", MinAnchorOffset, findings);
-            CheckAnchor(course.Track, pit.PlayerOneBox, "player one box", MinBoxOffset, findings);
-            CheckAnchor(course.Track, pit.PlayerTwoBox, "player two box", MinBoxOffset, findings);
+            int pitStraight = NearestSegmentIndex(course.Track, pit.Entry);
+            for (int i = 0; i < pit.Boxes.Count; i++)
+                CheckAnchorOnSegment(course.Track, pit.Boxes[i], $"player {i + 1} box",
+                    MinBoxOffset, pitStraight, findings);
             CheckAnchor(course.Track, pit.Exit, "exit", MinAnchorOffset, findings);
             // The merge approach is a spline aim point inside the taper — it
             // may legitimately hug or cross the edge line (the junction clamp
@@ -170,21 +187,35 @@ namespace BoardRacing.Runtime
             CheckAnchor(course.Track, pit.MergeApproach, "merge approach", 0f, findings);
 
             float entry = DistanceAlongTrack(course.Track, pit.Entry);
-            float boxOne = DistanceAlongTrack(course.Track, pit.PlayerOneBox);
-            float boxTwo = DistanceAlongTrack(course.Track, pit.PlayerTwoBox);
+            float[] boxes = pit.Boxes
+                .Select(box => DistanceAlongTrack(course.Track, box, pitStraight)).ToArray();
             float approach = DistanceAlongTrack(course.Track, pit.MergeApproach);
             float rejoin = pit.ExitRejoinDistance;
-            if (!(entry < boxOne && boxOne < boxTwo && boxTwo < approach && approach < rejoin))
+            bool ordered = entry < boxes[0] && boxes[boxes.Length - 1] < approach &&
+                approach < rejoin;
+            for (int i = 1; i < boxes.Length; i++) ordered &= boxes[i - 1] < boxes[i];
+            if (!ordered)
                 findings.Add("The pit complex must run in travel order: entry, boxes, merge " +
-                    $"approach, rejoin (got {entry:0}, {boxOne:0}, {boxTwo:0}, {approach:0}, {rejoin:0}).");
+                    $"approach, rejoin (got {entry:0}, {string.Join(", ", boxes.Select(x => x.ToString("0")))}, " +
+                    $"{approach:0}, {rejoin:0}).");
             if (entry < MinEntryRun)
                 findings.Add($"The entry sits {entry:0} along the lap (min {MinEntryRun}) — " +
                     "the entry gore needs room to peel off past the start line.");
-            if (rejoin - boxTwo < MinMergeRun)
-                findings.Add($"Only {rejoin - boxTwo:0} px from the last box to the rejoin " +
+            if (rejoin - boxes[boxes.Length - 1] < MinMergeRun)
+                findings.Add($"Only {rejoin - boxes[boxes.Length - 1]:0} px from the last box to the rejoin " +
                     $"(min {MinMergeRun}) — the merge would climb too steeply.");
-            if (boxTwo - boxOne < MinBoxSpacing)
-                findings.Add($"Service boxes are {boxTwo - boxOne:0} px apart (min {MinBoxSpacing}).");
+            for (int i = 1; i < boxes.Length; i++)
+            {
+                float spacing = Vector2.Distance(Point(pit.Boxes[i - 1]), Point(pit.Boxes[i]));
+                if (spacing < MinBoxSpacing - DistanceTolerance)
+                    findings.Add($"Service boxes are {spacing:0} px apart " +
+                        $"between positions {i} and {i + 1} (min {MinBoxSpacing}).");
+            }
+            float rowSpan = Vector2.Distance(Point(pit.Boxes[0]),
+                Point(pit.Boxes[pit.Boxes.Count - 1]));
+            if (boxes.Length == 4 && rowSpan < MinBoxSpacing * 3f - DistanceTolerance)
+                findings.Add($"The four-box row spans only {rowSpan:0} px center-to-center " +
+                    $"(min {MinBoxSpacing * 3f:0}).");
             if (course.Track.Sample(rejoin).Kind == TrackSectionKind.Corner)
                 findings.Add("The pit exit rejoins inside a corner — the merge gore needs a straight.");
         }
@@ -192,52 +223,70 @@ namespace BoardRacing.Runtime
         private static void CheckAnchor(TrackDefinition track, Vec2 anchor, string name,
             float minimumOffset, List<string> findings)
         {
-            float offset = RaceSurfaceGeometry.InteriorOffset(new Vector2(anchor.X, anchor.Y), track);
+            CheckAnchorOnSegment(track, anchor, name, minimumOffset,
+                NearestSegmentIndex(track, anchor), findings);
+        }
+
+        private static void CheckAnchorOnSegment(TrackDefinition track, Vec2 anchor, string name,
+            float minimumOffset, int segmentIndex, List<string> findings)
+        {
+            TrackSegment segment = track.Segments[segmentIndex];
+            Vector2 start = Point(segment.Start), end = Point(segment.End);
+            Vector2 direction = end - start;
+            float t = Mathf.Clamp01(Vector2.Dot(Point(anchor) - start, direction) /
+                direction.sqrMagnitude);
+            Vector2 nearest = start + direction * t;
+            Vector2 unit = direction.normalized;
+            Vector2 interiorNormal = new Vector2(-unit.y, unit.x);
+            float offset = Vector2.Dot(Point(anchor) - nearest, interiorNormal);
             if (offset < minimumOffset)
                 findings.Add($"The pit {name} at ({anchor.X:0}, {anchor.Y:0}) sits {offset:0.0} " +
                     $"inside the loop (min {minimumOffset:0.0}) — on or under the roadway.");
             else if (offset > MaxAnchorOffset)
                 findings.Add($"The pit {name} at ({anchor.X:0}, {anchor.Y:0}) sits {offset:0.0} " +
                     $"inside the loop (max {MaxAnchorOffset:0}) — the lane strays from the track.");
-            if (NearestSegment(track, anchor).Kind == TrackSectionKind.Corner)
+            if (segment.Kind == TrackSectionKind.Corner)
                 findings.Add($"The pit {name} hangs off a corner chord — the complex needs a straight.");
         }
 
         private static float DistanceAlongTrack(TrackDefinition track, Vec2 point)
         {
+            return DistanceAlongTrack(track, point, NearestSegmentIndex(track, point));
+        }
+
+        private static float DistanceAlongTrack(TrackDefinition track, Vec2 point, int segmentIndex)
+        {
             var target = new Vector2(point.X, point.Y);
-            float best = float.MaxValue, along = 0f, cumulative = 0f;
-            foreach (TrackSegment segment in track.Segments)
+            float cumulative = 0f;
+            for (int i = 0; i < track.Segments.Count; i++)
             {
+                TrackSegment segment = track.Segments[i];
                 Vector2 start = Point(segment.Start), end = Point(segment.End);
                 Vector2 direction = end - start;
                 float length = direction.magnitude;
-                float t = Mathf.Clamp01(Vector2.Dot(target - start, direction) / direction.sqrMagnitude);
-                float distance = Vector2.Distance(target, start + direction * t);
-                if (distance < best)
-                {
-                    best = distance;
-                    along = cumulative + t * length;
-                }
+                if (i == segmentIndex)
+                    return cumulative + Mathf.Clamp01(
+                        Vector2.Dot(target - start, direction) / direction.sqrMagnitude) * length;
                 cumulative += length;
             }
-            return along;
+            return cumulative;
         }
 
-        private static TrackSegment NearestSegment(TrackDefinition track, Vec2 point)
+        private static int NearestSegmentIndex(TrackDefinition track, Vec2 point)
         {
             var target = new Vector2(point.X, point.Y);
-            TrackSegment nearest = track.Segments[0];
+            int nearest = 0;
             float best = float.MaxValue;
-            foreach (TrackSegment segment in track.Segments)
+            for (int i = 0; i < track.Segments.Count; i++)
             {
+                TrackSegment segment = track.Segments[i];
                 Vector2 start = Point(segment.Start), end = Point(segment.End);
                 Vector2 direction = end - start;
                 float t = Mathf.Clamp01(Vector2.Dot(target - start, direction) / direction.sqrMagnitude);
                 float distance = Vector2.Distance(target, start + direction * t);
                 if (distance >= best) continue;
                 best = distance;
-                nearest = segment;
+                nearest = i;
             }
             return nearest;
         }

@@ -107,6 +107,10 @@ namespace BoardRacing.Runtime
         public const float TrackStripeWidth = 3f;
         public const float PitLaneWidth = 30f;
         public const float PitStripeWidth = 2f;
+        public const float PitBoxFrontRearClearance = 20f;
+        public const float PitBoxSideClearance = 10f;
+        public const float PitBoxHalfLength = CarBodyHalfSize + PitBoxFrontRearClearance;
+        public const float PitBoxHalfWidth = CarBodyHalfWidth + PitBoxSideClearance;
         // The authored polyline steps ≤12-13° per chord (TrackCatalog); splitting
         // each chord six ways brings the drawn ribbon under ~2.2° per step, which
         // reads as a continuous arc at 64 px width — the chord scalloping fix.
@@ -118,6 +122,7 @@ namespace BoardRacing.Runtime
         public static readonly Color StripeColor = new Color(.55f, .62f, .7f, .5f);
         public static readonly Color PitLaneColor = new Color(.08f, .11f, .15f);
         public static readonly Color PitStripeColor = new Color(.62f, .68f, .74f, .55f);
+        public static readonly Color InactivePitBoxAccent = new Color(.48f, .52f, .58f);
         public static readonly Color CrossingShadowColor = new Color(0f, 0f, 0f, .35f);
         // How far a junction ribbon may tuck under the track fill: deep enough
         // that rasterization can never open a background sliver along the seam,
@@ -137,8 +142,8 @@ namespace BoardRacing.Runtime
             // (issue #107 phase 2; the round-2.2 full ribbon under the fill
             // crossed at ~40° and read as the lane vanishing under the track).
             List<Vector2> entry = EntryLanePoints(pitLayout);
-            var serviceRow = new List<Vector2>
-                { ToVector(pitLayout.PlayerOneBox), ToVector(pitLayout.PlayerTwoBox) };
+            var serviceRow = new List<Vector2>(pitLayout.Boxes.Count);
+            foreach (Vec2 box in pitLayout.Boxes) serviceRow.Add(ToVector(box));
             List<Vector2> merge = MergeLanePoints(pitLayout);
             foreach (float width in new[] { PitLaneWidth, PitStripeWidth })
             {
@@ -160,9 +165,14 @@ namespace BoardRacing.Runtime
             AppendOrientedRect(mesh, ToVector(track.Sample(0f).Position), startDirection,
                 12f, 28f, Color.white);
             Vector2 laneDirection =
-                (ToVector(pitLayout.PlayerTwoBox) - ToVector(pitLayout.PlayerOneBox)).normalized;
-            AppendPitBox(mesh, pitLayout.PlayerOneBox, laneDirection, playerOneAccent);
-            AppendPitBox(mesh, pitLayout.PlayerTwoBox, laneDirection, playerTwoAccent);
+                (ToVector(pitLayout.Boxes[pitLayout.Boxes.Count - 1]) -
+                 ToVector(pitLayout.Boxes[0])).normalized;
+            for (int i = 0; i < pitLayout.Boxes.Count; i++)
+            {
+                Color accent = i == 0 ? playerOneAccent :
+                    i == 1 ? playerTwoAccent : InactivePitBoxAccent;
+                AppendPitBox(mesh, pitLayout.Boxes[i], laneDirection, accent);
+            }
             return mesh;
         }
 
@@ -288,8 +298,8 @@ namespace BoardRacing.Runtime
 
         // The drawn lane legs are the very splines the cars drive: entry along
         // Player1's entering spline (the players' paths only diverge past the
-        // shared straight), merge along Player2's exiting spline (the lane
-        // leaves the service row after the last box). A car in a pit phase is
+        // shared straight), merge along the last box's exiting spline (the lane
+        // leaves the service row after that box). A car in a pit phase is
         // therefore always over pavement.
         private static List<Vector2> EntryLanePoints(PitLanePresentationLayout layout)
         {
@@ -303,8 +313,9 @@ namespace BoardRacing.Runtime
         private static List<Vector2> MergeLanePoints(PitLanePresentationLayout layout)
         {
             var points = new List<Vector2>(LaneSteps + 1);
+            PlayerId lastBox = (PlayerId)layout.Boxes.Count;
             for (int i = 0; i <= LaneSteps; i++)
-                points.Add(ToVector(PitLanePresentationMapper.ExitPose(PlayerId.Player2,
+                points.Add(ToVector(PitLanePresentationMapper.ExitPose(lastBox,
                     i / (float)LaneSteps, false, layout).Position));
             return points;
         }
@@ -420,9 +431,10 @@ namespace BoardRacing.Runtime
         private static void AppendPitBox(SurfaceMeshData mesh, Vec2 center, Vector2 along,
             Color accent)
         {
-            AppendOrientedRect(mesh, ToVector(center), along, 70f, 32f,
+            AppendOrientedRect(mesh, ToVector(center), along, PitBoxHalfLength, PitBoxHalfWidth,
                 new Color(accent.r, accent.g, accent.b, .22f));
-            AppendOrientedRectOutline(mesh, ToVector(center), along, 70f, 32f, 3f, accent);
+            AppendOrientedRectOutline(mesh, ToVector(center), along,
+                PitBoxHalfLength, PitBoxHalfWidth, 3f, accent);
         }
 
         // An axis-free rect: 2·halfLength along `along`, 2·halfWidth across it.

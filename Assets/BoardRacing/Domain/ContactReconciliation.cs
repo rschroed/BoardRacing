@@ -45,7 +45,7 @@ namespace BoardRacing.Domain
             this.assignments = all.ToDictionary(x => x.GlyphId);
             // Player 2's seat is the 180° rotation of Player 1's, so the same measured
             // stops apply after removing the seat rotation from the raw orientation.
-            throttleMappers = Enum.GetValues(typeof(PlayerId)).Cast<PlayerId>()
+            throttleMappers = TrancheOneAssignments.ActivePlayers
                 .ToDictionary(x => x, id => new CoarseThrottleMapper(throttleHysteresisRadians,
                     throttleStops, id == PlayerId.Player1 ? 0f : (float)Math.PI));
             this.playerRegionBoundaryY = playerRegionBoundaryY;
@@ -59,7 +59,7 @@ namespace BoardRacing.Domain
             bool hasUnassigned = active.Any(x => !assignments.ContainsKey(x.GlyphId));
             var result = new List<PlayerControlSnapshot>(2);
 
-            foreach (PlayerId player in Enum.GetValues(typeof(PlayerId)))
+            foreach (PlayerId player in TrancheOneAssignments.ActivePlayers)
             {
                 InputWarning warning = hasUnassigned ? InputWarning.UnassignedGlyph : InputWarning.None;
                 var car = Resolve(player, PieceRole.Car, activeByGlyph, ref warning);

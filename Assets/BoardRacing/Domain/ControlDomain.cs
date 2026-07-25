@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace BoardRacing.Domain
 {
-    public enum PlayerId { Player1 = 1, Player2 = 2 }
+    public enum PlayerId { Player1 = 1, Player2 = 2, Player3 = 3, Player4 = 4 }
     public enum PieceRole { Car, Crew }
     public enum ThrottleStep { Brake = 0, Drive = 50, Boost = 100 }
     [Flags] public enum InputWarning { None = 0, UnassignedGlyph = 1, DuplicateGlyph = 2, WrongRegion = 4 }
@@ -68,6 +68,12 @@ namespace BoardRacing.Domain
 
     public static class TrancheOneAssignments
     {
+        // PlayerId names every identity the race domain can model. The proven
+        // production input slice still activates only this explicit roster;
+        // growing the enum must never silently require unconfigured Pieces.
+        public static readonly PlayerId[] ActivePlayers =
+            { PlayerId.Player1, PlayerId.Player2 };
+
         public static readonly PieceAssignment[] All =
         {
             new PieceAssignment(PlayerId.Player1, PieceRole.Car, 7, "Orange Driving Ship", "Orange / Ship"),
@@ -82,7 +88,7 @@ namespace BoardRacing.Domain
             var errors = new List<string>();
             foreach (var duplicate in all.GroupBy(x => x.GlyphId).Where(x => x.Count() > 1))
                 errors.Add($"Glyph {duplicate.Key} is assigned more than once.");
-            foreach (PlayerId player in Enum.GetValues(typeof(PlayerId)))
+            foreach (PlayerId player in ActivePlayers)
                 foreach (PieceRole role in Enum.GetValues(typeof(PieceRole)))
                     if (!all.Any(x => x.PlayerId == player && x.Role == role))
                         errors.Add($"{player} is missing a {role} assignment.");

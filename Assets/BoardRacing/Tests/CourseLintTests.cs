@@ -65,7 +65,7 @@ namespace BoardRacing.Tests
                 new Vec2(1120f, 455f), new Vec2(1353f, 455f), new Vec2(1240f, 428f), 850f);
             IReadOnlyList<string> findings =
                 CourseLint.Check(new CourseDefinition("Bad", track, pit, 6), Layout());
-            Assert.That(findings, Has.Some.Contains("player one box"));
+            Assert.That(findings, Has.Some.Contains("player 1 box"));
             Assert.That(findings, Has.Some.Contains("roadway"));
             Assert.That(findings, Has.Some.Contains("strays from the track"));
         }
@@ -131,8 +131,8 @@ namespace BoardRacing.Tests
                 s.Kind, s.SafeSpeed)).ToList();
             Vec2 Moved(Vec2 p) => new Vec2(p.X + dx, p.Y + dy);
             return new CourseDefinition(wedge.Name, new TrackDefinition(segments),
-                new PitComplexDefinition(Moved(wedge.Pit.Entry), Moved(wedge.Pit.PlayerOneBox),
-                    Moved(wedge.Pit.PlayerTwoBox), Moved(wedge.Pit.Exit),
+                new PitComplexDefinition(Moved(wedge.Pit.Entry), wedge.Pit.Boxes.Select(Moved),
+                    Moved(wedge.Pit.Exit),
                     Moved(wedge.Pit.MergeApproach), wedge.Pit.ExitRejoinDistance),
                 wedge.Laps);
         }
