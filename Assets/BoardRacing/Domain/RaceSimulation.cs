@@ -362,6 +362,44 @@ namespace BoardRacing.Domain
                 ? ThrottleStep.Drive : ThrottleStep.Brake;
         }
 
+
+        // Where the car actually is, and which way it points: its place on
+        // the line, pushed sideways by its own offset.
+        private Vec2 WorldPosition(RacerState racer)
+        {
+            Vec2 p = track.Sample(racer.Distance).Position;
+            Vec2 t = Heading(racer.Distance);
+            return new Vec2(p.X - t.Y * racer.Lateral, p.Y + t.X * racer.Lateral);
+        }
+
+        private Vec2 Heading(float distance)
+        {
+            Vec2 behind = track.Sample(distance - 8f).Position;
+            Vec2 ahead = track.Sample(distance + 8f).Position;
+            float dx = ahead.X - behind.X, dy = ahead.Y - behind.Y;
+            float length = (float)Math.Sqrt(dx * dx + dy * dy);
+            return length <= 0f ? new Vec2(1f, 0f) : new Vec2(dx / length, dy / length);
+        }
+
+        // How far apart two cars really are, along and across, resolved in the
+        // first car's frame. Every separation question asks this rather than
+        // subtracting centreline distances, because cars run on concentric
+        // arcs and a gap measured down the middle of the road is not the gap
+        // between the bodies: on the inside of an R72 hairpin, 62px of
+        // centreline is 48px of daylight and two bodies overlap, while on the
+        // outside the same 62px is a wasteful 76px. Centreline units
+        // under-protect the inside by exactly what they over-protect the
+        // outside, and no constant can fix both.
+        private void Separation(RacerState racer, RacerState other,
+            out float along, out float across)
+        {
+            Vec2 a = WorldPosition(racer), b = WorldPosition(other);
+            Vec2 t = Heading(racer.Distance);
+            float dx = b.X - a.X, dy = b.Y - a.Y;
+            along = dx * t.X + dy * t.Y;
+            across = -dx * t.Y + dy * t.X;
+        }
+
         // How much longer this car's arc is than the reference line, as a
         // divisor on its progress. 1 on a straight and for a car on the line.
         private float LateralPathFactor(RacerState racer)
@@ -440,14 +478,12 @@ namespace BoardRacing.Domain
                 var other = racers[i];
                 if (i == self || other.Finished) continue;
                 if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
-                float gap = AheadGap(racer, other);
-                float along = Math.Min(gap, track.Length - gap);
-                if (along >= rules2.MinimumGap) continue;
+                Separation(racer, other, out float along, out float across);
+                if (Math.Abs(along) >= rules2.MinimumGap) continue;
                 // Only a move that closes on the rival is refused; a car
                 // already inside the width must always be free to escape.
-                if (Math.Abs(lateral - other.Lateral) < rules2.SameLineWidth &&
-                    Math.Abs(lateral - other.Lateral) < Math.Abs(racer.Lateral - other.Lateral))
-                    return true;
+                float moving = Math.Abs(across - (lateral - racer.Lateral));
+                if (moving < rules2.SameLineWidth && moving < Math.Abs(across)) return true;
             }
             return false;
         }
@@ -465,7 +501,10 @@ namespace BoardRacing.Domain
                 if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
                 float gap = AheadGap(racer, other);
                 if (gap <= 0f || gap > lateral.LookAhead) continue;
-                if (Math.Abs(other.Lateral - line) >= lateral.SameLineWidth) continue;
+                // Would this car be in the way ON that line, where the two of
+                // them actually are — not where their centreline offsets say.
+                Separation(racer, other, out _, out float across);
+                if (Math.Abs(across - (line - racer.Lateral)) >= lateral.SameLineWidth) continue;
                 if (gap >= nearestGap) continue;
                 nearestGap = gap; nearest = other;
             }
@@ -486,12 +525,13 @@ namespace BoardRacing.Domain
                 var other = racers[i];
                 if (i == self || other.Finished) continue;
                 if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
-                if (Math.Abs(other.Lateral - racer.Lateral) >= lateral.SameLineWidth) continue;
                 float gap = AheadGap(racer, other);
                 if (gap <= 0f || gap > lateral.LookAhead) continue;
+                Separation(racer, other, out float along, out float across);
+                if (Math.Abs(across) >= lateral.SameLineWidth) continue;
                 // Close the surplus over the minimum gap within this step, no
                 // faster: at the gap itself the cap is the leader's own speed.
-                cap = Math.Min(cap, Math.Max(0f, other.Speed + (gap - lateral.MinimumGap) / delta));
+                cap = Math.Min(cap, Math.Max(0f, other.Speed + (along - lateral.MinimumGap) / delta));
             }
             return cap;
         }
