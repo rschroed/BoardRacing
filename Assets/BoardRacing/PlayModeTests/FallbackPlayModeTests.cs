@@ -51,6 +51,27 @@ namespace BoardRacing.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator FourSeatFallbackLobbyCanAddAndClaimEveryPlayer()
+        {
+            var session = new FallbackPlayerSession(2);
+            var lobby = new PlayerLobbyPresentation(session, true);
+            session.AddPlayer().GetAwaiter().GetResult();
+            session.AddPlayer().GetAwaiter().GetResult();
+            lobby.Coordinator.ClaimForFallback(PlayerId.Player1, 7);
+            lobby.Coordinator.ClaimForFallback(PlayerId.Player2, 6);
+            lobby.Coordinator.ClaimForFallback(PlayerId.Player3, 4);
+            lobby.Coordinator.ClaimForFallback(PlayerId.Player4, 5);
+
+            Assert.That(lobby.Coordinator.Seats.Count, Is.EqualTo(4));
+            Assert.That(lobby.Coordinator.CanStart, Is.True);
+            Assert.That(lobby.Coordinator.BuildPieceAssignments().Length, Is.EqualTo(8));
+
+            lobby.Dispose();
+            session.Dispose();
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator RacePrototypeStartsWithoutControlLabInEditorPlayMode()
         {
             yield return null;

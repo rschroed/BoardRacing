@@ -83,12 +83,17 @@ namespace BoardRacing.Domain
         };
 
         public static string[] Validate(IEnumerable<PieceAssignment> assignments)
+            => Validate(assignments, ActivePlayers);
+
+        public static string[] Validate(IEnumerable<PieceAssignment> assignments,
+            IEnumerable<PlayerId> activePlayers)
         {
             var all = assignments.ToArray();
+            var players = activePlayers.ToArray();
             var errors = new List<string>();
             foreach (var duplicate in all.GroupBy(x => x.GlyphId).Where(x => x.Count() > 1))
                 errors.Add($"Glyph {duplicate.Key} is assigned more than once.");
-            foreach (PlayerId player in ActivePlayers)
+            foreach (PlayerId player in players)
                 foreach (PieceRole role in Enum.GetValues(typeof(PieceRole)))
                     if (!all.Any(x => x.PlayerId == player && x.Role == role))
                         errors.Add($"{player} is missing a {role} assignment.");

@@ -132,7 +132,12 @@ namespace BoardRacing.Runtime
 
         public static SurfaceMeshData Build(TrackDefinition track,
             PitLanePresentationLayout pitLayout, Color playerOneAccent, Color playerTwoAccent)
+            => Build(track, pitLayout, new[] { playerOneAccent, playerTwoAccent });
+
+        public static SurfaceMeshData Build(TrackDefinition track,
+            PitLanePresentationLayout pitLayout, IReadOnlyList<Color> playerAccents)
         {
+            if (playerAccents == null) throw new ArgumentNullException(nameof(playerAccents));
             var mesh = new SurfaceMeshData();
             // The pit lane draws first, under the track fill, as one knot-shared
             // chain: pit line ~entry spline~> entry -> box row -> ~exit spline~>
@@ -169,8 +174,8 @@ namespace BoardRacing.Runtime
                  ToVector(pitLayout.Boxes[0])).normalized;
             for (int i = 0; i < pitLayout.Boxes.Count; i++)
             {
-                Color accent = i == 0 ? playerOneAccent :
-                    i == 1 ? playerTwoAccent : InactivePitBoxAccent;
+                Color accent = i < playerAccents.Count
+                    ? playerAccents[i] : InactivePitBoxAccent;
                 AppendPitBox(mesh, pitLayout.Boxes[i], laneDirection, accent);
             }
             return mesh;

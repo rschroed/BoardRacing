@@ -14,6 +14,13 @@ namespace BoardRacing.Runtime
         private TrancheTwoSettings raceSettings;
         private TrancheThreeSettings strategySettings;
         private IPlayerInputProvider boardProvider, fallbackProvider, activeProvider;
+        private IPlayerSession playerSession;
+        private PlayerLobbyPresentation lobby;
+        private PlayerSeat[] raceSeats = Array.Empty<PlayerSeat>();
+        private readonly Dictionary<PlayerId, Color> playerAccents =
+            new Dictionary<PlayerId, Color>();
+        private readonly Dictionary<PlayerId, string> playerIdentityLabels =
+            new Dictionary<PlayerId, string>();
         private RaceSimulation simulation;
         private IReadOnlyList<PlayerControlSnapshot> controls = Array.Empty<PlayerControlSnapshot>();
         private readonly Dictionary<PlayerId, CrewStrategyAdapter> crewAdapters =
@@ -68,7 +75,8 @@ namespace BoardRacing.Runtime
         public static bool SuppressEditorDiagnostics;
 #endif
 
-        // Player accents from the design authority (frame 40:23): P1 orange, P2 purple.
+        // Legacy defaults remain the two-player preview colors; live races take
+        // their accents from whichever Ships claimed the named seats.
         private static readonly Color PlayerOneAccent = new Color(.92f, .39f, .12f);
         private static readonly Color PlayerTwoAccent = new Color(.48f, .28f, .72f);
         // Shared geometry for the pause and race-finished overlays in 1920×1080 GUI
@@ -108,16 +116,26 @@ namespace BoardRacing.Runtime
 #else
             activeProvider = fallbackProvider;
 #endif
-            foreach (PlayerId id in TrancheOneAssignments.ActivePlayers) CreateCrewAdapter(id);
             AttachResetSource(activeProvider);
             courseSelection = new CourseSelection(CourseCatalog.All(raceSettings.CornerSafeSpeed));
             course = courseSelection.Current;
-            BuildRace();
-            hud = RaceHud.Create(RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
-                ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize),
-                PlayerOneAccent, PlayerTwoAccent);
-            RefreshPresentation();
-            UpdateWorldCars();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            playerSession = new BoardPlayerSession();
+            lobby = new PlayerLobbyPresentation(playerSession, false);
+#else
+            playerSession = new FallbackPlayerSession();
+            lobby = new PlayerLobbyPresentation(playerSession, true);
+#if UNITY_EDITOR
+            // Existing automated race probes intentionally bypass the interactive
+            // lobby; lobby behavior has its own deterministic and PlayMode tests.
+            if (Application.isBatchMode)
+            {
+                lobby.Coordinator.ClaimForFallback(PlayerId.Player1, 7);
+                lobby.Coordinator.ClaimForFallback(PlayerId.Player2, 6);
+                BeginRace();
+            }
+#endif
+#endif
         }
 
         // Everything owned by the course on the table: the simulation and the
@@ -128,15 +146,15 @@ namespace BoardRacing.Runtime
             simulation = new RaceSimulation(course.Track,
                 raceSettings.ToRules(course.Laps, strategySettings.requiredServiceCount,
                     strategySettings.ToConditionRules(raceSettings.basePace),
-                    strategySettings.ToPitRules(course, raceSettings.basePace)));
+                    strategySettings.ToPitRules(course, raceSettings.basePace)),
+                raceSeats.Select(x => x.PlayerId).ToArray());
             previousSnapshot = simulation.Snapshot;
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
-                simulation.Track, PitLayout(), PlayerOneAccent, PlayerTwoAccent));
-            surface.AttachCar(PlayerId.Player1,
-                RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, PlayerOneAccent));
-            surface.AttachCar(PlayerId.Player2,
-                RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, PlayerTwoAccent));
+                simulation.Track, PitLayout(), raceSeats.Select(x => PlayerAccent(x.PlayerId)).ToArray()));
+            foreach (PlayerSeat seat in raceSeats)
+                surface.AttachCar(seat.PlayerId,
+                    RaceSurfaceGeometry.BuildCarBody(seat.PlayerId, PlayerAccent(seat.PlayerId)));
         }
 
         private void CreateCrewAdapter(PlayerId id)
@@ -152,21 +170,111 @@ namespace BoardRacing.Runtime
             crewOutputs[id] = default;
         }
 
-        private ServiceTargets ServiceTargetsFor(PlayerId id) => id == PlayerId.Player1
-            ? new ServiceTargets(inputSettings.playerOneServiceCenter,
-                strategySettings.playerOneTiresCenter, strategySettings.playerOneFuelCenter)
-            : new ServiceTargets(inputSettings.playerTwoServiceCenter,
-                strategySettings.playerTwoTiresCenter, strategySettings.playerTwoFuelCenter);
+        private ServiceTargets ServiceTargetsFor(PlayerId id)
+        {
+            if (id == PlayerId.Player1)
+                return new ServiceTargets(inputSettings.playerOneServiceCenter,
+                    strategySettings.playerOneTiresCenter, strategySettings.playerOneFuelCenter);
+            if (id == PlayerId.Player2)
+                return new ServiceTargets(inputSettings.playerTwoServiceCenter,
+                    strategySettings.playerTwoTiresCenter, strategySettings.playerTwoFuelCenter);
+            if (id == PlayerId.Player3)
+                return new ServiceTargets(
+                    new Vector2(RaceLayout.ReferenceWidth - inputSettings.playerOneServiceCenter.x,
+                        inputSettings.playerOneServiceCenter.y),
+                    new Vector2(RaceLayout.ReferenceWidth - strategySettings.playerOneTiresCenter.x,
+                        strategySettings.playerOneTiresCenter.y),
+                    new Vector2(RaceLayout.ReferenceWidth - strategySettings.playerOneFuelCenter.x,
+                        strategySettings.playerOneFuelCenter.y));
+            return new ServiceTargets(
+                new Vector2(RaceLayout.ReferenceWidth - inputSettings.playerTwoServiceCenter.x,
+                    inputSettings.playerTwoServiceCenter.y),
+                new Vector2(RaceLayout.ReferenceWidth - strategySettings.playerTwoTiresCenter.x,
+                    strategySettings.playerTwoTiresCenter.y),
+                new Vector2(RaceLayout.ReferenceWidth - strategySettings.playerTwoFuelCenter.x,
+                    strategySettings.playerTwoFuelCenter.y));
+        }
 
         private void OnDestroy()
         {
             DetachResetSource(activeProvider);
             if (boardProvider is IDisposable disposable) disposable.Dispose();
+            lobby?.Dispose();
+            playerSession?.Dispose();
             if (surface != null) Destroy(surface.gameObject);
             if (hud != null) Destroy(hud.gameObject);
         }
 
-        private void Update() => AdvanceFrame(Time.unscaledDeltaTime);
+        private void Update()
+        {
+            if (lobby != null)
+            {
+                IReadOnlyList<RawPieceContact> contacts = activeProvider == boardProvider
+                    ? ((BoardContactInputProvider)boardProvider).ReadRawContacts()
+                    : Array.Empty<RawPieceContact>();
+                lobby.Update(contacts);
+                if (lobby.Coordinator.CanStart &&
+                    (activeProvider != boardProvider || LobbyShipsAtBrake(contacts)))
+                    BeginRace();
+                return;
+            }
+            AdvanceFrame(Time.unscaledDeltaTime);
+        }
+
+        private bool LobbyShipsAtBrake(IReadOnlyList<RawPieceContact> contacts)
+        {
+            RawPieceContact[] active = contacts.Where(x => x.IsActive).ToArray();
+            foreach (PlayerSeat seat in lobby.Coordinator.Seats)
+            {
+                PieceIdentity identity = seat.PieceIdentity.Value;
+                RawPieceContact[] matches = active
+                    .Where(x => x.GlyphId == identity.ShipGlyphId).ToArray();
+                SeatClaimRegion region = FourSeatLayout.For(seat.PlayerId);
+                if (matches.Length != 1 || !region.Contains(matches[0].Position))
+                    return false;
+                var mapper = new CoarseThrottleMapper(
+                    inputSettings.throttleHysteresisDegrees * Mathf.Deg2Rad,
+                    inputSettings.ToThrottleStops(), region.SeatRotationRadians);
+                if (mapper.Map(true, matches[0].OrientationRadians) != ThrottleStep.Brake)
+                    return false;
+            }
+            return true;
+        }
+
+        private void BeginRace()
+        {
+            raceSeats = lobby.Coordinator.Seats.OrderBy(x => x.PlayerId).ToArray();
+            playerAccents.Clear();
+            playerIdentityLabels.Clear();
+            foreach (PlayerSeat seat in raceSeats)
+            {
+                PieceIdentity identity = seat.PieceIdentity.Value;
+                playerAccents[seat.PlayerId] = PlayerColors.For(identity);
+                playerIdentityLabels[seat.PlayerId] = identity.Symbol + " " +
+                    seat.Player.DisplayName.ToUpperInvariant() + " · " +
+                    identity.ColorName.ToUpperInvariant();
+            }
+
+            var ids = raceSeats.Select(x => x.PlayerId).ToArray();
+            ((BoardContactInputProvider)boardProvider).Configure(
+                lobby.Coordinator.BuildPieceAssignments(), ids,
+                ids.Select(FourSeatLayout.InputFor));
+            ((KeyboardInputProvider)fallbackProvider).ConfigureRoster(ids);
+            crewAdapters.Clear();
+            crewOutputs.Clear();
+            foreach (PlayerId id in ids) CreateCrewAdapter(id);
+
+            lobby.Dispose();
+            lobby = null;
+            playerSession.HideProfileSwitcher();
+            BuildRace();
+            if (raceSeats.Length == 2)
+                hud = RaceHud.Create(RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
+                    ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize),
+                    PlayerAccent(PlayerId.Player1), PlayerAccent(PlayerId.Player2));
+            RefreshPresentation();
+            UpdateWorldCars();
+        }
 
         // Kept separate from Unity's clock so accelerated PlayMode coverage can
         // advance an exact amount of simulation time regardless of editor load.
@@ -195,7 +303,11 @@ namespace BoardRacing.Runtime
                     crewOutputs[control.PlayerId] = crew;
                     bool rematchConfirming = simulation.Snapshot.Phase == RacePhase.Finished &&
                         control.Car.Present && control.Throttle == ThrottleStep.Brake;
-                    return new RacerCommand(control.PlayerId, control.Throttle, control.Car.Present, rematchConfirming,
+                    bool startReady = control.Car.Present &&
+                        ((simulation.Snapshot.Phase != RacePhase.Grid &&
+                          simulation.Snapshot.Phase != RacePhase.Countdown) ||
+                         control.Throttle == ThrottleStep.Brake);
+                    return new RacerCommand(control.PlayerId, control.Throttle, startReady, rematchConfirming,
                         crew.SelectedService, crew.RequestPit, crew.ServiceDrain, crew.RequestExit);
                 }).ToArray();
                 previousSnapshot = simulation.Snapshot;
@@ -221,10 +333,17 @@ namespace BoardRacing.Runtime
             }
 #endif
             presentedUi = RaceUiModelBuilder.Build(presentedRace, controls, crewOutputs,
-                simulation.Rules.Conditions, course.Laps);
+                simulation.Rules.Conditions, course.Laps, playerIdentityLabels);
+            if (simulation.Snapshot.Phase == RacePhase.Finished)
+                playerSession.ShowProfileSwitcher();
+            else
+                playerSession.HideProfileSwitcher();
         }
 
-        private void LateUpdate() => hud.Apply(presentedUi);
+        private void LateUpdate()
+        {
+            if (hud != null && presentedUi.Players != null) hud.Apply(presentedUi);
+        }
 
         private void UpdateWorldCars()
         {
@@ -489,6 +608,12 @@ namespace BoardRacing.Runtime
             EnsureStyles();
             Matrix4x4 original = GUI.matrix;
             GUI.matrix = Matrix4x4.Scale(new Vector3(Screen.width / 1920f, Screen.height / 1080f, 1f));
+            if (lobby != null)
+            {
+                lobby.Draw();
+                GUI.matrix = original;
+                return;
+            }
             RaceLayout layout = RaceLayout.Create(ServiceTargetsFor(PlayerId.Player1),
                 ServiceTargetsFor(PlayerId.Player2), strategySettings.serviceHalfSize);
             RaceUiModel ui = presentedUi;
@@ -497,19 +622,26 @@ namespace BoardRacing.Runtime
 #if UNITY_EDITOR
             // The rotated glyph stands in for the physical Ship on desktop only;
             // on Board hardware the real piece sits on the uGUI seat's well ring.
-            DrawShipGlyph(layout.PlayerTwo.Controller, layout.PlayerTwo, PlayerTwoAccent,
-                ui.PlayerTwo.ShipPresent);
-            DrawShipGlyph(layout.PlayerOne.Controller, layout.PlayerOne, PlayerOneAccent,
-                ui.PlayerOne.ShipPresent);
+            if (raceSeats.Length == 2)
+            {
+                DrawShipGlyph(layout.PlayerTwo.Controller, layout.PlayerTwo,
+                    PlayerAccent(PlayerId.Player2), ui.PlayerTwo.ShipPresent);
+                DrawShipGlyph(layout.PlayerOne.Controller, layout.PlayerOne,
+                    PlayerAccent(PlayerId.Player1), ui.PlayerOne.ShipPresent);
+            }
 #endif
+            if (raceSeats.Length > 2) DrawMultiSeatRaceHud(ui);
             DrawCenterMessage(ui, layout);
             // Development builds only: raw Ship orientation per seat so the throttle
             // mapper can be calibrated against the rendered wedges on real hardware
             // (issue #77 hardware review). Never present in release builds.
             if (Debug.isDebugBuild && !EditorDiagnosticsSuppressed())
             {
-                DrawRawAngleReadout(layout.PlayerOne);
-                DrawRawAngleReadout(layout.PlayerTwo);
+                if (raceSeats.Length == 2)
+                {
+                    DrawRawAngleReadout(layout.PlayerOne);
+                    DrawRawAngleReadout(layout.PlayerTwo);
+                }
             }
 #if UNITY_EDITOR
             if (!SuppressEditorDiagnostics)
@@ -541,6 +673,67 @@ namespace BoardRacing.Runtime
             DrawRotatedLabel(bounds, text, layout.RotationDegrees, small, Color.white);
         }
 
+        private Color PlayerAccent(PlayerId id) =>
+            playerAccents.TryGetValue(id, out Color accent) ? accent :
+            id == PlayerId.Player1 ? PlayerOneAccent : PlayerTwoAccent;
+
+        // Three/four-player races use a compact corner treatment. The proven
+        // two-player dial HUD remains untouched; each additional named corner
+        // still exposes the same brake state, condition, Robot targets, and one
+        // primary instruction without covering the shared racing line.
+        private void DrawMultiSeatRaceHud(RaceUiModel ui)
+        {
+            foreach (PlayerSeat seat in raceSeats)
+            {
+                SeatClaimRegion region = FourSeatLayout.For(seat.PlayerId);
+                Rect corner = new Rect(region.MinX,
+                    RaceLayout.ReferenceHeight - region.MaxY,
+                    region.MaxX - region.MinX, region.MaxY - region.MinY);
+                Rect panel = new Rect(corner.x + 18f, corner.y + 18f,
+                    corner.width - 36f, 150f);
+                Color accent = PlayerAccent(seat.PlayerId);
+                GUI.DrawTexture(panel, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
+                    new Color(.025f, .035f, .05f, .9f), 0, 18f);
+                DrawOutline(panel, 3f, accent);
+
+                PlayerUiModel player = ui.For(seat.PlayerId);
+                float rotation = seat.PlayerId == PlayerId.Player2 ||
+                    seat.PlayerId == PlayerId.Player4 ? 180f : 0f;
+                Matrix4x4 original = GUI.matrix;
+                Vector3 pivot = panel.center;
+                GUI.matrix = original * Matrix4x4.Translate(pivot) *
+                    Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, rotation)) *
+                    Matrix4x4.Translate(-pivot);
+                GUI.Label(new Rect(panel.x + 12f, panel.y + 8f, panel.width - 24f, 30f),
+                    player.Identity, small);
+                GUI.Label(new Rect(panel.x + 12f, panel.y + 38f, panel.width - 24f, 32f),
+                    RaceUiModelBuilder.ThrottleName(player.Throttle) + " · FUEL " +
+                    Mathf.RoundToInt(player.Condition.FuelUsed * 100f) + " · TIRES " +
+                    Mathf.RoundToInt(player.Condition.TireWear * 100f), carLabel);
+                GUI.Label(new Rect(panel.x + 18f, panel.y + 76f, panel.width - 36f, 62f),
+                    player.PrimaryInstruction, small);
+                GUI.matrix = original;
+
+                ServiceTargets targets = ServiceTargetsFor(seat.PlayerId);
+                DrawServiceTarget(targets.CallPit, 58f, accent);
+                if (player.PitPhase == PitPhase.InService)
+                {
+                    DrawServiceTarget(targets.Tires, strategySettings.serviceHalfSize.x,
+                        RaceHud.TiresLabelColor);
+                    DrawServiceTarget(targets.Fuel, strategySettings.serviceHalfSize.x,
+                        RaceHud.FuelLabelColor);
+                }
+            }
+        }
+
+        private static void DrawServiceTarget(Vector2 boardCenter, float halfSize, Color accent)
+        {
+            Vector2 gui = new Vector2(boardCenter.x,
+                RaceLayout.ReferenceHeight - boardCenter.y);
+            DrawOutline(new Rect(gui.x - halfSize, gui.y - halfSize,
+                halfSize * 2f, halfSize * 2f), 3f, accent);
+        }
+
         // The pit geometry itself is world-space mesh (RaceSurfaceGeometry); text
         // stays IMGUI until the migration settles a world-space text stack.
         private void DrawPitLabels()
@@ -548,7 +741,8 @@ namespace BoardRacing.Runtime
             for (int i = 0; i < course.Pit.Boxes.Count; i++)
             {
                 Vec2 box = course.Pit.Boxes[i];
-                string prefix = i == 0 ? "▲ " : i == 1 ? "● " : "";
+                string prefix = i < raceSeats.Length
+                    ? raceSeats[i].PieceIdentity.Value.Symbol + " " : "";
                 GUI.Label(new Rect(box.X - RaceSurfaceGeometry.PitBoxHalfLength,
                     box.Y - RaceSurfaceGeometry.PitBoxHalfWidth,
                     RaceSurfaceGeometry.PitBoxHalfLength * 2f,
@@ -577,7 +771,8 @@ namespace BoardRacing.Runtime
             Vector2 carCenter = CarCenter(racer);
             float x = carCenter.x, y = carCenter.y;
             Rect rect = new Rect(x - 27f, y - 27f, 54f, 54f);
-            GUI.Label(rect, racer.PlayerId == PlayerId.Player1 ? "▲" : "●", carLabel);
+            GUI.Label(rect, raceSeats.Single(x => x.PlayerId == racer.PlayerId)
+                .PieceIdentity.Value.Symbol, carLabel);
             DrawConditionCues(racer, x, y);
             if (racer.RecoveryRemaining > 0f) GUI.Label(new Rect(x - 100f, y - 72f, 200f, 36f), "SLOWDOWN!", warning);
             if (racer.Finished)

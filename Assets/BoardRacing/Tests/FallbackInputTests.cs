@@ -70,6 +70,23 @@ namespace BoardRacing.Tests
             Assert.That(snapshot.Crew.Position.Y, Is.EqualTo(398f).Within(.001f));
         }
 
+        [Test]
+        public void FourSeatFallbackReturnsIndependentThirdAndFourthPlayers()
+        {
+            provider = new KeyboardInputProvider(() => 1f / 60f,
+                new[] { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 });
+            Tap(keyboard.digit2Key);
+            var snapshots = Tap(keyboard.endKey);
+
+            Assert.That(snapshots.Select(x => x.PlayerId), Is.EqualTo(new[]
+            {
+                PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4
+            }));
+            Assert.That(Player(snapshots, PlayerId.Player3).Throttle, Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(Player(snapshots, PlayerId.Player4).Throttle, Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(Player(snapshots, PlayerId.Player1).Throttle, Is.EqualTo(ThrottleStep.Brake));
+        }
+
         private void AssertSector(UnityEngine.InputSystem.Controls.ButtonControl p1,
             UnityEngine.InputSystem.Controls.ButtonControl p2, ThrottleStep expected)
         {

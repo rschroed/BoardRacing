@@ -32,23 +32,43 @@ namespace BoardRacing.Domain
     {
         private readonly Dictionary<int, PieceAssignment> assignments;
         private readonly Dictionary<PlayerId, CoarseThrottleMapper> throttleMappers;
+        private readonly PlayerId[] activePlayers;
+        private readonly Dictionary<PlayerId, SeatClaimRegion> playerRegions;
         private readonly Dictionary<int, int> trackedContactIds = new Dictionary<int, int>();
         private readonly HashSet<int> awaitingSafeRelease = new HashSet<int>();
-        private readonly float playerRegionBoundaryY;
 
         public ContactSnapshotReconciler(IEnumerable<PieceAssignment> assignments,
             ThrottleStops throttleStops, float throttleHysteresisRadians, float playerRegionBoundaryY)
+            : this(assignments, TrancheOneAssignments.ActivePlayers, throttleStops,
+                throttleHysteresisRadians, new[]
+                {
+                    new SeatClaimRegion(PlayerId.Player1, SeatCorner.LowerRight,
+                        0f, 0f, FourSeatLayout.Width, playerRegionBoundaryY, 0f),
+                    new SeatClaimRegion(PlayerId.Player2, SeatCorner.UpperLeft,
+                        0f, playerRegionBoundaryY, FourSeatLayout.Width, FourSeatLayout.Height,
+                        (float)Math.PI)
+                })
+        {
+        }
+
+        public ContactSnapshotReconciler(IEnumerable<PieceAssignment> assignments,
+            IEnumerable<PlayerId> activePlayers, ThrottleStops throttleStops,
+            float throttleHysteresisRadians, IEnumerable<SeatClaimRegion> playerRegions)
         {
             var all = assignments.ToArray();
-            var errors = TrancheOneAssignments.Validate(all);
+            this.activePlayers = activePlayers.ToArray();
+            SeatClaimRegion[] regions = playerRegions.ToArray();
+            var errors = TrancheOneAssignments.Validate(all, this.activePlayers);
             if (errors.Length > 0) throw new ArgumentException(string.Join(" ", errors), nameof(assignments));
+            if (regions.Select(x => x.PlayerId).Distinct().Count() != this.activePlayers.Length ||
+                this.activePlayers.Any(x => regions.All(region => region.PlayerId != x)))
+                throw new ArgumentException("Every active player needs one input region.",
+                    nameof(playerRegions));
             this.assignments = all.ToDictionary(x => x.GlyphId);
-            // Player 2's seat is the 180° rotation of Player 1's, so the same measured
-            // stops apply after removing the seat rotation from the raw orientation.
-            throttleMappers = TrancheOneAssignments.ActivePlayers
+            this.playerRegions = regions.ToDictionary(x => x.PlayerId);
+            throttleMappers = this.activePlayers
                 .ToDictionary(x => x, id => new CoarseThrottleMapper(throttleHysteresisRadians,
-                    throttleStops, id == PlayerId.Player1 ? 0f : (float)Math.PI));
-            this.playerRegionBoundaryY = playerRegionBoundaryY;
+                    throttleStops, this.playerRegions[id].SeatRotationRadians));
         }
 
         public IReadOnlyList<PlayerControlSnapshot> Reconcile(IEnumerable<RawPieceContact> snapshot)
@@ -57,16 +77,14 @@ namespace BoardRacing.Domain
             var active = all.Where(x => x.IsActive).ToArray();
             var activeByGlyph = active.GroupBy(x => x.GlyphId).ToDictionary(x => x.Key, x => x.ToArray());
             bool hasUnassigned = active.Any(x => !assignments.ContainsKey(x.GlyphId));
-            var result = new List<PlayerControlSnapshot>(2);
+            var result = new List<PlayerControlSnapshot>(activePlayers.Length);
 
-            foreach (PlayerId player in TrancheOneAssignments.ActivePlayers)
+            foreach (PlayerId player in activePlayers)
             {
                 InputWarning warning = hasUnassigned ? InputWarning.UnassignedGlyph : InputWarning.None;
                 var car = Resolve(player, PieceRole.Car, activeByGlyph, ref warning);
                 var crew = Resolve(player, PieceRole.Crew, activeByGlyph, ref warning);
-                bool carInWrongRegion = car.Present && (player == PlayerId.Player1
-                    ? car.Position.Y >= playerRegionBoundaryY
-                    : car.Position.Y < playerRegionBoundaryY);
+                bool carInWrongRegion = car.Present && !playerRegions[player].Contains(car.Position);
                 var throttle = throttleMappers[player].Map(car.Present && !carInWrongRegion,
                     car.OrientationRadians);
                 result.Add(new PlayerControlSnapshot(player, throttle, car, crew, warning));
@@ -109,9 +127,7 @@ namespace BoardRacing.Domain
                 if (role == PieceRole.Car) throttleMappers[player].Reset();
             }
 
-            bool wrongRegion = player == PlayerId.Player1
-                ? contact.Position.Y >= playerRegionBoundaryY
-                : contact.Position.Y < playerRegionBoundaryY;
+            bool wrongRegion = !playerRegions[player].Contains(contact.Position);
             if (wrongRegion) warning |= InputWarning.WrongRegion;
 
             bool safeTouched = contact.Touched;
