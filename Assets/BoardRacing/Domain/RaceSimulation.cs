@@ -625,10 +625,17 @@ namespace BoardRacing.Domain
         // behind 8px, which is one clump, not a grid. A stagger longer than
         // the body clears every pair along the ribbon as well as across it,
         // so each car is seen against open track rather than against another
-        // car's flank. About a body and a half, which is roughly the stagger
-        // a real grid uses, and leaves half a body of daylight between
-        // diagonal neighbours instead of the 6px a 2x2 block managed.
-        private const float GridSlotStagger = 80f;
+        // car's flank.
+        //
+        // Tightened from a body and a half to just under one (owner review of
+        // hardware captures 2026-07-25). A real grid staggers about 1.6 car
+        // lengths, and at that proportion this one read as four cars strung
+        // out rather than a grid — half a car of empty track between each,
+        // and on a course whose line follows a corner the whole formation
+        // wrapped the bend. Legibility on a table beats proportion. The floor
+        // is about 34: below that the two cars sharing a column close inside
+        // a body length of each other.
+        public const float GridSlotStagger = 50f;
 
         private void ApplyStartingGrid()
         {

@@ -125,7 +125,7 @@ namespace BoardRacing.Tests
             var slots = new List<(float along, Vec2 at, TrackSectionKind kind)>();
             for (int i = 0; i < 4; i++)
             {
-                float d = -i * 80f;
+                float d = -i * RaceSimulation.GridSlotStagger;
                 TrackSample sample = track.Sample(d);
                 slots.Add((d, sample.Position, sample.Kind));
             }
@@ -140,8 +140,9 @@ namespace BoardRacing.Tests
                     Math.Pow(slots[i - 1].at.Y - slots[i].at.Y, 2)));
             TestContext.Out.WriteLine(
                 $"  grid run-up sections (front to back): {kinds}   " +
-                $"pole-to-last world gap {frontToBack:0}px of 240px along-track, " +
-                $"closest adjacent slots {worstAdjacent:0}px of 80px");
+                $"pole-to-last world gap {frontToBack:0}px of " +
+                $"{3f * RaceSimulation.GridSlotStagger:0}px along-track, closest adjacent slots " +
+                $"{worstAdjacent:0}px of {RaceSimulation.GridSlotStagger:0}px");
         }
 
         private sealed class Trace
