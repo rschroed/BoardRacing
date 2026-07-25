@@ -102,6 +102,18 @@ namespace BoardRacing.Runtime
         // to the corner itself.
         public const float FormationHalfSpan = 150f;
 
+        // A straight shorter than this never stands the formation up: fully
+        // releasing takes a FormationHalfSpan·2 ramp each way, so a shorter
+        // straight buys at most a blink of side-by-side before the file
+        // re-forms — on Fishhook's paperclip (451/473px straights between
+        // three hairpins) that read as the pair churning open-closed-open
+        // twice back to back, every lap (owner report 2026-07-23). Straights
+        // under the span stay part of one corner complex: fall into file at
+        // its mouth, hold the line through, stand back up on a straight long
+        // enough to actually race across. Every catalog course keeps its
+        // full-release straights (all ≥ 720px).
+        public const float FormationRestSpan = 600f;
+
         // The fraction of the ±FormationHalfSpan window that lies in corner
         // sections, smoothstepped. NOT the curvature blend: curvature
         // saturates within ~¾R px of a corner mouth, so tight corners would
@@ -125,13 +137,35 @@ namespace BoardRacing.Runtime
             {
                 TrackSegment segment = segments[index];
                 float take = Math.Min(remaining, segment.Length - into);
-                if (segment.Kind == TrackSectionKind.Corner) corner += take;
+                if (HoldsFormation(track, index)) corner += take;
                 remaining -= take;
                 into = 0f;
                 index = (index + 1) % segments.Count;
             }
             float raw = corner / span;
             return raw * raw * (3f - 2f * raw);
+        }
+
+        // Whether this segment belongs to a corner complex for formation
+        // purposes: a corner always does; a straight does when its whole
+        // contiguous run is shorter than the rest span (too short to stand
+        // up in). A track with no corners at all rests everywhere.
+        private static bool HoldsFormation(TrackDefinition track, int index)
+        {
+            var segments = track.Segments;
+            if (segments[index].Kind == TrackSectionKind.Corner) return true;
+            int count = segments.Count;
+            float run = segments[index].Length;
+            int ahead = 1;
+            while (ahead < count &&
+                segments[(index + ahead) % count].Kind != TrackSectionKind.Corner)
+                run += segments[(index + ahead++) % count].Length;
+            if (ahead == count) return false;
+            for (int behind = 1;
+                segments[(index - behind + count) % count].Kind != TrackSectionKind.Corner;
+                behind++)
+                run += segments[(index - behind + count) % count].Length;
+            return run < FormationRestSpan;
         }
 
         // How much of the sim's passing split to draw here. The split exists

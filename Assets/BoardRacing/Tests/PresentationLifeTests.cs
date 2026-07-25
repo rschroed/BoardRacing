@@ -187,6 +187,62 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void TheSplitAssemblesAcrossTheEngageSpan()
+        {
+            // The engage-boundary pin (Fishhook jitter, 2026-07-23): the sim
+            // grants and revokes the passing offset as a binary at
+            // PassingDistance, and the drawn split used to follow it — a
+            // full-offset sideways teleport in one step. Engagement must be
+            // exactly 0 at the boundary (continuous with the revocation),
+            // fully assembled one EngageSpan inside it, and glide monotonely
+            // in between — so no gap history can ever pop a body sideways.
+            float passing = RaceRules.Defaults.PassingDistance;
+            Assert.That(PresentationLife.DuelEngagement(passing, passing), Is.EqualTo(0f));
+            Assert.That(PresentationLife.DuelEngagement(passing + 50f, passing), Is.EqualTo(0f));
+            Assert.That(PresentationLife.DuelEngagement(passing - PresentationLife.EngageSpan, passing),
+                Is.EqualTo(1f));
+            Assert.That(PresentationLife.DuelEngagement(0f, passing), Is.EqualTo(1f));
+            float previous = PresentationLife.DuelEngagement(passing + 10f, passing);
+            for (float gap = passing + 10f; gap >= 0f; gap -= .5f)
+            {
+                float engagement = PresentationLife.DuelEngagement(gap, passing);
+                Assert.That(engagement, Is.GreaterThanOrEqualTo(previous), "monotone at gap " + gap);
+                // Slope ≤ smoothstep's peak 1.5/EngageSpan: half a px of gap
+                // change moves the drawn offset well under a quarter px.
+                Assert.That(engagement - previous,
+                    Is.LessThanOrEqualTo(.5f * 1.5f / PresentationLife.EngageSpan + 1e-4f),
+                    "step at gap " + gap);
+                previous = engagement;
+            }
+        }
+
+        [Test]
+        public void ThePassClearanceOpensOnlyMidExchange()
+        {
+            // The pass-around pin: at the held-file spacing the clearance
+            // sits under the split floor the corner taper already grants —
+            // a locked nose-to-tail formation never feels it — and it only
+            // reaches full width as the drawn bodies truly exchange.
+            Assert.That(PresentationLife.PassClearance(CornerCharacter.NoseToTailSpacing),
+                Is.LessThan(CornerCharacter.SplitFloor));
+            Assert.That(PresentationLife.PassClearance(PresentationLife.PassClearanceFar),
+                Is.EqualTo(0f));
+            Assert.That(PresentationLife.PassClearance(200f), Is.EqualTo(0f));
+            Assert.That(PresentationLife.PassClearance(0f), Is.EqualTo(1f));
+            Assert.That(PresentationLife.PassClearance(-25f),
+                Is.EqualTo(PresentationLife.PassClearance(25f)), "symmetric in exchange direction");
+            float previous = PresentationLife.PassClearance(0f);
+            for (float gap = 1f; gap <= 100f; gap += 1f)
+            {
+                float clearance = PresentationLife.PassClearance(gap);
+                Assert.That(clearance, Is.LessThanOrEqualTo(previous + 1e-5f), "monotone at " + gap);
+                Assert.That(previous - clearance,
+                    Is.LessThan(1.5f / PresentationLife.PassClearanceSpan + 1e-4f), "step at " + gap);
+                previous = clearance;
+            }
+        }
+
+        [Test]
         public void TheBreathMovesSmoothlyAndDeterministically()
         {
             // Deterministic (the honesty budget bans per-frame randomness:

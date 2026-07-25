@@ -105,6 +105,53 @@ namespace BoardRacing.Runtime
                 MaxLaunchYawDegrees * envelope * (float)Math.Sin(beat * 1.7 + phase * 1.3));
         }
 
+        // The simulation grants the passing split the instant two cars close
+        // within PassingDistance and revokes it the instant they part — a
+        // binary that teleports each drawn body a full split-offset sideways
+        // in one step. Fishhook's hairpin scrubs swing the gap through that
+        // boundary repeatedly (owner report 2026-07-23: jitter in and out of
+        // corners; the probe measured drawn speeds 5× truth on the snap
+        // frames). The DRAWN split instead assembles across this much
+        // further closing — shoulder-to-shoulder racing forms and dissolves
+        // as motion, never as a cut.
+        public const float EngageSpan = 60f;
+
+        // 0 at the passing boundary (continuous with the sim revoking the
+        // offset there), 1 once the gap has closed EngageSpan inside it.
+        // Lateral only, pure function of sim state — same honesty terms as
+        // the breath.
+        public static float DuelEngagement(float gapToRival, float passingDistance)
+        {
+            float t = Math.Max(0f, Math.Min(1f, (passingDistance - gapToRival) / EngageSpan));
+            return t * t * (3f - 2f * t);
+        }
+
+        // A real overtake inside a corner formation swaps the spatial order
+        // the pads are assigned by — as targets, the two cars' pads exchange
+        // sign in one step (±NoseToTailSpacing/2, a 60px teleport at full
+        // blend; the probe measured drawn speeds 10× truth). The drawn pads
+        // instead SLIDE toward their targets at this rate: an exchange
+        // becomes a half-second flow-through, a decisive pass, not a cut.
+        // The rate comfortably outruns every legitimate target motion (the
+        // glide develops pads at ≤ a quarter of true speed), so away from an
+        // exchange the slide is exact.
+        public const float PadSlideRate = 120f;
+
+        // While two drawn bodies exchange along-track, the passing split
+        // opens toward full width so the pass goes AROUND the rival, not
+        // through it. 0 at and beyond the held-file spacing — at the locked
+        // nose-to-tail 60px this reads .19, under the split floor, so the
+        // file formation never feels it — rising to 1 as the drawn gap
+        // closes through a body length.
+        public const float PassClearanceFar = 75f;
+        public const float PassClearanceSpan = 55f;
+
+        public static float PassClearance(float drawnGap)
+        {
+            float t = Math.Max(0f, Math.Min(1f, (PassClearanceFar - Math.Abs(drawnGap)) / PassClearanceSpan));
+            return t * t * (3f - 2f * t);
+        }
+
         // side = the sign of the car's own lateral offset. The two sides
         // breathe in anti-phase: one car pulls out for a look while the
         // other tucks in and aims its nose — trading feints, not
