@@ -44,6 +44,7 @@ namespace BoardRacing.Runtime
         // Which artifact that is comes from the between-race tap-to-cycle
         // choice (issue #107 phase 5).
         private CourseSelection courseSelection;
+        private bool exitConfirmationOpen;
         // One presentation state per frame, computed at the end of Update: the
         // world-space cars and every OnGUI event (IMGUI raises several per
         // frame) read the same blend instead of each rebuilding it.
@@ -84,10 +85,9 @@ namespace BoardRacing.Runtime
         // the project runs the new Input System only, so IMGUI never receives
         // pointer events in a player build.
         private static readonly Rect PausePanel = new Rect(460f, 430f, 1000f, 290f);
-        private static readonly Rect PauseNewRaceButton = new Rect(770f, 560f, 380f, 70f);
-        // The course chip under the button: shows what the next race runs on,
-        // tap to cycle the catalog (issue #107 phase 5).
-        private static readonly Rect NextCourseChip = new Rect(770f, 648f, 380f, 48f);
+        private static readonly Rect OverlayPrimaryButton = new Rect(700f, 560f, 520f, 70f);
+        private static readonly Rect OverlaySecondaryButton = new Rect(700f, 648f, 520f, 48f);
+        private static readonly Rect RaceExitButton = new Rect(855f, 20f, 210f, 52f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -127,15 +127,19 @@ namespace BoardRacing.Runtime
                 RaceSurfaceGeometry.InactivePitBoxAccent);
 #if UNITY_ANDROID && !UNITY_EDITOR
             playerSession = new BoardPlayerSession();
-            lobby = new PlayerLobbyPresentation(playerSession, false);
+            CreateLobby();
 #else
             playerSession = new FallbackPlayerSession();
-            lobby = new PlayerLobbyPresentation(playerSession, true);
+            CreateLobby();
 #if UNITY_EDITOR
             // Existing automated race probes intentionally bypass the interactive
             // lobby; lobby behavior has its own deterministic and PlayMode tests.
             if (Application.isBatchMode)
             {
+                playerSession.AddPlayer().GetAwaiter().GetResult();
+                playerSession.AddPlayer().GetAwaiter().GetResult();
+                lobby.Coordinator.AssignPlayer(playerSession.Players[0], PlayerId.Player1);
+                lobby.Coordinator.AssignPlayer(playerSession.Players[1], PlayerId.Player2);
                 lobby.Coordinator.ClaimForFallback(PlayerId.Player1, 7);
                 lobby.Coordinator.ClaimForFallback(PlayerId.Player2, 6);
                 BeginRace();
@@ -233,7 +237,7 @@ namespace BoardRacing.Runtime
                 lobby.Update(contacts);
                 if (activeProvider == boardProvider)
                     lobby.SetReadyPlayers(LobbyPlayersOnDrive(contacts));
-                if (lobby.AllPlayersReady)
+                if (lobby.ConsumeStartRequest() && lobby.AllPlayersReady)
                     BeginRace();
                 return;
             }
@@ -267,6 +271,7 @@ namespace BoardRacing.Runtime
         private void BeginRace()
         {
             raceSeats = lobby.Coordinator.Seats.OrderBy(x => x.PlayerId).ToArray();
+            course = courseSelection.ConfirmNext();
             playerAccents.Clear();
             playerIdentityLabels.Clear();
             foreach (PlayerSeat seat in raceSeats)
@@ -318,7 +323,8 @@ namespace BoardRacing.Runtime
             }
 #endif
             controls = activeProvider.ReadSnapshots();
-            PollNewRaceTouch();
+            PollRaceNavigation();
+            if (lobby != null || exitConfirmationOpen) return;
             accumulator += Mathf.Min(unscaledDeltaTime, .25f);
             float step = Mathf.Max(.001f, raceSettings.fixedStepSeconds);
             while (accumulator >= step)
@@ -564,16 +570,8 @@ namespace BoardRacing.Runtime
             return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }
 
-        // The START NEW RACE button appears only when no race is running: while
-        // paused (pieces off the table, issue #90) and after the finish (issue #97).
-        // It is the game's one touch control, center-table where pieces never rest.
-        private void PollNewRaceTouch()
+        private void PollRaceNavigation()
         {
-            RacePhase phase = simulation.Snapshot.Phase;
-            // Fed every frame so the selection sees the transition INTO the
-            // overlay and arms its default exactly once (issue #107 phase 5).
-            courseSelection.ObservePhase(phase);
-            if (phase != RacePhase.Paused && phase != RacePhase.Finished) return;
             // On the Board every contact — fingers included — arrives through the
             // SDK's native contact pipeline, not Unity's Touchscreen, so a tap is a
             // Finger contact in its Began phase (same stream the pieces ride as
@@ -588,33 +586,81 @@ namespace BoardRacing.Runtime
                 HandleOverlayTap(mouse.position.ReadValue());
         }
 
-        // The overlay's two touch targets: START NEW RACE confirms the pending
-        // course and races it; the chip below cycles the pending course.
         private bool HandleOverlayTap(Vector2 screenPosition)
         {
             Vector2 gui = new Vector2(screenPosition.x * 1920f / Screen.width,
                 (Screen.height - screenPosition.y) * 1080f / Screen.height);
-            if (PauseNewRaceButton.Contains(gui)) { StartNewRace(); return true; }
-            if (NextCourseChip.Contains(gui)) { courseSelection.CycleNext(); return true; }
+            RacePhase phase = simulation.Snapshot.Phase;
+            if (exitConfirmationOpen)
+            {
+                if (OverlayPrimaryButton.Contains(gui)) { ReturnToSetup(); return true; }
+                if (OverlaySecondaryButton.Contains(gui))
+                {
+                    exitConfirmationOpen = false;
+                    return true;
+                }
+                return false;
+            }
+            if (phase == RacePhase.Finished)
+            {
+                if (OverlayPrimaryButton.Contains(gui)) { StartRematch(); return true; }
+                if (OverlaySecondaryButton.Contains(gui)) { ReturnToSetup(); return true; }
+                return false;
+            }
+            if (phase == RacePhase.Paused)
+            {
+                if (OverlayPrimaryButton.Contains(gui)) { ReturnToSetup(); return true; }
+                return false;
+            }
+            if (RaceExitButton.Contains(gui))
+            {
+                exitConfirmationOpen = true;
+                return true;
+            }
             return false;
         }
 
-        private void StartNewRace()
+        private void StartRematch()
         {
-            CourseDefinition next = courseSelection.ConfirmNext();
-            if (ReferenceEquals(next, course))
-            {
-                simulation.RequestNewRace();
-                return;
-            }
-            // A different course means a different track, rules, and surface:
-            // rebuild the race whole rather than teaching the simulation to
-            // swap tracks mid-life.
-            course = next;
-            BuildRace();
+            courseSelection.KeepCurrentForNext();
+            simulation.RequestNewRace();
             accumulator = 0f;
             RefreshPresentation();
             UpdateWorldCars();
+        }
+
+        private void ReturnToSetup()
+        {
+            PlayerSeat[] restoredSeats = raceSeats.ToArray();
+            exitConfirmationOpen = false;
+            course = courseSelection.KeepCurrentForNext();
+            CreateLobby(restoredSeats);
+            BuildLobbySurface();
+            if (hud != null) Destroy(hud.gameObject);
+            hud = RaceHud.CreateFour(FourSeatRaceLayout(),
+                RaceSurfaceGeometry.InactivePitBoxAccent,
+                RaceSurfaceGeometry.InactivePitBoxAccent,
+                RaceSurfaceGeometry.InactivePitBoxAccent,
+                RaceSurfaceGeometry.InactivePitBoxAccent);
+        }
+
+        private void CreateLobby(IEnumerable<PlayerSeat> restoredSeats = null)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            const bool fallback = false;
+#else
+            const bool fallback = true;
+#endif
+            lobby?.Dispose();
+            lobby = new PlayerLobbyPresentation(playerSession, fallback, restoredSeats,
+                () => courseSelection.Next.Name, CycleSetupCourse);
+        }
+
+        private void CycleSetupCourse()
+        {
+            courseSelection.CycleNext();
+            course = courseSelection.Next;
+            BuildLobbySurface();
         }
 
         public RaceSnapshot GetRaceSnapshot() => simulation.Snapshot;
@@ -689,6 +735,10 @@ namespace BoardRacing.Runtime
             }
 #endif
             DrawCenterMessage(ui, layout);
+            if (!exitConfirmationOpen &&
+                simulation.Snapshot.Phase != RacePhase.Paused &&
+                simulation.Snapshot.Phase != RacePhase.Finished)
+                DrawRaceExitButton();
             // Development builds only: raw Ship orientation per seat so the throttle
             // mapper can be calibrated against the rendered wedges on real hardware
             // (issue #77 hardware review). Never present in release builds.
@@ -859,24 +909,41 @@ namespace BoardRacing.Runtime
 
         private void DrawCenterMessage(RaceUiModel ui, RaceLayout layout)
         {
+            if (exitConfirmationOpen)
+            {
+                DrawRaceOverlay("RETURN TO SETUP?",
+                    "THE CURRENT RACE WILL END", "RETURN TO PLAYER SETUP", "RESUME RACE");
+                return;
+            }
             if (ui.CenterMessage == null) return;
             if (ui.CenterMessageKind == CenterMessageKind.Paused)
             {
-                DrawNewRaceOverlay("RACES PAUSED", ui.CenterMessage);
+                DrawRaceOverlay("RACE PAUSED", ui.CenterMessage,
+                    "RETURN TO PLAYER SETUP", null);
                 return;
             }
             if (ui.CenterMessageKind == CenterMessageKind.Winner)
             {
                 // A finished race owns the center (owner decision, issue #97): the
                 // winner plus the way into the next race.
-                DrawNewRaceOverlay("RACE FINISHED", ui.CenterMessage);
+                DrawRaceOverlay("RACE FINISHED", ui.CenterMessage,
+                    "REMATCH", "PLAYER / COURSE SETUP");
                 return;
             }
             GUI.Label(layout.CenterOverlayBounds, ui.CenterMessage, title);
         }
 
-        // Presentation only — the button's tap is polled in PollNewRaceTouch.
-        private void DrawNewRaceOverlay(string heading, string subLine)
+        private void DrawRaceExitButton()
+        {
+            GUI.DrawTexture(RaceExitButton, Texture2D.whiteTexture, ScaleMode.StretchToFill,
+                true, 0, new Color(.09f, .12f, .18f, .9f), 0, 8f);
+            DrawOutline(RaceExitButton, 2f, new Color(.62f, .68f, .74f, .8f));
+            GUI.Label(RaceExitButton, "EXIT TO SETUP", small);
+        }
+
+        // Presentation only — these tap targets are polled in Update.
+        private void DrawRaceOverlay(string heading, string subLine,
+            string primaryLabel, string secondaryLabel)
         {
             GUI.DrawTexture(PausePanel, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
                 new Color(.03f, .04f, .06f, .93f), 0, 12f);
@@ -885,17 +952,15 @@ namespace BoardRacing.Runtime
                 heading, title);
             GUI.Label(new Rect(PausePanel.x, PausePanel.y + 76f, PausePanel.width, 40f),
                 subLine, warning);
-            GUI.DrawTexture(PauseNewRaceButton, Texture2D.whiteTexture, ScaleMode.StretchToFill,
+            GUI.DrawTexture(OverlayPrimaryButton, Texture2D.whiteTexture, ScaleMode.StretchToFill,
                 true, 0, new Color(.14f, .2f, .3f), 0, 10f);
-            DrawOutline(PauseNewRaceButton, 3f, Color.white);
-            GUI.Label(PauseNewRaceButton, "START NEW RACE", carLabel);
-            // The tap-to-cycle course chip (issue #107 phase 5): quieter chrome
-            // than the button — it informs by default, invites a tap to change.
-            GUI.DrawTexture(NextCourseChip, Texture2D.whiteTexture, ScaleMode.StretchToFill,
-                true, 0, new Color(.09f, .12f, .18f), 0, 8f);
-            DrawOutline(NextCourseChip, 2f, new Color(.62f, .68f, .74f, .8f));
-            GUI.Label(NextCourseChip,
-                "NEXT COURSE: " + courseSelection.Next.Name.ToUpperInvariant(), carLabel);
+            DrawOutline(OverlayPrimaryButton, 3f, Color.white);
+            GUI.Label(OverlayPrimaryButton, primaryLabel, carLabel);
+            if (string.IsNullOrEmpty(secondaryLabel)) return;
+            GUI.DrawTexture(OverlaySecondaryButton, Texture2D.whiteTexture,
+                ScaleMode.StretchToFill, true, 0, new Color(.09f, .12f, .18f), 0, 8f);
+            DrawOutline(OverlaySecondaryButton, 2f, new Color(.62f, .68f, .74f, .8f));
+            GUI.Label(OverlaySecondaryButton, secondaryLabel, carLabel);
         }
 
         private static bool EditorDiagnosticsSuppressed()

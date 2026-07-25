@@ -82,7 +82,7 @@ namespace BoardRacing.Runtime
         private readonly List<SessionPlayer> players = new List<SessionPlayer>();
         private int nextId = 1;
 
-        public FallbackPlayerSession(int initialPlayers = 2)
+        public FallbackPlayerSession(int initialPlayers = 0)
         {
             for (int i = 0; i < initialPlayers; i++) AddPlayerNow();
         }

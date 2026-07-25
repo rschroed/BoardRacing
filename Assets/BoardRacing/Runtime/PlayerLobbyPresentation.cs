@@ -22,19 +22,33 @@ namespace BoardRacing.Runtime
                 [PlayerId.Player3] = new Rect(-5f, 800f, 276f, 276f),
                 [PlayerId.Player4] = new Rect(1649f, 4f, 276f, 276f)
             };
+        private static readonly Rect SetupPanel = new Rect(570f, 390f, 780f, 440f);
+        private static readonly Rect CourseChip = new Rect(680f, 650f, 560f, 58f);
+        private static readonly Rect StartButton = new Rect(760f, 730f, 400f, 76f);
 
         private readonly IPlayerSession session;
         private readonly bool fallback;
+        private readonly Func<string> courseName;
+        private readonly Action cycleCourse;
         private readonly HashSet<PlayerId> readyPlayers = new HashSet<PlayerId>();
         private PlayerId? pendingAddSeat;
         private HashSet<int> sessionIdsBeforeAdd;
+        private bool startRequested;
         private GUIStyle heading, body, name, detail;
 
-        public PlayerLobbyPresentation(IPlayerSession session, bool fallback)
+        public PlayerLobbyPresentation(IPlayerSession session, bool fallback,
+            IEnumerable<PlayerSeat> restoredSeats = null, Func<string> courseName = null,
+            Action cycleCourse = null)
         {
             this.session = session ?? throw new ArgumentNullException(nameof(session));
             this.fallback = fallback;
-            Coordinator = new PlayerSetupCoordinator(session.Players);
+            this.courseName = courseName ?? (() => "COURSE");
+            this.cycleCourse = cycleCourse;
+            Coordinator = new PlayerSetupCoordinator(Array.Empty<SessionPlayer>());
+            var roster = session.Players.ToDictionary(x => x.SessionId);
+            foreach (PlayerSeat seat in restoredSeats ?? Array.Empty<PlayerSeat>())
+                if (roster.TryGetValue(seat.Player.SessionId, out SessionPlayer player))
+                    Coordinator.AssignPlayer(player, seat.PlayerId, seat.PieceIdentity);
             session.PlayersChanged += SynchronizeRoster;
             session.ShowProfileSwitcher();
         }
@@ -43,6 +57,12 @@ namespace BoardRacing.Runtime
         public bool AllPlayersReady => Coordinator.CanStart &&
             Coordinator.Seats.All(x => readyPlayers.Contains(x.PlayerId));
         public bool IsReady(PlayerId id) => readyPlayers.Contains(id);
+        public bool ConsumeStartRequest()
+        {
+            bool result = startRequested;
+            startRequested = false;
+            return result;
+        }
         public bool HasShip(PlayerId id) => Coordinator.Seats
             .Any(x => x.PlayerId == id && x.IsClaimed);
         public Color AccentFor(PlayerId id)
@@ -63,7 +83,7 @@ namespace BoardRacing.Runtime
 
         public void Update(IReadOnlyList<RawPieceContact> contacts)
         {
-            Coordinator.Observe(contacts);
+            if (!fallback) Coordinator.Observe(contacts);
             if (fallback)
             {
                 PollFallbackClaims();
@@ -95,25 +115,44 @@ namespace BoardRacing.Runtime
                     return;
                 }
             }
+            if (CourseChip.Contains(point))
+            {
+                cycleCourse?.Invoke();
+                return;
+            }
+            if (StartButton.Contains(point) && AllPlayersReady)
+                startRequested = true;
         }
 
         public void Draw()
         {
             EnsureStyles();
-            GUI.Label(new Rect(560f, 485f, 800f, 55f), "CHOOSE YOUR RACERS", heading);
-            GUI.Label(new Rect(610f, 540f, 700f, 55f),
+            GUI.DrawTexture(SetupPanel, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
+                new Color(.03f, .04f, .06f, .9f), 0, 12f);
+            GUI.Label(new Rect(560f, 420f, 800f, 55f), "CHOOSE YOUR RACERS", heading);
+            GUI.Label(new Rect(610f, 480f, 700f, 55f),
                 Coordinator.Seats.Count < 2
                     ? "ADD AT LEAST TWO PLAYERS"
                     : "PLACE ONE SHIP IN EACH COCKPIT", body);
-            GUI.Label(new Rect(640f, 595f, 640f, 45f),
+            GUI.Label(new Rect(640f, 535f, 640f, 72f),
                 AllPlayersReady
-                    ? "ALL RACERS READY · STARTING COUNTDOWN"
+                    ? "ALL RACERS READY"
                     : Coordinator.CanStart
                         ? "SET EVERY SHIP TO DRIVE"
                     : fallback
                         ? "DESKTOP: CLICK A COCKPIT OR PRESS 1–4 TO PLACE A SHIP"
                         : "SHIP COLORS CAN BE SWAPPED UNTIL EVERY RACER IS READY",
                 detail);
+            GUI.DrawTexture(CourseChip, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
+                new Color(.09f, .12f, .18f), 0, 8f);
+            GUI.Label(CourseChip, "COURSE: " + courseName().ToUpperInvariant() +
+                " · TAP TO CHANGE", body);
+            Color startColor = AllPlayersReady
+                ? new Color(.18f, .42f, .72f)
+                : new Color(.12f, .15f, .2f);
+            GUI.DrawTexture(StartButton, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
+                startColor, 0, 10f);
+            GUI.Label(StartButton, AllPlayersReady ? "START RACE" : "START RACE · WAITING", body);
 
             IReadOnlyList<PlayerSeat> seats = Coordinator.Seats;
             foreach (PlayerId id in SeatOrder)
@@ -135,6 +174,7 @@ namespace BoardRacing.Runtime
         private void SynchronizeRoster()
         {
             PlayerId? preferred = null;
+            HashSet<int> idsBeforeAdd = sessionIdsBeforeAdd;
             if (pendingAddSeat.HasValue && sessionIdsBeforeAdd != null &&
                 session.Players.Any(x => !sessionIdsBeforeAdd.Contains(x.SessionId)))
             {
@@ -142,13 +182,28 @@ namespace BoardRacing.Runtime
                 pendingAddSeat = null;
                 sessionIdsBeforeAdd = null;
             }
-            Coordinator.SynchronizeRoster(session.Players, preferred);
+            Coordinator.RetainRoster(session.Players);
+            if (preferred.HasValue)
+            {
+                SessionPlayer? added = session.Players
+                    .Where(x => idsBeforeAdd != null && !idsBeforeAdd.Contains(x.SessionId))
+                    .Select(x => (SessionPlayer?)x).FirstOrDefault();
+                if (added.HasValue) Coordinator.AssignPlayer(added.Value, preferred.Value);
+            }
             readyPlayers.RemoveWhere(id => Coordinator.Seats.All(x => x.PlayerId != id));
         }
 
         private async System.Threading.Tasks.Task AddPlayerTo(PlayerId id)
         {
             if (pendingAddSeat.HasValue || session.SelectorInFlight) return;
+            var seated = new HashSet<int>(Coordinator.Seats.Select(x => x.Player.SessionId));
+            SessionPlayer? available = session.Players.Where(x => !seated.Contains(x.SessionId))
+                .Select(x => (SessionPlayer?)x).FirstOrDefault();
+            if (available.HasValue)
+            {
+                Coordinator.AssignPlayer(available.Value, id);
+                return;
+            }
             pendingAddSeat = id;
             sessionIdsBeforeAdd = new HashSet<int>(session.Players.Select(x => x.SessionId));
             bool added = await session.AddPlayer();

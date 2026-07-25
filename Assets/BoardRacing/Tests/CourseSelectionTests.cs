@@ -78,6 +78,18 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void ReturningToSetupKeepsTheCurrentCoursePending()
+        {
+            CourseSelection selection = Racing();
+            selection.ObservePhase(RacePhase.Finished);
+            Assert.That(selection.Next.Name, Is.EqualTo("Hourglass"));
+
+            Assert.That(selection.KeepCurrentForNext().Name, Is.EqualTo("Wedge"));
+            Assert.That(selection.Current.Name, Is.EqualTo("Wedge"));
+            Assert.That(selection.Next.Name, Is.EqualTo("Wedge"));
+        }
+
+        [Test]
         public void RejectsAnEmptyCatalog()
         {
             Assert.Throws<ArgumentException>(
