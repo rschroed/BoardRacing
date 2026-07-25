@@ -79,6 +79,32 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void FourSeatLayoutMirrorsTheCockpitAcrossBothShortEdges()
+        {
+            RaceLayout layout = RaceLayout.CreateFour(
+                PlayerOneTargets(), PlayerTwoTargets(),
+                new ServiceTargets(new Vector2(88f, 398f), new Vector2(228f, 321f),
+                    new Vector2(330f, 212f)),
+                new ServiceTargets(new Vector2(1832f, 682f), new Vector2(1692f, 759f),
+                    new Vector2(1590f, 868f)),
+                new Vector2(50f, 50f));
+
+            Assert.That(layout.HasFourSeats, Is.True);
+            Assert.That(layout.PlayerThree.PlayerId, Is.EqualTo(PlayerId.Player3));
+            Assert.That(layout.PlayerFour.PlayerId, Is.EqualTo(PlayerId.Player4));
+            Assert.That(layout.PlayerThree.Controller.ShipWellCenter,
+                Is.EqualTo(new Vector2(133f, 938f)));
+            Assert.That(layout.PlayerFour.Controller.ShipWellCenter,
+                Is.EqualTo(new Vector2(1787f, 142f)));
+            Assert.That(layout.PlayerThree.RotationDegrees, Is.Zero);
+            Assert.That(layout.PlayerFour.RotationDegrees, Is.EqualTo(180f));
+            Assert.That(layout.PlayerThree.Controller.DriveAngle,
+                Is.EqualTo(180f - layout.PlayerOne.Controller.DriveAngle));
+            Assert.That(layout.PlayerFour.Controller.DriveAngle,
+                Is.EqualTo(180f - layout.PlayerTwo.Controller.DriveAngle));
+        }
+
+        [Test]
         public void StableRacingUsesSpatialThrottleGuideAndOneCompactInstruction()
         {
             RaceUiModel model = Build(RacePhase.Racing, Racer(PlayerId.Player1),

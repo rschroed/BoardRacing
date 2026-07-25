@@ -15,7 +15,7 @@ namespace BoardRacing.Runtime
         IReadOnlyList<SessionPlayer> Players { get; }
         bool SelectorInFlight { get; }
         Texture2D AvatarFor(int sessionId);
-        Task AddPlayer();
+        Task<bool> AddPlayer();
         Task EditPlayer(int sessionId);
         void ShowProfileSwitcher();
         void HideProfileSwitcher();
@@ -36,10 +36,10 @@ namespace BoardRacing.Runtime
         public Texture2D AvatarFor(int sessionId) =>
             BoardSession.players.FirstOrDefault(x => x.sessionId == sessionId)?.avatar;
 
-        public async Task AddPlayer()
+        public async Task<bool> AddPlayer()
         {
-            if (SelectorInFlight || Players.Count >= 4) return;
-            await Present(() => BoardSession.PresentAddPlayerSelector());
+            if (SelectorInFlight || Players.Count >= 4) return false;
+            return await Present(() => BoardSession.PresentAddPlayerSelector());
         }
 
         public async Task EditPlayer(int sessionId)
@@ -55,17 +55,18 @@ namespace BoardRacing.Runtime
 
         public void Dispose() => BoardSession.playersChanged -= OnPlayersChanged;
 
-        private async Task Present(Func<Task<bool>> selector)
+        private async Task<bool> Present(Func<Task<bool>> selector)
         {
             SelectorInFlight = true;
             try
             {
-                await selector();
+                return await selector();
             }
             catch (InvalidOperationException)
             {
                 // Old BoardOS/editor builds can lack native selector support.
                 // The lobby remains usable and keeps its current roster.
+                return false;
             }
             finally
             {
@@ -91,14 +92,16 @@ namespace BoardRacing.Runtime
         public bool SelectorInFlight => false;
         public Texture2D AvatarFor(int sessionId) => null;
 
-        public Task AddPlayer()
+        public Task<bool> AddPlayer()
         {
+            bool added = false;
             if (players.Count < 4)
             {
                 AddPlayerNow();
                 PlayersChanged?.Invoke();
+                added = true;
             }
-            return Task.CompletedTask;
+            return Task.FromResult(added);
         }
 
         public Task EditPlayer(int sessionId)

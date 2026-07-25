@@ -1,3 +1,4 @@
+using System.Linq;
 using BoardRacing.Domain;
 using UnityEngine;
 using UnityEngine.UI;
@@ -73,6 +74,7 @@ namespace BoardRacing.Runtime
     // the old DrawCornerController/DrawCrewRegions code paths did.
     internal sealed class SeatHud
     {
+        internal GameObject Container;
         internal PlayerLayout Layout;
         internal Color Accent;
         internal RingGraphic CallPitRing, CallPitHold;
@@ -106,7 +108,7 @@ namespace BoardRacing.Runtime
             rect.offsetMax = Vector2.zero;
 
             CornerControllerLayout controller = layout.Controller;
-            var seat = new SeatHud { Layout = layout, Accent = accent };
+            var seat = new SeatHud { Container = container, Layout = layout, Accent = accent };
             seat.CallPitRing = CreateRing(rect, "Call Pit", layout.CallPit.center,
                 controller.CallPitRadius, 3f, 0f, 360f, accent);
             seat.CallPitHold = CreateRing(rect, "Call Pit Hold", layout.CallPit.center,
@@ -125,6 +127,8 @@ namespace BoardRacing.Runtime
             seat.Boost = CreateSector(rect, controller, ThrottleStep.Boost, layout, accent, font);
             return seat;
         }
+
+        public void SetVisible(bool visible) => Container.SetActive(visible);
 
         public void Apply(PlayerUiModel model, RacePhase phase)
         {
@@ -159,6 +163,14 @@ namespace BoardRacing.Runtime
             ApplySector(Brake, ThrottleStep.Brake, model.Throttle, throttleLive);
             ApplySector(Drive, ThrottleStep.Drive, model.Throttle, throttleLive);
             ApplySector(Boost, ThrottleStep.Boost, model.Throttle, throttleLive);
+        }
+
+        public void SetAccent(Color accent)
+        {
+            Accent = accent;
+            Brake.ActiveFill.color = accent;
+            Drive.ActiveFill.color = accent;
+            Boost.ActiveFill.color = accent;
         }
 
         private void ApplyDial(DialHud dial, PitService service, PlayerUiModel model,
@@ -314,7 +326,7 @@ namespace BoardRacing.Runtime
         internal static readonly Color FuelLabelColor = new Color(.95f, .55f, .2f);
         internal static readonly Color TiresLabelColor = new Color(.35f, .72f, .5f);
 
-        internal SeatHud PlayerOne, PlayerTwo;
+        internal SeatHud PlayerOne, PlayerTwo, PlayerThree, PlayerFour;
 
         public static RaceHud Create(RaceLayout layout, Color playerOneAccent,
             Color playerTwoAccent)
@@ -334,10 +346,45 @@ namespace BoardRacing.Runtime
             return hud;
         }
 
+        public static RaceHud CreateFour(RaceLayout layout, Color playerOneAccent,
+            Color playerTwoAccent, Color playerThreeAccent, Color playerFourAccent)
+        {
+            if (!layout.HasFourSeats)
+                throw new System.ArgumentException("Four-seat HUD needs a four-seat layout.",
+                    nameof(layout));
+            RaceHud hud = Create(layout, playerOneAccent, playerTwoAccent);
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            hud.PlayerFour = SeatHud.Create(hud.transform, layout.PlayerFour, playerFourAccent, font);
+            hud.PlayerThree = SeatHud.Create(hud.transform, layout.PlayerThree, playerThreeAccent, font);
+            return hud;
+        }
+
         public void Apply(RaceUiModel ui)
         {
-            PlayerTwo.Apply(ui.PlayerTwo, ui.Phase);
-            PlayerOne.Apply(ui.PlayerOne, ui.Phase);
+            SeatHud[] seats = { PlayerOne, PlayerTwo, PlayerThree, PlayerFour };
+            foreach (SeatHud seat in seats)
+            {
+                if (seat == null) continue;
+                PlayerUiModel? model = ui.Players
+                    .Where(x => x.PlayerId == seat.Layout.PlayerId)
+                    .Select(x => (PlayerUiModel?)x).FirstOrDefault();
+                seat.SetVisible(model.HasValue);
+                if (model.HasValue) seat.Apply(model.Value, ui.Phase);
+            }
+        }
+
+        public void SetAccents(Color playerOne, Color playerTwo)
+        {
+            PlayerOne.SetAccent(playerOne);
+            PlayerTwo.SetAccent(playerTwo);
+        }
+
+        public void SetAccents(Color playerOne, Color playerTwo, Color playerThree,
+            Color playerFour)
+        {
+            SetAccents(playerOne, playerTwo);
+            PlayerThree.SetAccent(playerThree);
+            PlayerFour.SetAccent(playerFour);
         }
 
         internal static Color ConditionColor(ConditionVisualLevel level)

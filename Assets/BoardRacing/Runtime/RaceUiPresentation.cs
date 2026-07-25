@@ -117,9 +117,18 @@ namespace BoardRacing.Runtime
         public const float ReferenceHeight = 1080f;
 
         public RaceLayout(PlayerLayout playerOne, PlayerLayout playerTwo)
+            : this(playerOne, playerTwo, default, default, false)
+        {
+        }
+
+        private RaceLayout(PlayerLayout playerOne, PlayerLayout playerTwo,
+            PlayerLayout playerThree, PlayerLayout playerFour, bool hasFourSeats)
         {
             PlayerOne = playerOne;
             PlayerTwo = playerTwo;
+            PlayerThree = playerThree;
+            PlayerFour = playerFour;
+            HasFourSeats = hasFourSeats;
         }
 
         public Rect Canvas => new Rect(0f, 0f, ReferenceWidth, ReferenceHeight);
@@ -129,8 +138,18 @@ namespace BoardRacing.Runtime
         public Rect CenterOverlayBounds => new Rect(710f, 640f, 500f, 90f);
         public PlayerLayout PlayerOne { get; }
         public PlayerLayout PlayerTwo { get; }
+        public PlayerLayout PlayerThree { get; }
+        public PlayerLayout PlayerFour { get; }
+        public bool HasFourSeats { get; }
 
-        public PlayerLayout For(PlayerId id) => id == PlayerId.Player1 ? PlayerOne : PlayerTwo;
+        public PlayerLayout For(PlayerId id)
+        {
+            if (id == PlayerId.Player1) return PlayerOne;
+            if (id == PlayerId.Player2) return PlayerTwo;
+            if (id == PlayerId.Player3 && HasFourSeats) return PlayerThree;
+            if (id == PlayerId.Player4 && HasFourSeats) return PlayerFour;
+            throw new ArgumentOutOfRangeException(nameof(id), id, "Seat is not present in this layout.");
+        }
 
         public static RaceLayout Create(ServiceTargets playerOneTargets, ServiceTargets playerTwoTargets,
             Vector2 serviceHalfSize)
@@ -192,6 +211,59 @@ namespace BoardRacing.Runtime
                     playerTwoController,
                     Target(playerTwoTargets.CallPit), Target(playerTwoTargets.Tires),
                     Target(playerTwoTargets.Fuel)));
+        }
+
+        public static RaceLayout CreateFour(ServiceTargets playerOneTargets,
+            ServiceTargets playerTwoTargets, ServiceTargets playerThreeTargets,
+            ServiceTargets playerFourTargets, Vector2 serviceHalfSize)
+        {
+            RaceLayout diagonal = Create(playerOneTargets, playerTwoTargets, serviceHalfSize);
+
+            Rect Target(Vector2 runtimeCenter) => new Rect(runtimeCenter.x - serviceHalfSize.x,
+                ReferenceHeight - runtimeCenter.y - serviceHalfSize.y,
+                serviceHalfSize.x * 2f, serviceHalfSize.y * 2f);
+            void Validate(ServiceTargets targets, string parameter)
+            {
+                if (Target(targets.Tires).Overlaps(Target(targets.Fuel)))
+                    throw new ArgumentException("Tires and Fuel zones must not overlap.", parameter);
+            }
+            Validate(playerThreeTargets, nameof(playerThreeTargets));
+            Validate(playerFourTargets, nameof(playerFourTargets));
+
+            Rect MirrorRectHorizontally(Rect rect) =>
+                new Rect(ReferenceWidth - rect.xMax, rect.y, rect.width, rect.height);
+            Vector2 MirrorPointHorizontally(Vector2 point) =>
+                new Vector2(ReferenceWidth - point.x, point.y);
+            RotatedLabel MirrorLabelHorizontally(RotatedLabel label) =>
+                new RotatedLabel(MirrorRectHorizontally(label.Bounds), -label.RotationDegrees);
+            CornerControllerLayout MirrorController(CornerControllerLayout source) =>
+                new CornerControllerLayout(
+                    MirrorPointHorizontally(source.ArcCenter), source.ThrottleRadius,
+                    source.SectorSweepDegrees, 180f - source.BrakeAngle,
+                    180f - source.DriveAngle, 180f - source.BoostAngle,
+                    MirrorPointHorizontally(source.ShipWellCenter), source.ShipWellRadius,
+                    source.DialRadius, source.CallPitRadius,
+                    MirrorLabelHorizontally(source.BrakeLabel),
+                    MirrorLabelHorizontally(source.DriveLabel),
+                    MirrorLabelHorizontally(source.BoostLabel),
+                    MirrorLabelHorizontally(source.TiresLabel),
+                    MirrorLabelHorizontally(source.FuelLabel),
+                    MirrorLabelHorizontally(source.CallPitLabel));
+
+            return new RaceLayout(diagonal.PlayerOne, diagonal.PlayerTwo,
+                new PlayerLayout(PlayerId.Player3, 0f,
+                    MirrorRectHorizontally(diagonal.PlayerOne.CornerBounds),
+                    MirrorRectHorizontally(diagonal.PlayerOne.SafeContentBounds),
+                    MirrorController(diagonal.PlayerOne.Controller),
+                    Target(playerThreeTargets.CallPit), Target(playerThreeTargets.Tires),
+                    Target(playerThreeTargets.Fuel)),
+                new PlayerLayout(PlayerId.Player4, 180f,
+                    MirrorRectHorizontally(diagonal.PlayerTwo.CornerBounds),
+                    MirrorRectHorizontally(diagonal.PlayerTwo.SafeContentBounds),
+                    MirrorController(diagonal.PlayerTwo.Controller),
+                    Target(playerFourTargets.CallPit), Target(playerFourTargets.Tires),
+                    Target(playerFourTargets.Fuel)),
+                true);
         }
     }
 
@@ -408,10 +480,10 @@ namespace BoardRacing.Runtime
                     "PLACE YOUR SHIP · THROTTLE IS SAFELY AT BRAKE");
             if (race.Phase == RacePhase.Grid)
                 return new Instruction(PlayerUiInstructionKind.GridReady,
-                    "READY · SHIP CONTROLS BRAKE / DRIVE / BOOST");
+                    "SET SHIP TO DRIVE · ALL RACERS START TOGETHER");
             if (race.Phase == RacePhase.Countdown)
                 return new Instruction(PlayerUiInstructionKind.CountdownReady,
-                    "GET READY · ROTATE SHIP AFTER GO");
+                    "READY · HOLD DRIVE THROUGH THE COUNTDOWN");
 
             if (racer.Pit.Phase == PitPhase.InService)
                 return ServiceInstruction(racer, control, crew);

@@ -40,15 +40,21 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void ClaimedShipCannotBeStolenByAnotherCorner()
+        public void ShipsCanSwapCornersBeforeTheRaceStarts()
         {
             var setup = new PlayerSetupCoordinator(Roster(2));
             setup.Observe(new[] { Contact(10, 7, 1700f, 150f) });
-            setup.Observe(new[] { Contact(11, 7, 200f, 900f) });
+            setup.Observe(new[]
+            {
+                Contact(11, 6, 1700f, 150f),
+                Contact(12, 7, 200f, 900f)
+            });
 
             Assert.That(setup.Seats.Single(x => x.PlayerId == PlayerId.Player1)
+                .PieceIdentity.Value.ShipGlyphId, Is.EqualTo(6));
+            Assert.That(setup.Seats.Single(x => x.PlayerId == PlayerId.Player2)
                 .PieceIdentity.Value.ShipGlyphId, Is.EqualTo(7));
-            Assert.That(setup.Seats.Single(x => x.PlayerId == PlayerId.Player2).IsClaimed, Is.False);
+            Assert.That(setup.CanStart, Is.True);
         }
 
         [Test]
@@ -113,6 +119,22 @@ namespace BoardRacing.Tests
             setup.SynchronizeRoster(Roster(2));
             setup.ClaimForFallback(PlayerId.Player2, 6);
             Assert.That(setup.CanStart, Is.True);
+        }
+
+        [Test]
+        public void NewlyAddedPlayerCanOwnTheCornerThatOpenedTheSelector()
+        {
+            var setup = new PlayerSetupCoordinator(Roster(1));
+            setup.SynchronizeRoster(new[]
+            {
+                new SessionPlayer(1, "profile-1", "Player 1", "avatar-1"),
+                new SessionPlayer(2, "profile-2", "Player 2", "avatar-2")
+            }, PlayerId.Player4);
+
+            Assert.That(setup.Seats.Single(x => x.Player.SessionId == 2).PlayerId,
+                Is.EqualTo(PlayerId.Player4));
+            Assert.That(setup.Seats.Single(x => x.Player.SessionId == 2).Corner,
+                Is.EqualTo(SeatCorner.UpperRight));
         }
 
         [Test]

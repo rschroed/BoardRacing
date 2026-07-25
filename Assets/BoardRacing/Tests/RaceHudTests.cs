@@ -151,6 +151,28 @@ namespace BoardRacing.Tests
                 Is.EqualTo(0f).Within(.01f));
         }
 
+        [Test]
+        public void FourSeatHudUsesEveryCockpitAndHidesSeatsOutsideTheRoster()
+        {
+            RaceLayout layout = FourSeatLayout();
+            RaceHud hud = RaceHud.CreateFour(layout, Color.red, Color.blue,
+                Color.green, Color.yellow);
+            spawned.Add(hud.gameObject);
+
+            hud.Apply(new RaceUiModel(RacePhase.Grid,
+                new[] { Player(PlayerId.Player1), Player(PlayerId.Player3) },
+                CenterMessageKind.None, null));
+
+            Assert.That(hud.PlayerOne.Container.activeSelf, Is.True);
+            Assert.That(hud.PlayerTwo.Container.activeSelf, Is.False);
+            Assert.That(hud.PlayerThree.Container.activeSelf, Is.True);
+            Assert.That(hud.PlayerFour.Container.activeSelf, Is.False);
+            Assert.That(hud.PlayerThree.ShipWell.rectTransform.anchoredPosition,
+                Is.EqualTo(new Vector2(133f, -938f)).Using(Vector2Comparer));
+            Assert.That(hud.PlayerFour.ShipWell.rectTransform.anchoredPosition,
+                Is.EqualTo(new Vector2(1787f, -142f)).Using(Vector2Comparer));
+        }
+
         private static readonly IEqualityComparer<Vector2> Vector2Comparer =
             new Vector2EqualityComparer();
 
@@ -195,6 +217,17 @@ namespace BoardRacing.Tests
                 new Vector2(1590f, 212f)),
             new ServiceTargets(new Vector2(88f, 682f), new Vector2(228f, 759f),
                 new Vector2(330f, 868f)),
+            new Vector2(50f, 50f));
+
+        private static RaceLayout FourSeatLayout() => RaceLayout.CreateFour(
+            new ServiceTargets(new Vector2(1832f, 398f), new Vector2(1692f, 321f),
+                new Vector2(1590f, 212f)),
+            new ServiceTargets(new Vector2(88f, 682f), new Vector2(228f, 759f),
+                new Vector2(330f, 868f)),
+            new ServiceTargets(new Vector2(88f, 398f), new Vector2(228f, 321f),
+                new Vector2(330f, 212f)),
+            new ServiceTargets(new Vector2(1832f, 682f), new Vector2(1692f, 759f),
+                new Vector2(1590f, 868f)),
             new Vector2(50f, 50f));
 
         private static RaceUiModel Ui(RacePhase phase, PlayerUiModel playerOne,

@@ -164,7 +164,13 @@ namespace BoardRacing.PlayModeTests
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             Assert.That(advanceFrame, Is.Not.Null);
 
-            Assert.That(PumpUntil(race, advanceFrame, 5f, x => x.Phase == RacePhase.Racing), Is.True);
+            TapRaceKeys(race, advanceFrame, keyboard.xKey);
+            TapRaceKeys(race, advanceFrame, keyboard.digit8Key);
+            Assert.That(provider.ReadSnapshots().All(x => x.Throttle == ThrottleStep.Drive),
+                Is.True, "Both fallback Ships should remain latched on Drive.");
+            bool started = PumpUntil(race, advanceFrame, 5f, x => x.Phase == RacePhase.Racing);
+            Assert.That(started, Is.True,
+                "Drive readiness stalled in " + race.GetRaceSnapshot().Phase);
             PumpRace(race, advanceFrame, .05f);
             var positioned = provider.ReadSnapshots();
             Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player1).Crew.Position.X,
@@ -387,7 +393,7 @@ namespace BoardRacing.PlayModeTests
             public bool Touched { get; set; }
             public System.Collections.Generic.IReadOnlyList<PlayerControlSnapshot> ReadSnapshots()
             {
-                var throttle = Touched ? ThrottleStep.Boost : ThrottleStep.Brake;
+                var throttle = Touched ? ThrottleStep.Boost : ThrottleStep.Drive;
                 return new[]
                 {
                     new PlayerControlSnapshot(PlayerId.Player1, throttle,
@@ -409,7 +415,7 @@ namespace BoardRacing.PlayModeTests
             };
 
             private PlayerControlSnapshot Snapshot(PlayerId id, int contactId, Vec2 position) =>
-                new PlayerControlSnapshot(id, ThrottleStep.Brake,
+                new PlayerControlSnapshot(id, ThrottleStep.Drive,
                     new PieceState(true, false, contactId + 1000, new Vec2(), 0f),
                     new PieceState(true, CrewTouched, contactId, position, 0f), InputWarning.None);
         }

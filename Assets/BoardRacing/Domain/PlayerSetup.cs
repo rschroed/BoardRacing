@@ -186,7 +186,8 @@ namespace BoardRacing.Domain
         // Session IDs own seats. BoardOS replacement keeps the session ID, so a
         // profile edit preserves the corner and physical identity. A removed ID
         // releases both; newly-added players fill the first free approved corner.
-        public void SynchronizeRoster(IEnumerable<SessionPlayer> roster)
+        public void SynchronizeRoster(IEnumerable<SessionPlayer> roster,
+            PlayerId? preferredSeatForNewPlayer = null)
         {
             SessionPlayer[] players = (roster ?? Array.Empty<SessionPlayer>()).Take(4).ToArray();
             if (players.Select(x => x.SessionId).Distinct().Count() != players.Length)
@@ -204,7 +205,11 @@ namespace BoardRacing.Domain
             foreach (SessionPlayer player in players)
             {
                 if (retained.Values.Any(x => x.Player.SessionId == player.SessionId)) continue;
-                PlayerId id = SeatOrder.First(x => !retained.ContainsKey(x));
+                PlayerId id = preferredSeatForNewPlayer.HasValue &&
+                    !retained.ContainsKey(preferredSeatForNewPlayer.Value)
+                    ? preferredSeatForNewPlayer.Value
+                    : SeatOrder.First(x => !retained.ContainsKey(x));
+                preferredSeatForNewPlayer = null;
                 SeatClaimRegion region = FourSeatLayout.For(id);
                 retained[id] = new MutableSeat
                 {
@@ -218,8 +223,10 @@ namespace BoardRacing.Domain
             foreach (var pair in retained) seats[pair.Key] = pair.Value;
         }
 
-        // Claims are monotonic during a lobby: the first unique, unclaimed Ship
-        // in a player's corner wins. Ambiguous/duplicate contacts do nothing.
+        // Setup identity is deliberately live, not latched. Moving or swapping
+        // Ships updates the affected corners immediately; the race freezes the
+        // current mapping only when Start Game is pressed. Duplicate/ambiguous
+        // input leaves an affected seat neutral.
         public void Observe(IEnumerable<RawPieceContact> snapshot)
         {
             RawPieceContact[] activeShips = (snapshot ?? Array.Empty<RawPieceContact>())
@@ -228,21 +235,19 @@ namespace BoardRacing.Domain
             var uniqueByGlyph = activeShips.GroupBy(x => x.GlyphId)
                 .Where(x => x.Count() == 1)
                 .ToDictionary(x => x.Key, x => x.Single());
-            var claimedGlyphs = new HashSet<int>(seats.Values
-                .Where(x => x.PieceIdentity.HasValue)
-                .Select(x => x.PieceIdentity.Value.ShipGlyphId));
-
             foreach (MutableSeat seat in seats.Values.OrderBy(x => x.PlayerId))
             {
-                if (seat.PieceIdentity.HasValue) continue;
                 SeatClaimRegion region = FourSeatLayout.For(seat.PlayerId);
                 RawPieceContact[] candidates = uniqueByGlyph.Values
-                    .Where(x => !claimedGlyphs.Contains(x.GlyphId) && region.Contains(x.Position))
+                    .Where(x => region.Contains(x.Position))
                     .ToArray();
-                if (candidates.Length != 1) continue;
+                if (candidates.Length != 1)
+                {
+                    seat.PieceIdentity = null;
+                    continue;
+                }
                 PhysicalPieceCatalog.TryForShipGlyph(candidates[0].GlyphId, out PieceIdentity identity);
                 seat.PieceIdentity = identity;
-                claimedGlyphs.Add(identity.ShipGlyphId);
             }
         }
 
