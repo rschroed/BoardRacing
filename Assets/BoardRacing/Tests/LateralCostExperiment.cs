@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BoardRacing.Domain;
-using BoardRacing.Runtime;
 using NUnit.Framework;
 
 namespace BoardRacing.Tests
@@ -218,16 +217,8 @@ namespace BoardRacing.Tests
                     for (int i = 0; i < racing.Length; i++)
                         for (int j = i + 1; j < racing.Length; j++)
                         {
-                            // In WORLD space, not centreline units. Cars run on
-                            // concentric arcs, so a gap measured down the middle
-                            // of the road is not the gap between the bodies —
-                            // measuring in centreline units is exactly what hid
-                            // the inside line closing up in a hairpin.
-                            Vec2 a = At(track, racing[i]), b = At(track, racing[j]);
-                            Vec2 t = TrackPresentation.SmoothHeading(track, racing[i].TotalDistance);
-                            float dx = b.X - a.X, dy = b.Y - a.Y;
-                            float along = Math.Abs(dx * t.X + dy * t.Y);
-                            float across = Math.Abs(-dx * t.Y + dy * t.X);
+                            float along = Math.Abs(racing[i].TotalDistance - racing[j].TotalDistance);
+                            float across = Math.Abs(racing[i].LateralOffset - racing[j].LateralOffset);
                             if (along >= BodyLength || across >= BodyWidth) continue;
                             float clearance = Math.Max(along - BodyLength, across - BodyWidth);
                             if (clearance >= trace.WorstClearance) continue;
@@ -265,15 +256,6 @@ namespace BoardRacing.Tests
             }
             if (trace.WorstClearance == float.MaxValue) trace.WorstClearance = 0f;
             return trace;
-        }
-
-        // Where the car actually is: its point on the line, pushed sideways
-        // by its own offset.
-        private static Vec2 At(TrackDefinition track, RacerSnapshot racer)
-        {
-            Vec2 p = track.Sample(racer.TotalDistance).Position;
-            Vec2 t = TrackPresentation.SmoothHeading(track, racer.TotalDistance);
-            return new Vec2(p.X - t.Y * racer.LateralOffset, p.Y + t.X * racer.LateralOffset);
         }
 
         private static float Curvature(TrackDefinition track, float distance)
