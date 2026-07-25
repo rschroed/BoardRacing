@@ -153,7 +153,15 @@ namespace BoardRacing.Domain
             float followingCap = float.MaxValue;
             if (rules.Lateral.Enabled)
             {
-                SteerLateral(racer, delta);
+                // What this car COULD do if the road were clear, tow included.
+                // Not its current speed: a held-up car has already been capped
+                // to the speed of the car ahead, so comparing what the two are
+                // doing can never reveal that the one behind is faster. A
+                // driver knows they are quicker because they are having to
+                // lift, not because they are going quicker.
+                float desired = rules.MaxSpeed * throttleFraction +
+                    (throttleFraction > 0f ? SlipstreamBonus(racer) : 0f);
+                SteerLateral(racer, delta, desired);
                 followingCap = FollowingSpeedCap(racer, delta);
             }
             BurnFuel(racer, ThrottleActuallyUsed(commanded, followingCap), delta);
@@ -359,7 +367,8 @@ namespace BoardRacing.Domain
         private float LateralPathFactor(RacerState racer)
         {
             if (!rules.Lateral.Enabled || racer.Lateral == 0f) return 1f;
-            float factor = 1f - SignedCurvature(racer.Distance) * racer.Lateral;
+            float factor = 1f - SignedCurvature(racer.Distance) * racer.Lateral *
+                rules.Lateral.PathCostScale;
             return Math.Max(.75f, Math.Min(1.25f, factor));
         }
 
@@ -384,7 +393,7 @@ namespace BoardRacing.Domain
         // coming, unless a car ahead on that line is close enough to be in the
         // way, in which case try the other side. Deterministic and blind to
         // PlayerId — the only inputs are geometry and who is actually ahead.
-        private void SteerLateral(RacerState racer, float delta)
+        private void SteerLateral(RacerState racer, float delta, float desiredSpeed)
         {
             var lateral = rules.Lateral;
             float curvature = SignedCurvature(racer.Distance + lateral.LookAhead * .5f);
@@ -396,12 +405,12 @@ namespace BoardRacing.Domain
             RacerState blocker = BlockerOn(racer, inside, lateral);
             // Pulling out is a decision, not a reflex (owner report from
             // hardware). A car only leaves the inside when the move is
-            // actually on — the car in the way is slower, so there is
-            // something to gain for the longer arc. Otherwise it tucks in
+            // actually on — the car in the way cannot hold the speed this one
+            // has in hand, so there is something to gain for the longer arc. Otherwise it tucks in
             // behind and waits for the straight, which is what the tow is
             // for. Before this, any car ahead sent a driver around the
             // outside to pay the distance for nothing.
-            if (blocker != null && blocker.Speed < racer.Speed)
+            if (blocker != null && blocker.Speed < desiredSpeed - rules.MaxSpeed * .01f)
             {
                 float outside = -inside;
                 if (inside == 0f) outside = racer.Lateral >= 0f

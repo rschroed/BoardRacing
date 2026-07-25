@@ -274,13 +274,17 @@ namespace BoardRacing.Domain
     public readonly struct LateralRules
     {
         public LateralRules(float maximumOffset, float moveRate, float minimumGap,
-            float lookAhead, float sameLineWidth)
+            float lookAhead, float sameLineWidth, float pathCostScale)
         {
-            var values = new[] { maximumOffset, moveRate, minimumGap, lookAhead, sameLineWidth };
+            var values = new[] { maximumOffset, moveRate, minimumGap, lookAhead,
+                sameLineWidth, pathCostScale };
             if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x) || x <= 0f))
                 throw new ArgumentException("Lateral rules must contain finite positive values.");
+            if (pathCostScale > 1f)
+                throw new ArgumentException("The path cost cannot exceed the real geometry.");
             Enabled = true; MaximumOffset = maximumOffset; MoveRate = moveRate;
             MinimumGap = minimumGap; LookAhead = lookAhead; SameLineWidth = sameLineWidth;
+            PathCostScale = pathCostScale;
         }
         public bool Enabled { get; }
         // How far off the racing line a car may run, each way.
@@ -299,12 +303,30 @@ namespace BoardRacing.Domain
         // Lateral distance within which two cars count as sharing a line, so
         // one blocks the other: a body width.
         public float SameLineWidth { get; }
+        // How much of the true geometric cost of the wider arc to charge
+        // (owner report from hardware: being caught outside a big corner is
+        // still a significant penalty). The full price is too much here, and
+        // the reason is that the offsets are not racing-line offsets — the
+        // ±16 exists so two 26 px bodies fit side by side on a 64 px ribbon.
+        // Against a 72 px hairpin that is a 22% difference in radius, where a
+        // real racing line differs by two or three percent, so charging the
+        // literal geometry over-taxes an offset that is really there for
+        // legibility. Half price keeps the inside genuinely better without
+        // making the outside a sentence.
+        //
+        // Note this is only half the story: the wider arc's reward — a higher
+        // cornering limit — cannot pay at all while the cars are under that
+        // limit, and at Drive (180) they are, since corners clear at 190. The
+        // outside only earns anything back under Boost. Making corners
+        // genuinely grip-limited at Drive is a pace-dial question, not one for
+        // this rule.
+        public float PathCostScale { get; }
 
         // A body length ahead, a body width across, and a lateral move that
         // crosses the 32 px between the two lanes in about a second.
         public static LateralRules Defaults => new LateralRules(
             maximumOffset: 16f, moveRate: 34f, minimumGap: 62f,
-            lookAhead: 150f, sameLineWidth: 27f);
+            lookAhead: 150f, sameLineWidth: 27f, pathCostScale: .5f);
     }
 
     public readonly struct RaceRules

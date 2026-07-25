@@ -54,6 +54,8 @@ namespace BoardRacing.Tests
                 $"  held up (capped behind a rival): {100f * trace.CappedFrames / Math.Max(1, trace.CarFrames):0.0}% " +
                 "of car-frames");
             TestContext.Out.WriteLine(
+                $"  longest single stint held up: {trace.LongestHeldStreak * Step:0.0}s");
+            TestContext.Out.WriteLine(
                 $"  finish spread {trace.FinishSpread:0.00}s  worst body clearance {trace.WorstClearance:0.0}px");
             TestContext.Out.WriteLine($"    worst at: {trace.WorstWhere}");
 
@@ -119,6 +121,10 @@ namespace BoardRacing.Tests
             public string WorstWhere = "(none)";
             public int LeadChanges, Overtakes, OutsideFrames, AbreastFrames, CornerFrames,
                 CappedFrames, CarFrames;
+            // The owner's report: stuck behind two cars running abreast. How
+            // long does one stint of being held up actually last?
+            public int LongestHeldStreak;
+            public readonly Dictionary<PlayerId, int> HeldStreak = new Dictionary<PlayerId, int>();
             public readonly Dictionary<PlayerId, float> FinishTime = new Dictionary<PlayerId, float>();
             public readonly Dictionary<PlayerId, int> FinalPlace = new Dictionary<PlayerId, int>();
         }
@@ -165,7 +171,13 @@ namespace BoardRacing.Tests
                                 o.TotalDistance > racer.TotalDistance &&
                                 o.TotalDistance - racer.TotalDistance < 150f &&
                                 Math.Abs(o.LateralOffset - racer.LateralOffset) < BodyWidth))
+                        {
                             trace.CappedFrames++;
+                            trace.HeldStreak.TryGetValue(racer.PlayerId, out int streak);
+                            trace.HeldStreak[racer.PlayerId] = ++streak;
+                            if (streak > trace.LongestHeldStreak) trace.LongestHeldStreak = streak;
+                        }
+                        else trace.HeldStreak[racer.PlayerId] = 0;
                     }
                     // Body clearance in the sim's own terms: along-track gap
                     // and lateral gap, both real now. The standing start is
