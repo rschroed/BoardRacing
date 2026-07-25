@@ -154,14 +154,41 @@ namespace BoardRacing.Tests
             {
                 Contact(10, 7, 1700f, 150f, Deg(275f)),
                 Contact(20, 6, 200f, 900f, Deg(95f)),
-                Contact(30, 4, 200f, 150f, Deg(5f)),
-                Contact(40, 5, 1700f, 900f, Deg(185f))
+                Contact(30, 4, 200f, 150f, Deg(185f)),
+                Contact(40, 5, 1700f, 900f, Deg(5f))
             });
 
             Assert.That(snapshots.Count, Is.EqualTo(4));
             Assert.That(snapshots.All(x => x.Car.Present &&
                 x.Throttle == ThrottleStep.Brake &&
                 !x.Warnings.HasFlag(InputWarning.WrongRegion)), Is.True);
+        }
+
+        [Test]
+        public void MirroredCornersMapTheirRenderedDriveDirections()
+        {
+            var setup = new PlayerSetupCoordinator(Roster(4));
+            setup.ClaimForFallback(PlayerId.Player1, 7);
+            setup.ClaimForFallback(PlayerId.Player2, 6);
+            setup.ClaimForFallback(PlayerId.Player3, 4);
+            setup.ClaimForFallback(PlayerId.Player4, 5);
+            PlayerId[] ids = setup.Seats.Select(x => x.PlayerId).ToArray();
+            var reconciler = new ContactSnapshotReconciler(setup.BuildPieceAssignments(), ids,
+                new ThrottleStops(Deg(275f), Deg(225f), Deg(175f)), Deg(8f),
+                ids.Select(FourSeatLayout.InputFor));
+
+            var snapshots = reconciler.Reconcile(new[]
+            {
+                Contact(10, 7, 1700f, 150f, Deg(225f)),
+                Contact(20, 6, 200f, 900f, Deg(45f)),
+                // Board glyph orientation is counter-clockwise from vertical.
+                // Horizontally mirroring the two proven cockpits therefore
+                // reverses their raw quarter-turn offsets.
+                Contact(30, 4, 200f, 150f, Deg(135f)),
+                Contact(40, 5, 1700f, 900f, Deg(315f))
+            });
+
+            Assert.That(snapshots.All(x => x.Throttle == ThrottleStep.Drive), Is.True);
         }
 
         private static SessionPlayer[] Roster(int count) => Enumerable.Range(1, count)

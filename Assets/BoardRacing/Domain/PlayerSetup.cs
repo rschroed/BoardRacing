@@ -103,6 +103,10 @@ namespace BoardRacing.Domain
         public const float Width = 1920f;
         public const float Height = 1080f;
 
+        // Board glyph orientation is counter-clockwise from vertical, whereas
+        // the rendered cockpit geometry is measured clockwise in screen space.
+        // The horizontal mirrors therefore use -90° (270°) at lower-left and
+        // +90° at upper-right.
         // These are deliberately generous placement zones, not the final compact
         // race controls. They leave the shared center clear and make the initial
         // physical claim easy from every side of the table.
@@ -113,9 +117,9 @@ namespace BoardRacing.Domain
             new SeatClaimRegion(PlayerId.Player2, SeatCorner.UpperLeft,
                 0f, 760f, 470f, Height, (float)Math.PI),
             new SeatClaimRegion(PlayerId.Player3, SeatCorner.LowerLeft,
-                0f, 0f, 470f, 320f, (float)(Math.PI * .5)),
+                0f, 0f, 470f, 320f, (float)(Math.PI * 1.5)),
             new SeatClaimRegion(PlayerId.Player4, SeatCorner.UpperRight,
-                1450f, 760f, Width, Height, (float)(Math.PI * 1.5))
+                1450f, 760f, Width, Height, (float)(Math.PI * .5))
         };
 
         public static readonly SeatClaimRegion[] InputRegions =
@@ -125,9 +129,9 @@ namespace BoardRacing.Domain
             new SeatClaimRegion(PlayerId.Player2, SeatCorner.UpperLeft,
                 0f, Height * .5f, Width * .5f, Height, (float)Math.PI),
             new SeatClaimRegion(PlayerId.Player3, SeatCorner.LowerLeft,
-                0f, 0f, Width * .5f, Height * .5f, (float)(Math.PI * .5)),
+                0f, 0f, Width * .5f, Height * .5f, (float)(Math.PI * 1.5)),
             new SeatClaimRegion(PlayerId.Player4, SeatCorner.UpperRight,
-                Width * .5f, Height * .5f, Width, Height, (float)(Math.PI * 1.5))
+                Width * .5f, Height * .5f, Width, Height, (float)(Math.PI * .5))
         };
 
         public static SeatClaimRegion For(PlayerId playerId) =>
