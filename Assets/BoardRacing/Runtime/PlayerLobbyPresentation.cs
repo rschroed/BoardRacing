@@ -8,6 +8,44 @@ using UnityEngine.InputSystem;
 
 namespace BoardRacing.Runtime
 {
+    internal readonly struct LobbySeatUiModel
+    {
+        public LobbySeatUiModel(PlayerId playerId, bool active, string playerName,
+            bool hasShip, bool addAvailable)
+        {
+            PlayerId = playerId;
+            Active = active;
+            PlayerName = playerName;
+            HasShip = hasShip;
+            AddAvailable = addAvailable;
+        }
+
+        public PlayerId PlayerId { get; }
+        public bool Active { get; }
+        public string PlayerName { get; }
+        public bool HasShip { get; }
+        public bool AddAvailable { get; }
+    }
+
+    internal readonly struct PlayerLobbyUiModel
+    {
+        public PlayerLobbyUiModel(IReadOnlyList<LobbySeatUiModel> seats, string courseName,
+            int playerCount, bool canStart, bool allPlayersReady)
+        {
+            Seats = seats ?? Array.Empty<LobbySeatUiModel>();
+            CourseName = courseName ?? "COURSE";
+            PlayerCount = playerCount;
+            CanStart = canStart;
+            AllPlayersReady = allPlayersReady;
+        }
+
+        public IReadOnlyList<LobbySeatUiModel> Seats { get; }
+        public string CourseName { get; }
+        public int PlayerCount { get; }
+        public bool CanStart { get; }
+        public bool AllPlayersReady { get; }
+    }
+
     internal sealed class PlayerLobbyPresentation : IDisposable
     {
         private static readonly PlayerId[] SeatOrder =
@@ -34,7 +72,6 @@ namespace BoardRacing.Runtime
         private PlayerId? pendingAddSeat;
         private HashSet<int> sessionIdsBeforeAdd;
         private bool startRequested;
-        private GUIStyle heading, body, name, detail;
 
         public PlayerLobbyPresentation(IPlayerSession session, bool fallback,
             IEnumerable<PlayerSeat> restoredSeats = null, Func<string> courseName = null,
@@ -72,6 +109,22 @@ namespace BoardRacing.Runtime
             return seat.HasValue && seat.Value.PieceIdentity.HasValue
                 ? PlayerColors.For(seat.Value.PieceIdentity.Value)
                 : RaceSurfaceGeometry.InactivePitBoxAccent;
+        }
+
+        public PlayerLobbyUiModel BuildUiModel()
+        {
+            IReadOnlyList<PlayerSeat> seats = Coordinator.Seats;
+            LobbySeatUiModel[] models = SeatOrder.Select(id =>
+            {
+                PlayerSeat? seat = seats.Where(x => x.PlayerId == id)
+                    .Select(x => (PlayerSeat?)x).FirstOrDefault();
+                return new LobbySeatUiModel(id, seat.HasValue,
+                    seat.HasValue ? seat.Value.Player.DisplayName.ToUpperInvariant() : null,
+                    seat.HasValue && seat.Value.PieceIdentity.HasValue,
+                    session.Players.Count < 4);
+            }).ToArray();
+            return new PlayerLobbyUiModel(models, courseName(), seats.Count,
+                Coordinator.CanStart, AllPlayersReady);
         }
 
         public void SetReadyPlayers(IEnumerable<PlayerId> players)
@@ -124,48 +177,6 @@ namespace BoardRacing.Runtime
                 startRequested = true;
         }
 
-        public void Draw()
-        {
-            EnsureStyles();
-            GUI.DrawTexture(SetupPanel, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                new Color(.03f, .04f, .06f, .9f), 0, 12f);
-            GUI.Label(new Rect(560f, 420f, 800f, 55f), "CHOOSE YOUR RACERS", heading);
-            GUI.Label(new Rect(610f, 480f, 700f, 55f),
-                Coordinator.Seats.Count < 2
-                    ? "ADD AT LEAST TWO PLAYERS"
-                    : "PLACE ONE SHIP IN EACH COCKPIT", body);
-            GUI.Label(new Rect(640f, 535f, 640f, 72f),
-                AllPlayersReady
-                    ? "ALL RACERS READY"
-                    : Coordinator.CanStart
-                        ? "SET EVERY SHIP TO DRIVE"
-                    : fallback
-                        ? "DESKTOP: CLICK A COCKPIT OR PRESS 1–4 TO PLACE A SHIP"
-                        : "SHIP COLORS CAN BE SWAPPED UNTIL EVERY RACER IS READY",
-                detail);
-            GUI.DrawTexture(CourseChip, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                new Color(.09f, .12f, .18f), 0, 8f);
-            GUI.Label(CourseChip, "COURSE: " + courseName().ToUpperInvariant() +
-                " · TAP TO CHANGE", body);
-            Color startColor = AllPlayersReady
-                ? new Color(.18f, .42f, .72f)
-                : new Color(.12f, .15f, .2f);
-            GUI.DrawTexture(StartButton, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0,
-                startColor, 0, 10f);
-            GUI.Label(StartButton, AllPlayersReady ? "START RACE" : "START RACE · WAITING", body);
-
-            IReadOnlyList<PlayerSeat> seats = Coordinator.Seats;
-            foreach (PlayerId id in SeatOrder)
-            {
-                PlayerSeat? seat = seats.Where(x => x.PlayerId == id)
-                    .Select(x => (PlayerSeat?)x).FirstOrDefault();
-                DrawSeat(id, seat);
-            }
-
-            if (session.SelectorInFlight)
-                GUI.Label(new Rect(710f, 610f, 500f, 50f), "PLAYER SELECTOR OPEN…", body);
-        }
-
         public void Dispose()
         {
             session.PlayersChanged -= SynchronizeRoster;
@@ -216,38 +227,6 @@ namespace BoardRacing.Runtime
             // Some implementations publish PlayersChanged before the selector
             // task completes; others update immediately after. Cover both.
             SynchronizeRoster();
-        }
-
-        private void DrawSeat(PlayerId id, PlayerSeat? maybeSeat)
-        {
-            Rect well = ShipWells[id];
-            bool active = maybeSeat.HasValue;
-            float rotation = id == PlayerId.Player1 ? 0f : id == PlayerId.Player2 ? 180f
-                : id == PlayerId.Player3 ? 0f : 180f;
-            Matrix4x4 original = GUI.matrix;
-            Vector3 pivot = well.center;
-            GUI.matrix = original * Matrix4x4.Translate(pivot) *
-                Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, rotation)) *
-                Matrix4x4.Translate(-pivot);
-
-            if (!active)
-            {
-                GUI.Label(new Rect(well.x + 30f, well.y + 95f, well.width - 60f, 86f),
-                    session.Players.Count < 4 ? "+\nADD PLAYER" : "INACTIVE", name);
-                GUI.matrix = original;
-                return;
-            }
-
-            PlayerSeat seat = maybeSeat.Value;
-            GUI.Label(new Rect(well.x + 38f, well.y + 15f, well.width - 106f, 34f),
-                seat.Player.DisplayName.ToUpperInvariant(), detail);
-            GUI.Label(EditDrawRect(well), "EDIT", detail);
-            // Once a physical Ship occupies the well, it and the lit throttle
-            // sector are the setup UI. No redundant card/status is left beneath it.
-            if (!seat.PieceIdentity.HasValue)
-                GUI.Label(new Rect(well.x + 34f, well.y + 92f, well.width - 68f, 92f),
-                    "PLACE\nSHIP", name);
-            GUI.matrix = original;
         }
 
         private void PollFallbackClaims()
@@ -310,35 +289,6 @@ namespace BoardRacing.Runtime
                 (Screen.height - screen.y) * 1080f / Mathf.Max(1f, Screen.height));
             return pressed;
         }
-
-        private void EnsureStyles()
-        {
-            if (heading != null) return;
-            heading = Style(42, Color.white);
-            body = Style(27, new Color(.9f, .93f, .97f));
-            name = Style(25, Color.white);
-            detail = Style(17, new Color(.82f, .86f, .92f));
-        }
-
-        private static GUIStyle Style(int size, Color color) => new GUIStyle(GUI.skin.label)
-        {
-            fontSize = size,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter,
-            wordWrap = true,
-            normal = { textColor = color }
-        };
-
-        private static string Initials(string value)
-        {
-            string[] words = value.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            return string.Concat(words.Take(2).Select(x => char.ToUpperInvariant(x[0])));
-        }
-
-        private static string CornerName(SeatCorner corner) =>
-            corner == SeatCorner.LowerRight ? "LOWER-RIGHT CORNER" :
-            corner == SeatCorner.UpperLeft ? "UPPER-LEFT CORNER" :
-            corner == SeatCorner.LowerLeft ? "LOWER-LEFT CORNER" : "UPPER-RIGHT CORNER";
 
         private static Rect EditDrawRect(Rect well) =>
             new Rect(well.xMax - 70f, well.y + 15f, 54f, 34f);

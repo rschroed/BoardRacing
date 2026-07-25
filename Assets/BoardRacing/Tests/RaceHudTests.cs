@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using BoardRacing.Domain;
 using BoardRacing.Runtime;
 using NUnit.Framework;
@@ -200,6 +201,117 @@ namespace BoardRacing.Tests
                 Is.EqualTo(new Vector2(1787f, -142f)).Using(Vector2Comparer));
         }
 
+        [Test]
+        public void LobbyCanvasOwnsSetupCopyActionsAndCornerStates()
+        {
+            RaceHud hud = CreateFourHud();
+            var lobby = new PlayerLobbyUiModel(new[]
+            {
+                new LobbySeatUiModel(PlayerId.Player1, true, "ELLIS", false, true),
+                new LobbySeatUiModel(PlayerId.Player2, true, "RYAN", true, true),
+                new LobbySeatUiModel(PlayerId.Player3, false, null, false, true),
+                new LobbySeatUiModel(PlayerId.Player4, false, null, false, true)
+            }, "Hourglass", 2, false, false);
+
+            hud.ApplyLobby(new RaceUiModel(RacePhase.Grid, new[]
+            {
+                Player(PlayerId.Player1, driveOnlyThrottle: true),
+                Player(PlayerId.Player2, driveOnlyThrottle: true),
+                Player(PlayerId.Player3, driveOnlyThrottle: true),
+                Player(PlayerId.Player4, driveOnlyThrottle: true)
+            }, CenterMessageKind.None, null), lobby);
+
+            Assert.That(hud.Setup.Container.activeSelf, Is.True);
+            Assert.That(hud.Shared.Container.activeSelf, Is.False);
+            Assert.That(hud.Setup.Heading.text, Is.EqualTo("CHOOSE YOUR RACERS"));
+            Assert.That(hud.Setup.Instruction.text, Is.EqualTo("PLACE ONE SHIP IN EACH COCKPIT"));
+            Assert.That(hud.Setup.Course.text, Is.EqualTo("COURSE: HOURGLASS · TAP TO CHANGE"));
+            Assert.That(hud.Setup.Start.text, Is.EqualTo("START RACE · WAITING"));
+            Assert.That(hud.Setup.Seats[PlayerId.Player1].Name.text, Is.EqualTo("ELLIS"));
+            Assert.That(hud.Setup.Seats[PlayerId.Player1].Primary.text, Is.EqualTo("PLACE\nSHIP"));
+            Assert.That(hud.Setup.Seats[PlayerId.Player2].Primary.gameObject.activeSelf, Is.False);
+            Assert.That(hud.Setup.Seats[PlayerId.Player3].Primary.text, Is.EqualTo("+\nADD PLAYER"));
+            Assert.That(hud.Setup.Container.transform.Find("Selector Open"), Is.Null,
+                "the BoardOS sheet owns selector-open feedback");
+        }
+
+        [Test]
+        public void SharedCanvasOwnsCountdownExitPauseAndResults()
+        {
+            RaceHud hud = CreateFourHud();
+            RaceUiModel countdown = new RaceUiModel(RacePhase.Countdown,
+                new[] { Player(PlayerId.Player1), Player(PlayerId.Player2) },
+                CenterMessageKind.Countdown, "2");
+            hud.ApplyRace(countdown, false, new CarAnnotationUiModel[0],
+                new PitAnnotationUiModel[0]);
+            Assert.That(hud.Setup.Container.activeSelf, Is.False);
+            Assert.That(hud.Shared.Center.gameObject.activeSelf, Is.True);
+            Assert.That(hud.Shared.Center.text, Is.EqualTo("2"));
+            Assert.That(hud.Shared.Exit.text, Is.EqualTo("EXIT TO SETUP"));
+
+            hud.ApplyRace(countdown, true, new CarAnnotationUiModel[0],
+                new PitAnnotationUiModel[0]);
+            Assert.That(hud.Shared.Overlay.activeSelf, Is.True);
+            Assert.That(hud.Shared.Heading.text, Is.EqualTo("RETURN TO SETUP?"));
+            Assert.That(hud.Shared.Primary.text, Is.EqualTo("RETURN TO PLAYER SETUP"));
+            Assert.That(hud.Shared.Secondary.text, Is.EqualTo("RESUME RACE"));
+
+            RaceUiModel results = new RaceUiModel(RacePhase.Finished,
+                new[] { Player(PlayerId.Player1), Player(PlayerId.Player2) },
+                CenterMessageKind.Winner, "▲ ELLIS WINS");
+            hud.ApplyRace(results, false, new CarAnnotationUiModel[0],
+                new PitAnnotationUiModel[0]);
+            Assert.That(hud.Shared.Heading.text, Is.EqualTo("RACE FINISHED"));
+            Assert.That(hud.Shared.Primary.text, Is.EqualTo("REMATCH"));
+            Assert.That(hud.Shared.Secondary.text, Is.EqualTo("PLAYER / COURSE SETUP"));
+            Assert.That(hud.Shared.Exit.gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
+        public void CanvasAnnotationsShowOnlyApprovedCarAndPitInformation()
+        {
+            RaceHud hud = CreateFourHud();
+            var cars = new[]
+            {
+                new CarAnnotationUiModel(PlayerId.Player1, new Vector2(500f, 400f),
+                    "▲", "SLOWDOWN!", true),
+                new CarAnnotationUiModel(PlayerId.Player3, new Vector2(700f, 600f),
+                    "◆", "PIT ENTRY", false)
+            };
+            var pits = new[]
+            {
+                new PitAnnotationUiModel(PlayerId.Player1, new Vector2(900f, 430f), "▲"),
+                new PitAnnotationUiModel(PlayerId.Player3, new Vector2(1040f, 430f), "◆")
+            };
+            hud.ApplyRace(new RaceUiModel(RacePhase.Racing,
+                    new[] { Player(PlayerId.Player1), Player(PlayerId.Player3) },
+                    CenterMessageKind.None, null),
+                false, cars, pits);
+
+            Assert.That(hud.CarAnnotations[PlayerId.Player1].Symbol.text, Is.EqualTo("▲"));
+            Assert.That(hud.CarAnnotations[PlayerId.Player1].Status.text,
+                Is.EqualTo("SLOWDOWN!"));
+            Assert.That(hud.CarAnnotations[PlayerId.Player3].Status.text,
+                Is.EqualTo("PIT ENTRY"));
+            Assert.That(hud.PitAnnotations[PlayerId.Player1].text, Is.EqualTo("▲"));
+            Assert.That(hud.PitAnnotations[PlayerId.Player3].text, Is.EqualTo("◆"));
+            Assert.That(hud.PitAnnotations[PlayerId.Player2].gameObject.activeSelf, Is.False);
+            Assert.That(hud.gameObject.GetComponentsInChildren<Text>(true),
+                Has.None.Matches<Text>(x => x.text == "PIT LANE" ||
+                    x.text == "F" || x.text == "T" || x.text.Contains("P1 BOX")));
+        }
+
+        [Test]
+        public void ProductionRenderersHaveNoImguiEntryPoint()
+        {
+            BindingFlags methods = BindingFlags.Instance |
+                BindingFlags.Public | BindingFlags.NonPublic;
+            Assert.That(typeof(RacePrototype).GetMethod("OnGUI", methods), Is.Null);
+            Assert.That(typeof(PlayerLobbyPresentation).GetMethod("Draw", methods), Is.Null);
+            Assert.That(typeof(ControlLab).GetMethod("OnGUI", methods), Is.Not.Null,
+                "ControlLab is the one approved diagnostic exemption");
+        }
+
         private static readonly IEqualityComparer<Vector2> Vector2Comparer =
             new Vector2EqualityComparer();
 
@@ -235,6 +347,14 @@ namespace BoardRacing.Tests
         {
             RaceHud hud = RaceHud.Create(Layout(), new Color(.92f, .39f, .12f),
                 new Color(.48f, .28f, .72f));
+            spawned.Add(hud.gameObject);
+            return hud;
+        }
+
+        private RaceHud CreateFourHud()
+        {
+            RaceHud hud = RaceHud.CreateFour(FourSeatLayout(), Color.red, Color.blue,
+                Color.green, Color.yellow);
             spawned.Add(hud.gameObject);
             return hud;
         }
