@@ -60,7 +60,8 @@ namespace BoardRacing.Tests
                 if (racing.Length >= 2)
                 {
                     float[] targets = CornerCharacter.CornerSpacingPads(track,
-                        racing.Select(r => r.TotalDistance).ToArray(), rules.PassingDistance);
+                        racing.Select(r => r.TotalDistance + r.LongitudinalOffset).ToArray(),
+                        rules.PassingDistance);
                     for (int i = 0; i < racing.Length; i++)
                     {
                         float pad = slewedPads.TryGetValue(racing[i].PlayerId, out float was)
@@ -75,7 +76,7 @@ namespace BoardRacing.Tests
                     foreach (var kv in pads) slewedPads[kv.Key] = kv.Value;
                 }
                 else slewedPads.Clear();
-                float DrawnOf(RacerSnapshot r) => r.TotalDistance +
+                float DrawnOf(RacerSnapshot r) => r.TotalDistance + r.LongitudinalOffset +
                     (pads.TryGetValue(r.PlayerId, out float dp) ? dp : 0f);
                 var clearance = new Dictionary<PlayerId, float>();
                 foreach (var racer in racing)
@@ -87,6 +88,16 @@ namespace BoardRacing.Tests
                                     track.Length) % track.Length;
                                 return Math.Min(w, track.Length - w);
                             }).DefaultIfEmpty(float.MaxValue).Min());
+                var bodyFloor = new Dictionary<PlayerId, float>();
+                foreach (var racer in racing)
+                {
+                    float[] across = racing
+                        .Where(other => other.LateralOffset * racer.LateralOffset < 0f)
+                        .Select(other => RaceSurfaceGeometry.SplitForBodyClearance(
+                            Math.Abs(DrawnOf(racer) - DrawnOf(other)))).ToArray();
+                    bodyFloor[racer.PlayerId] = across.Length == 0 ? 0f
+                        : Math.Min(1f, across.Max() / (2f * Math.Abs(racer.LateralOffset)));
+                }
                 var engagement = new Dictionary<PlayerId, float>();
                 foreach (var racer in racing)
                     engagement[racer.PlayerId] = PresentationLife.DuelEngagement(
@@ -127,11 +138,12 @@ namespace BoardRacing.Tests
                         ? PresentationLife.Breathe(breathDistance, racer.LateralOffset, breathAmplitude)
                         : DuelBreath.Still;
                     float lateral = OnRacingLine(racer)
-                        ? racer.LateralOffset *
-                            Math.Max(CornerCharacter.SplitScale(track, drawnDistance),
-                                clearance.TryGetValue(racer.PlayerId, out float clear) ? clear : 0f) *
-                            breath.FlareScale *
-                            (engagement.TryGetValue(racer.PlayerId, out float engaged) ? engaged : 1f)
+                        ? racer.LateralOffset * PresentationLife.DrawnSplitScale(
+                            CornerCharacter.SplitScale(track, drawnDistance),
+                            clearance.TryGetValue(racer.PlayerId, out float clear) ? clear : 0f,
+                            breath.FlareScale,
+                            engagement.TryGetValue(racer.PlayerId, out float engaged) ? engaged : 1f,
+                            bodyFloor.TryGetValue(racer.PlayerId, out float floor) ? floor : 0f)
                         : 0f;
                     var drawn = new Vec2(center.X - tangent.Y * lateral, center.Y + tangent.X * lateral);
 

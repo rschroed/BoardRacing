@@ -250,6 +250,90 @@ namespace BoardRacing.Tests
                 }
         }
 
+        // The sim's placement is only half the answer (issue #143) — the drawn
+        // split tapers through corners while the drawn pads open, and for a
+        // stretch of every corner approach neither separation was doing the
+        // job (owner report 2026-07-25: cars overlap). This walks a
+        // dead-heat field around a whole course through the exact drawn
+        // composition and pins the seam of daylight everywhere on it.
+        [TestCase("Wedge")]
+        [TestCase("Fishhook")]
+        [TestCase("Hourglass")]
+        public void DeadHeatFieldsKeepDaylightAllTheWayThroughEveryCorner(string courseName)
+        {
+            TrackDefinition track = CourseCatalog.All().Single(c => c.Name == courseName).Track;
+            RaceRules rules = RaceRules.Defaults;
+            float worst = float.MaxValue;
+            float worstAt = 0f;
+            for (float distance = 0f; distance < track.Length; distance += 2f)
+            {
+                for (int field = 2; field <= 4; field++)
+                {
+                    RacingLinePlacement[] placed = RacingLineAllocator.Allocate(
+                        Enumerable.Range(0, field)
+                            .Select(i => new RacingLineCandidate((PlayerId)(i + 1), i, distance)).ToArray(),
+                        track.Length, rules.PassingDistance, rules.PassingOffset);
+                    // RefreshDrawnPads, then OffsetCenter, for each drawn body.
+                    float[] pads = CornerCharacter.CornerSpacingPads(track,
+                        placed.Select(p => distance + p.LongitudinalOffset).ToArray(),
+                        rules.PassingDistance);
+                    float[] drawn = placed.Select((p, i) =>
+                        distance + p.LongitudinalOffset + pads[i]).ToArray();
+                    var lateral = new float[field];
+                    for (int i = 0; i < field; i++)
+                    {
+                        float nearest = Enumerable.Range(0, field).Where(j => j != i)
+                            .Min(j => Mathf.Abs(drawn[i] - drawn[j]));
+                        float[] across = Enumerable.Range(0, field)
+                            .Where(j => placed[j].LateralOffset * placed[i].LateralOffset < 0f)
+                            .Select(j => RaceSurfaceGeometry.SplitForBodyClearance(
+                                Mathf.Abs(drawn[i] - drawn[j]))).ToArray();
+                        float floor = across.Length == 0 ? 0f
+                            : Mathf.Clamp01(across.Max() / (2f * Mathf.Abs(placed[i].LateralOffset)));
+                        // The breath flare only ever widens; engagement is 1
+                        // for a field this close. Both are pinned elsewhere.
+                        lateral[i] = placed[i].LateralOffset * PresentationLife.DrawnSplitScale(
+                            CornerCharacter.SplitScale(track, drawn[i]),
+                            PresentationLife.PassClearance(nearest), 1f, 1f, floor);
+                    }
+                    for (int i = 0; i < field; i++)
+                        for (int j = i + 1; j < field; j++)
+                        {
+                            float clearance = RaceSurfaceGeometry.BodyClearance(
+                                drawn[i] - drawn[j], lateral[i] - lateral[j]);
+                            if (clearance < worst) { worst = clearance; worstAt = distance; }
+                        }
+                }
+            }
+            Assert.That(worst, Is.GreaterThanOrEqualTo(0f),
+                $"{courseName}: drawn bodies overlap by {-worst:0.0}px at {worstAt:0}px " +
+                $"(blend {CornerCharacter.FormationBlend(track, worstAt):0.00})");
+        }
+
+        // The floor is defined as the inverse of the clearance it buys, so the
+        // two can never drift apart under a body-shape change.
+        [Test]
+        public void TheBodyFloorIsExactlyTheSplitThatBuysItsDaylight()
+        {
+            for (float gap = 0f; gap <= 80f; gap += .5f)
+            {
+                float split = RaceSurfaceGeometry.SplitForBodyClearance(gap);
+                if (split <= 0f)
+                {
+                    Assert.That(RaceSurfaceGeometry.BodyClearance(gap, 0f),
+                        Is.GreaterThanOrEqualTo(RaceSurfaceGeometry.BodyDaylight - .001f),
+                        $"the floor released at {gap:0.0}px without the gap earning it");
+                    continue;
+                }
+                Assert.That(RaceSurfaceGeometry.BodyClearance(gap, split),
+                    Is.EqualTo(RaceSurfaceGeometry.BodyDaylight).Within(.001f), $"gap {gap:0.0}");
+            }
+            // It costs nothing where the formation has already done the work:
+            // a body length of file needs no width at all.
+            Assert.That(RaceSurfaceGeometry.SplitForBodyClearance(
+                CornerCharacter.NoseToTailSpacing), Is.Zero);
+        }
+
         // The Y-junction pins (issue #107 phase 2): the pit lane meets the track
         // as clamped shared-edge gores instead of a full ribbon hidden by paint
         // order — no lane geometry in the roadway, each mouth running along the
