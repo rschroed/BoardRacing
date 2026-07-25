@@ -68,7 +68,8 @@ namespace BoardRacing.Domain
             this.playerRegions = regions.ToDictionary(x => x.PlayerId);
             throttleMappers = this.activePlayers
                 .ToDictionary(x => x, id => new CoarseThrottleMapper(throttleHysteresisRadians,
-                    throttleStops, this.playerRegions[id].SeatRotationRadians));
+                    throttleStops, this.playerRegions[id].SeatRotationRadians,
+                    this.playerRegions[id].MirroredOrientation));
         }
 
         public IReadOnlyList<PlayerControlSnapshot> Reconcile(IEnumerable<RawPieceContact> snapshot)

@@ -154,8 +154,8 @@ namespace BoardRacing.Tests
             {
                 Contact(10, 7, 1700f, 150f, Deg(275f)),
                 Contact(20, 6, 200f, 900f, Deg(95f)),
-                Contact(30, 4, 200f, 150f, Deg(185f)),
-                Contact(40, 5, 1700f, 900f, Deg(5f))
+                Contact(30, 4, 200f, 150f, Deg(85f)),
+                Contact(40, 5, 1700f, 900f, Deg(265f))
             });
 
             Assert.That(snapshots.Count, Is.EqualTo(4));
@@ -189,6 +189,38 @@ namespace BoardRacing.Tests
             });
 
             Assert.That(snapshots.All(x => x.Throttle == ThrottleStep.Drive), Is.True);
+        }
+
+        [Test]
+        public void MirroredCornersKeepBrakeAndBoostOnTheirRenderedSides()
+        {
+            var setup = new PlayerSetupCoordinator(Roster(4));
+            setup.ClaimForFallback(PlayerId.Player1, 7);
+            setup.ClaimForFallback(PlayerId.Player2, 6);
+            setup.ClaimForFallback(PlayerId.Player3, 4);
+            setup.ClaimForFallback(PlayerId.Player4, 5);
+            PlayerId[] ids = setup.Seats.Select(x => x.PlayerId).ToArray();
+            var reconciler = new ContactSnapshotReconciler(setup.BuildPieceAssignments(), ids,
+                new ThrottleStops(Deg(275f), Deg(225f), Deg(175f)), Deg(8f),
+                ids.Select(FourSeatLayout.InputFor));
+
+            var brake = reconciler.Reconcile(new[]
+            {
+                Contact(10, 7, 1700f, 150f, Deg(275f)),
+                Contact(20, 6, 200f, 900f, Deg(95f)),
+                Contact(30, 4, 200f, 150f, Deg(85f)),
+                Contact(40, 5, 1700f, 900f, Deg(265f))
+            });
+            Assert.That(brake.All(x => x.Throttle == ThrottleStep.Brake), Is.True);
+
+            var boost = reconciler.Reconcile(new[]
+            {
+                Contact(10, 7, 1700f, 150f, Deg(175f)),
+                Contact(20, 6, 200f, 900f, Deg(355f)),
+                Contact(30, 4, 200f, 150f, Deg(185f)),
+                Contact(40, 5, 1700f, 900f, Deg(5f))
+            });
+            Assert.That(boost.All(x => x.Throttle == ThrottleStep.Boost), Is.True);
         }
 
         private static SessionPlayer[] Roster(int count) => Enumerable.Range(1, count)

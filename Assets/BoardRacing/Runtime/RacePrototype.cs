@@ -256,7 +256,8 @@ namespace BoardRacing.Runtime
                     continue;
                 var mapper = new CoarseThrottleMapper(
                     inputSettings.throttleHysteresisDegrees * Mathf.Deg2Rad,
-                    inputSettings.ToThrottleStops(), region.SeatRotationRadians);
+                    inputSettings.ToThrottleStops(), region.SeatRotationRadians,
+                    region.MirroredOrientation);
                 if (mapper.Map(true, matches[0].OrientationRadians) == ThrottleStep.Drive)
                     ready.Add(seat.PlayerId);
             }

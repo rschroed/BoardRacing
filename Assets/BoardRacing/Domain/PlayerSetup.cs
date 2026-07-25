@@ -74,7 +74,8 @@ namespace BoardRacing.Domain
     public readonly struct SeatClaimRegion
     {
         public SeatClaimRegion(PlayerId playerId, SeatCorner corner,
-            float minX, float minY, float maxX, float maxY, float seatRotationRadians)
+            float minX, float minY, float maxX, float maxY, float seatRotationRadians,
+            bool mirroredOrientation = false)
         {
             if (minX >= maxX || minY >= maxY)
                 throw new ArgumentException("A seat claim region must have positive area.");
@@ -85,6 +86,7 @@ namespace BoardRacing.Domain
             MaxX = maxX;
             MaxY = maxY;
             SeatRotationRadians = seatRotationRadians;
+            MirroredOrientation = mirroredOrientation;
         }
 
         public PlayerId PlayerId { get; }
@@ -94,6 +96,7 @@ namespace BoardRacing.Domain
         public float MaxX { get; }
         public float MaxY { get; }
         public float SeatRotationRadians { get; }
+        public bool MirroredOrientation { get; }
         public bool Contains(Vec2 point) =>
             point.X >= MinX && point.X <= MaxX && point.Y >= MinY && point.Y <= MaxY;
     }
@@ -105,8 +108,8 @@ namespace BoardRacing.Domain
 
         // Board glyph orientation is counter-clockwise from vertical, whereas
         // the rendered cockpit geometry is measured clockwise in screen space.
-        // The horizontal mirrors therefore use -90° (270°) at lower-left and
-        // +90° at upper-right.
+        // The horizontal mirrors therefore reverse the raw orientation around
+        // the proven lower-right/upper-left seat frames.
         // These are deliberately generous placement zones, not the final compact
         // race controls. They leave the shared center clear and make the initial
         // physical claim easy from every side of the table.
@@ -117,9 +120,9 @@ namespace BoardRacing.Domain
             new SeatClaimRegion(PlayerId.Player2, SeatCorner.UpperLeft,
                 0f, 760f, 470f, Height, (float)Math.PI),
             new SeatClaimRegion(PlayerId.Player3, SeatCorner.LowerLeft,
-                0f, 0f, 470f, 320f, (float)(Math.PI * 1.5)),
+                0f, 0f, 470f, 320f, 0f, true),
             new SeatClaimRegion(PlayerId.Player4, SeatCorner.UpperRight,
-                1450f, 760f, Width, Height, (float)(Math.PI * .5))
+                1450f, 760f, Width, Height, (float)Math.PI, true)
         };
 
         public static readonly SeatClaimRegion[] InputRegions =
@@ -129,9 +132,9 @@ namespace BoardRacing.Domain
             new SeatClaimRegion(PlayerId.Player2, SeatCorner.UpperLeft,
                 0f, Height * .5f, Width * .5f, Height, (float)Math.PI),
             new SeatClaimRegion(PlayerId.Player3, SeatCorner.LowerLeft,
-                0f, 0f, Width * .5f, Height * .5f, (float)(Math.PI * 1.5)),
+                0f, 0f, Width * .5f, Height * .5f, 0f, true),
             new SeatClaimRegion(PlayerId.Player4, SeatCorner.UpperRight,
-                Width * .5f, Height * .5f, Width, Height, (float)(Math.PI * .5))
+                Width * .5f, Height * .5f, Width, Height, (float)Math.PI, true)
         };
 
         public static SeatClaimRegion For(PlayerId playerId) =>
