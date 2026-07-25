@@ -617,29 +617,24 @@ namespace BoardRacing.Domain
         // there is no qualifying here to earn the front row with. Whether
         // that is the right answer, or whether grid position should be a real
         // advantage, is the open question on #147.
-        // Each slot sits back from the one ahead and on the other side, so no
-        // two cars are ever level: a staggered echelon, the way a real grid
-        // is drawn. Two rows of two read as a stacked block instead (owner
-        // report from hardware) — bodies are 54 long and 26 wide, so cars
-        // level with each other showed 6px of daylight and cars in the row
-        // behind 8px, which is one clump, not a grid. A stagger longer than
-        // the body clears every pair along the ribbon as well as across it,
-        // so each car is seen against open track rather than against another
-        // car's flank.
+        // Two rows of two, as tight as the formation the cars actually race
+        // in (owner, 2026-07-25: the field was more spread out on the grid
+        // than during the race, and racing looks right).
         //
-        // Tightened twice against hardware captures (owner, 2026-07-25), from
-        // a body and a half to about three quarters. A real grid staggers
-        // roughly 1.6 car lengths, and at that proportion this one read as
-        // four cars strung out along the track rather than a grid — and on a
-        // course whose line follows a corner, the longer the formation the
-        // more of the bend it wrapped. Legibility on a table beats fidelity
-        // to a real grid.
+        // A racing pair runs side by side at 32px of centres against 26px of
+        // body — 6px of daylight — so the grid pairs up level at exactly that,
+        // and sets the rows a body plus the same 6px apart. Every gap on the
+        // grid is then the gap the cars race with, and the whole thing is 60px
+        // deep instead of 120.
         //
-        // What constrains it is only the two cars sharing a column: diagonal
-        // neighbours are held apart ACROSS the ribbon, 32px of centres
-        // against 26px of body, which does not depend on the stagger at all.
-        // So the floor is about 34, where a column closes inside a body.
-        public const float GridSlotStagger = 40f;
+        // This IS the 2x2 that was replaced by a staggered echelon earlier
+        // today, and the history is worth keeping: it was replaced because it
+        // read as one stacked clump on hardware, but that was the drawn-
+        // distance bug — every car was being drawn at distance zero whatever
+        // its slot, so the layout was never the problem and a working 2x2 had
+        // never actually been seen. Do not re-stagger this without checking
+        // that the cars are drawn where the simulation puts them.
+        public const float GridRowSpacing = 60f;
 
         private void ApplyStartingGrid()
         {
@@ -647,7 +642,7 @@ namespace BoardRacing.Domain
             for (int i = 0; i < racers.Length; i++)
             {
                 racers[i].Lateral = (i % 2 == 0 ? -1f : 1f) * rules.Lateral.MaximumOffset;
-                racers[i].GridStart = -i * GridSlotStagger;
+                racers[i].GridStart = -(i / 2) * GridRowSpacing;
                 racers[i].Distance = racers[i].GridStart;
             }
         }
