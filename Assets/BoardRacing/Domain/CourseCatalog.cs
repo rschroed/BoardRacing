@@ -135,10 +135,10 @@ namespace BoardRacing.Domain
 
         // Hourglass pit complex hangs off the 720 px top straight of the right
         // lobe (the crossing lives far away at (568, 550)). The approved
-        // merge-safe four-box row uses entry 150, boxes 153/267/381/495, and
-        // rejoin 695 — 25 before the sweeper. The five-pixel rejoin move and
-        // westward entry preserve the 200 px merge run without shrinking the
-        // 20 px gaps between 94 px boxes.
+        // merge-safe four-box row uses entry 150, boxes 170/284/398/512, and
+        // rejoin 712 — 8 before the sweeper. Hardware review moved the whole
+        // row and merge 17 px east so box 1 no longer crowds the entry bend,
+        // while preserving the 200 px merge run and 20 px gaps between boxes.
         // The merge approach follows the Wedge's phase-2 tuning: 50 px past
         // the last compact box quad and 27 px above the lane center, for a
         // shallow climb that starts visibly clear of the box.
@@ -148,10 +148,10 @@ namespace BoardRacing.Domain
             TrackCatalog.Hourglass(cornerSafeSpeed),
             new PitComplexDefinition(new Vec2(930f, 462f), new[]
                 {
-                    new Vec2(933f, 462f), new Vec2(1047f, 462f),
-                    new Vec2(1161f, 462f), new Vec2(1275f, 462f)
+                    new Vec2(950f, 462f), new Vec2(1064f, 462f),
+                    new Vec2(1178f, 462f), new Vec2(1292f, 462f)
                 },
-                new Vec2(1450f, 462f), new Vec2(1372f, 435f), 695f),
+                new Vec2(1450f, 462f), new Vec2(1389f, 435f), 712f),
             laps: 5);
 
         // Infinity's approved four-box row hangs off the ascending diagonal

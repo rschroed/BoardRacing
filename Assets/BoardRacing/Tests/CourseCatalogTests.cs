@@ -64,6 +64,15 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void HourglassLeavesAVisibleRunFromEntryToFirstBox()
+        {
+            CourseDefinition course = CourseCatalog.Hourglass();
+            Assert.That(course.Pit.Box(PlayerId.Player1).X - course.Pit.Entry.X,
+                Is.EqualTo(20f));
+            Assert.That(course.Pit.ExitRejoinDistance, Is.EqualTo(712f));
+        }
+
+        [Test]
         public void CourseSpeedFactorsRideTheCornerSafeSpeed()
         {
             // The per-corner character (sweeper/medium/tight) scales with the
