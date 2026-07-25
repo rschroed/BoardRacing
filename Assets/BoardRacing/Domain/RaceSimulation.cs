@@ -144,7 +144,19 @@ namespace BoardRacing.Domain
                 return;
             }
             float throttleFraction = command.DrivingPiecePresent ? (int)command.Throttle / 100f : 0f;
-            BurnFuel(racer, command.DrivingPiecePresent ? command.Throttle : ThrottleStep.Brake, delta);
+            ThrottleStep commanded = command.DrivingPiecePresent ? command.Throttle : ThrottleStep.Brake;
+            // Traffic is settled before the fuel is charged (issue #147, owner
+            // report from hardware: a car on Boost caught in traffic paid the
+            // usage cost without the benefit). You are billed for the speed
+            // you actually got, not the throttle you asked for. Steering runs
+            // first so the cap reads the line this car is on THIS step.
+            float followingCap = float.MaxValue;
+            if (rules.Lateral.Enabled)
+            {
+                SteerLateral(racer, delta);
+                followingCap = FollowingSpeedCap(racer, delta);
+            }
+            BurnFuel(racer, ThrottleActuallyUsed(commanded, followingCap), delta);
             bool fuelPenalty = FuelPenaltyActive(racer);
             float maximumSpeed = rules.MaxSpeed * (fuelPenalty ? rules.Conditions.EmptyMaximumSpeedScale : 1f);
             float target = maximumSpeed * throttleFraction;
@@ -167,6 +179,7 @@ namespace BoardRacing.Domain
                     rules.Pit.LaneSpeed * rules.Pit.LaneSpeed + 2f * rules.Drag * toLine);
                 target = Math.Min(target, allowed);
             }
+            target = Math.Min(target, followingCap);
             float rate;
             if (target > racer.Speed)
                 rate = rules.Acceleration * (racer.Recovery > 0f ? rules.RecoveryAccelerationScale : 1f) *
@@ -186,6 +199,16 @@ namespace BoardRacing.Domain
             float effectiveSafeSpeed = before.SafeSpeed;
             if (before.Kind == TrackSectionKind.Corner && rules.Conditions.Enabled)
                 effectiveSafeSpeed *= 1f - racer.TireWear * (1f - rules.Conditions.FullyWornSafeSpeedScale);
+            // The other half of the racing line (issue #147, owner report from
+            // hardware: being caught outside a big corner cost too much). The
+            // outside is longer, which the path factor already charges for —
+            // but it is also a WIDER ARC, and a wider arc corners faster. Grip
+            // holds v² ∝ r, so the safe speed follows the square root of the
+            // car's own radius. Without this the outside was pure cost and no
+            // driver would ever want it; with it the line becomes the real
+            // trade: short and slow against long and fast.
+            if (rules.Lateral.Enabled && before.Kind == TrackSectionKind.Corner)
+                effectiveSafeSpeed *= (float)Math.Sqrt(LateralPathFactor(racer));
             if (enteringCorner && racer.Speed > effectiveSafeSpeed)
             {
                 racer.Speed *= rules.CornerSpeedScrub;
@@ -197,11 +220,7 @@ namespace BoardRacing.Domain
             racer.PriorKind = before.Kind;
 
             float prior = racer.Distance;
-            if (rules.Lateral.Enabled)
-            {
-                SteerLateral(racer, delta);
-                racer.Speed = Math.Min(racer.Speed, FollowingSpeedCap(racer, delta));
-            }
+            if (rules.Lateral.Enabled) racer.Speed = Math.Min(racer.Speed, followingCap);
             // The car's speed is along the line IT is driving; progress along
             // the reference line is that travel divided by how much longer the
             // car's own arc is (issue #147). Inside a corner of signed
@@ -323,6 +342,18 @@ namespace BoardRacing.Domain
             return 0f;
         }
 
+        // The throttle a car actually got. A driver held behind a rival is
+        // billed for the step its speed was capped to, never for the one it
+        // asked for — the generous rounding, since a car capped between two
+        // steps did not get the higher one.
+        private ThrottleStep ThrottleActuallyUsed(ThrottleStep commanded, float cap)
+        {
+            if (!rules.Lateral.Enabled || cap == float.MaxValue) return commanded;
+            if (cap >= rules.MaxSpeed * (int)commanded / 100f) return commanded;
+            return cap >= rules.MaxSpeed * (int)ThrottleStep.Drive / 100f
+                ? ThrottleStep.Drive : ThrottleStep.Brake;
+        }
+
         // How much longer this car's arc is than the reference line, as a
         // divisor on its progress. 1 on a straight and for a car on the line.
         private float LateralPathFactor(RacerState racer)
@@ -362,13 +393,24 @@ namespace BoardRacing.Domain
             float inside = curvature > 0f ? lateral.MaximumOffset
                 : curvature < 0f ? -lateral.MaximumOffset : 0f;
             float target = inside;
-            if (BlockedOn(racer, inside, lateral))
+            RacerState blocker = BlockerOn(racer, inside, lateral);
+            // Pulling out is a decision, not a reflex (owner report from
+            // hardware). A car only leaves the inside when the move is
+            // actually on — the car in the way is slower, so there is
+            // something to gain for the longer arc. Otherwise it tucks in
+            // behind and waits for the straight, which is what the tow is
+            // for. Before this, any car ahead sent a driver around the
+            // outside to pay the distance for nothing.
+            if (blocker != null && blocker.Speed < racer.Speed)
             {
                 float outside = -inside;
                 if (inside == 0f) outside = racer.Lateral >= 0f
                     ? lateral.MaximumOffset : -lateral.MaximumOffset;
-                if (!BlockedOn(racer, outside, lateral)) target = outside;
+                if (BlockerOn(racer, outside, lateral) == null) target = outside;
             }
+            // Held up on the inside with no move on: sit behind, do not drift
+            // out into the longer line by accident.
+            else if (blocker != null) target = racer.Lateral;
             float moved = MoveTowards(racer.Lateral, target, lateral.MoveRate * delta);
             // A car may not move sideways into a body that is already there.
             // The speed cap holds a following gap open, but it says nothing
@@ -401,9 +443,12 @@ namespace BoardRacing.Domain
             return false;
         }
 
-        private bool BlockedOn(RacerState racer, float line, LateralRules lateral)
+        // The nearest car occupying this line ahead, or null if it is clear.
+        private RacerState BlockerOn(RacerState racer, float line, LateralRules lateral)
         {
             int self = Array.IndexOf(racers, racer);
+            RacerState nearest = null;
+            float nearestGap = float.MaxValue;
             for (int i = 0; i < racers.Length; i++)
             {
                 var other = racers[i];
@@ -411,9 +456,11 @@ namespace BoardRacing.Domain
                 if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
                 float gap = AheadGap(racer, other);
                 if (gap <= 0f || gap > lateral.LookAhead) continue;
-                if (Math.Abs(other.Lateral - line) < lateral.SameLineWidth) return true;
+                if (Math.Abs(other.Lateral - line) >= lateral.SameLineWidth) continue;
+                if (gap >= nearestGap) continue;
+                nearestGap = gap; nearest = other;
             }
-            return false;
+            return nearest;
         }
 
         // Bodies cannot pass through each other: a car sharing a line with the
