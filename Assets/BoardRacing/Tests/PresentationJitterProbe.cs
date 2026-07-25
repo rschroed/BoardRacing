@@ -128,7 +128,7 @@ namespace BoardRacing.Tests
                         PresentationLife.LaunchPhase((int)racer.PlayerId, track.Length));
                     float pad = pads.TryGetValue(racer.PlayerId, out float value) ? value : 0f;
                     float drawnDistance = racer.TotalDistance + pad -
-                        Math.Min(twitch.Lag, racer.TotalDistance);
+                        Math.Min(twitch.Lag, Math.Max(0f, racer.TotalDistance));
 
                     // --- CarPose + OffsetCenter (on-track path) ---
                     Vec2 center = track.Sample(drawnDistance).Position;

@@ -132,10 +132,18 @@ namespace BoardRacing.PlayModeTests
             race.SetInputProvider(provider);
             yield return new WaitForSecondsRealtime(3.2f);
             provider.Touched = true;
+            // A car no longer starts ON the line: with a modeled lateral
+            // position (issue #147) the field lines up on a real grid, behind
+            // it. What this test is actually about is that both players drive
+            // through the shared provider path, so it asks whether each car
+            // MOVED, not whether it has reached the line yet.
+            var started = race.GetRaceSnapshot().Racers
+                .ToDictionary(x => x.PlayerId, x => x.TotalDistance);
             yield return new WaitForSecondsRealtime(.5f);
             var snapshot = race.GetRaceSnapshot();
             Assert.That(snapshot.Phase, Is.EqualTo(RacePhase.Racing));
-            Assert.That(snapshot.Racers.All(x => x.TotalDistance > 0f), Is.True);
+            Assert.That(snapshot.Racers.All(x => x.TotalDistance > started[x.PlayerId]),
+                Is.True, "every car should have moved from its grid slot");
         }
 
         [UnityTest]

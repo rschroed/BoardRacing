@@ -94,7 +94,7 @@ namespace BoardRacing.Tests
                     (pads.TryGetValue(r.PlayerId, out float p) ? p : 0f) -
                     Math.Min(PresentationLife.Launch(snapshot.ElapsedSeconds,
                         PresentationLife.LaunchPhase((int)r.PlayerId, track.Length)).Lag,
-                        r.TotalDistance);
+                        Math.Max(0f, r.TotalDistance));
                 float Gap(float a, float b)
                 {
                     float w = Wrap(a - b, track.Length);

@@ -535,14 +535,19 @@ namespace BoardRacing.Runtime
         private float DrawnDistance(RacerSnapshot racer) =>
             racer.TotalDistance + racer.LongitudinalOffset +
             (drawnPads.TryGetValue(racer.PlayerId, out float pad) ? pad : 0f) -
-            Mathf.Min(LaunchTwitchFor(racer).Lag, racer.TotalDistance);
+            Mathf.Min(LaunchTwitchFor(racer).Lag, Mathf.Max(0f, racer.TotalDistance));
 
         // The launch twitch (issue #119): drawn hesitation off the line,
         // gone within a second of GO. ElapsedSeconds accumulates only in the
         // Racing phase and resets on rematch, so it IS time-since-GO — the
         // grid, countdown, and every later read see exact stillness. The lag
         // clamp in DrawnDistance pins a slow-digging car AT the line rather
-        // than ever drawing it behind where it started.
+        // than ever drawing it behind where it started — floored at zero,
+        // because a real starting grid (issue #147) sits at NEGATIVE
+        // distance, and clamping the lag to that instead subtracted the whole
+        // grid offset: every car drew stacked on the line, and stayed pinned
+        // there until its true distance reached zero, which read on hardware
+        // as the back row launching late.
         private LaunchTwitch LaunchTwitchFor(RacerSnapshot racer) =>
             PresentationLife.Launch(presentedRace.ElapsedSeconds,
                 PresentationLife.LaunchPhase((int)racer.PlayerId, simulation.Track.Length));

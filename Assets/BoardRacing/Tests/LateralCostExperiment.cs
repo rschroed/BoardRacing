@@ -42,6 +42,7 @@ namespace BoardRacing.Tests
             }, slowLeader: false);
 
             TestContext.Out.WriteLine($"===== {courseName} =====");
+            ReportGridGeometry(course);
             TestContext.Out.WriteLine(
                 $"  finished={trace.Finished} in {trace.Seconds:0.0}s  " +
                 $"lead changes={trace.LeadChanges}  overtakes={trace.Overtakes}");
@@ -112,6 +113,35 @@ namespace BoardRacing.Tests
                     $"spread {kv.Value.Max() - kv.Value.Min():0.00}s");
             float[] means = times.Values.Select(x => x.Average()).ToArray();
             TestContext.Out.WriteLine($"  worst mean gap between seats: {means.Max() - means.Min():0.00}s");
+        }
+
+        // The grid is laid out in ARC LENGTH behind the line. If the run-up to
+        // the line is a corner, slots that are 80px apart along the ribbon are
+        // much closer than that in world space, and the grid bunches however
+        // well it is spaced. Relevant to where the start line sits.
+        private static void ReportGridGeometry(CourseDefinition course)
+        {
+            TrackDefinition track = course.Track;
+            var slots = new List<(float along, Vec2 at, TrackSectionKind kind)>();
+            for (int i = 0; i < 4; i++)
+            {
+                float d = -i * 80f;
+                TrackSample sample = track.Sample(d);
+                slots.Add((d, sample.Position, sample.Kind));
+            }
+            string kinds = string.Join(" ", slots.Select(s => s.kind.ToString().Substring(0, 1)));
+            float frontToBack = (float)Math.Sqrt(
+                Math.Pow(slots[0].at.X - slots[3].at.X, 2) +
+                Math.Pow(slots[0].at.Y - slots[3].at.Y, 2));
+            float worstAdjacent = float.MaxValue;
+            for (int i = 1; i < slots.Count; i++)
+                worstAdjacent = Math.Min(worstAdjacent, (float)Math.Sqrt(
+                    Math.Pow(slots[i - 1].at.X - slots[i].at.X, 2) +
+                    Math.Pow(slots[i - 1].at.Y - slots[i].at.Y, 2)));
+            TestContext.Out.WriteLine(
+                $"  grid run-up sections (front to back): {kinds}   " +
+                $"pole-to-last world gap {frontToBack:0}px of 240px along-track, " +
+                $"closest adjacent slots {worstAdjacent:0}px of 80px");
         }
 
         private sealed class Trace
