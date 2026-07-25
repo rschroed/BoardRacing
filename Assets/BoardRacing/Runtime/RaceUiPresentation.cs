@@ -117,9 +117,18 @@ namespace BoardRacing.Runtime
         public const float ReferenceHeight = 1080f;
 
         public RaceLayout(PlayerLayout playerOne, PlayerLayout playerTwo)
+            : this(playerOne, playerTwo, default, default, false)
+        {
+        }
+
+        private RaceLayout(PlayerLayout playerOne, PlayerLayout playerTwo,
+            PlayerLayout playerThree, PlayerLayout playerFour, bool hasFourSeats)
         {
             PlayerOne = playerOne;
             PlayerTwo = playerTwo;
+            PlayerThree = playerThree;
+            PlayerFour = playerFour;
+            HasFourSeats = hasFourSeats;
         }
 
         public Rect Canvas => new Rect(0f, 0f, ReferenceWidth, ReferenceHeight);
@@ -129,8 +138,18 @@ namespace BoardRacing.Runtime
         public Rect CenterOverlayBounds => new Rect(710f, 640f, 500f, 90f);
         public PlayerLayout PlayerOne { get; }
         public PlayerLayout PlayerTwo { get; }
+        public PlayerLayout PlayerThree { get; }
+        public PlayerLayout PlayerFour { get; }
+        public bool HasFourSeats { get; }
 
-        public PlayerLayout For(PlayerId id) => id == PlayerId.Player1 ? PlayerOne : PlayerTwo;
+        public PlayerLayout For(PlayerId id)
+        {
+            if (id == PlayerId.Player1) return PlayerOne;
+            if (id == PlayerId.Player2) return PlayerTwo;
+            if (id == PlayerId.Player3 && HasFourSeats) return PlayerThree;
+            if (id == PlayerId.Player4 && HasFourSeats) return PlayerFour;
+            throw new ArgumentOutOfRangeException(nameof(id), id, "Seat is not present in this layout.");
+        }
 
         public static RaceLayout Create(ServiceTargets playerOneTargets, ServiceTargets playerTwoTargets,
             Vector2 serviceHalfSize)
@@ -192,6 +211,59 @@ namespace BoardRacing.Runtime
                     playerTwoController,
                     Target(playerTwoTargets.CallPit), Target(playerTwoTargets.Tires),
                     Target(playerTwoTargets.Fuel)));
+        }
+
+        public static RaceLayout CreateFour(ServiceTargets playerOneTargets,
+            ServiceTargets playerTwoTargets, ServiceTargets playerThreeTargets,
+            ServiceTargets playerFourTargets, Vector2 serviceHalfSize)
+        {
+            RaceLayout diagonal = Create(playerOneTargets, playerTwoTargets, serviceHalfSize);
+
+            Rect Target(Vector2 runtimeCenter) => new Rect(runtimeCenter.x - serviceHalfSize.x,
+                ReferenceHeight - runtimeCenter.y - serviceHalfSize.y,
+                serviceHalfSize.x * 2f, serviceHalfSize.y * 2f);
+            void Validate(ServiceTargets targets, string parameter)
+            {
+                if (Target(targets.Tires).Overlaps(Target(targets.Fuel)))
+                    throw new ArgumentException("Tires and Fuel zones must not overlap.", parameter);
+            }
+            Validate(playerThreeTargets, nameof(playerThreeTargets));
+            Validate(playerFourTargets, nameof(playerFourTargets));
+
+            Rect MirrorRectHorizontally(Rect rect) =>
+                new Rect(ReferenceWidth - rect.xMax, rect.y, rect.width, rect.height);
+            Vector2 MirrorPointHorizontally(Vector2 point) =>
+                new Vector2(ReferenceWidth - point.x, point.y);
+            RotatedLabel MirrorLabelHorizontally(RotatedLabel label) =>
+                new RotatedLabel(MirrorRectHorizontally(label.Bounds), -label.RotationDegrees);
+            CornerControllerLayout MirrorController(CornerControllerLayout source) =>
+                new CornerControllerLayout(
+                    MirrorPointHorizontally(source.ArcCenter), source.ThrottleRadius,
+                    source.SectorSweepDegrees, 180f - source.BrakeAngle,
+                    180f - source.DriveAngle, 180f - source.BoostAngle,
+                    MirrorPointHorizontally(source.ShipWellCenter), source.ShipWellRadius,
+                    source.DialRadius, source.CallPitRadius,
+                    MirrorLabelHorizontally(source.BrakeLabel),
+                    MirrorLabelHorizontally(source.DriveLabel),
+                    MirrorLabelHorizontally(source.BoostLabel),
+                    MirrorLabelHorizontally(source.TiresLabel),
+                    MirrorLabelHorizontally(source.FuelLabel),
+                    MirrorLabelHorizontally(source.CallPitLabel));
+
+            return new RaceLayout(diagonal.PlayerOne, diagonal.PlayerTwo,
+                new PlayerLayout(PlayerId.Player3, 0f,
+                    MirrorRectHorizontally(diagonal.PlayerOne.CornerBounds),
+                    MirrorRectHorizontally(diagonal.PlayerOne.SafeContentBounds),
+                    MirrorController(diagonal.PlayerOne.Controller),
+                    Target(playerThreeTargets.CallPit), Target(playerThreeTargets.Tires),
+                    Target(playerThreeTargets.Fuel)),
+                new PlayerLayout(PlayerId.Player4, 180f,
+                    MirrorRectHorizontally(diagonal.PlayerTwo.CornerBounds),
+                    MirrorRectHorizontally(diagonal.PlayerTwo.SafeContentBounds),
+                    MirrorController(diagonal.PlayerTwo.Controller),
+                    Target(playerFourTargets.CallPit), Target(playerFourTargets.Tires),
+                    Target(playerFourTargets.Fuel)),
+                true);
         }
     }
 
@@ -281,20 +353,26 @@ namespace BoardRacing.Runtime
     {
         public RaceUiModel(RacePhase phase, PlayerUiModel playerOne, PlayerUiModel playerTwo,
             CenterMessageKind centerMessageKind, string centerMessage)
+            : this(phase, new[] { playerOne, playerTwo }, centerMessageKind, centerMessage)
+        {
+        }
+
+        public RaceUiModel(RacePhase phase, IReadOnlyList<PlayerUiModel> players,
+            CenterMessageKind centerMessageKind, string centerMessage)
         {
             Phase = phase;
-            PlayerOne = playerOne;
-            PlayerTwo = playerTwo;
+            Players = players ?? Array.Empty<PlayerUiModel>();
             CenterMessageKind = centerMessageKind;
             CenterMessage = centerMessage;
         }
 
         public RacePhase Phase { get; }
-        public PlayerUiModel PlayerOne { get; }
-        public PlayerUiModel PlayerTwo { get; }
+        public IReadOnlyList<PlayerUiModel> Players { get; }
+        public PlayerUiModel PlayerOne => For(PlayerId.Player1);
+        public PlayerUiModel PlayerTwo => For(PlayerId.Player2);
         public CenterMessageKind CenterMessageKind { get; }
         public string CenterMessage { get; }
-        public PlayerUiModel For(PlayerId id) => id == PlayerId.Player1 ? PlayerOne : PlayerTwo;
+        public PlayerUiModel For(PlayerId id) => Players.Single(x => x.PlayerId == id);
     }
 
     internal static class RaceUiModelBuilder
@@ -313,7 +391,7 @@ namespace BoardRacing.Runtime
 
         public static RaceUiModel Build(RaceSnapshot race, IReadOnlyList<PlayerControlSnapshot> controls,
             IReadOnlyDictionary<PlayerId, CrewStrategyOutput> crewOutputs, ConditionRules conditionRules,
-            int laps)
+            int laps, IReadOnlyDictionary<PlayerId, string> identityLabels = null)
         {
             if (race.Racers == null) throw new ArgumentException("Race snapshot has no racers.", nameof(race));
             controls = controls ?? Array.Empty<PlayerControlSnapshot>();
@@ -328,16 +406,18 @@ namespace BoardRacing.Runtime
                 PitService selected = racer.Pit.SelectedService != PitService.None
                     ? racer.Pit.SelectedService : crew.SelectedService;
                 Instruction instruction = PrimaryInstruction(race, racer, control, crew, condition);
-                return new PlayerUiModel(id, Identity(id), Status(racer, selected, laps),
+                string identity = identityLabels != null &&
+                    identityLabels.TryGetValue(id, out string label) ? label : Identity(id);
+                return new PlayerUiModel(id, identity, Status(racer, selected, laps),
                     instruction.Kind, instruction.Copy, control.Throttle, condition, racer.Pit.Phase,
                     selected, racer.Pit.ServiceProgress, crew.CallState, crew.CallAction,
                     crew.ServiceAction, control.Car.Present, control.Crew.Present, control.Warnings,
                     racer.Pit.FinishEligible, racer.Finished);
             }
 
-            (CenterMessageKind kind, string copy) = CenterMessage(race);
-            return new RaceUiModel(race.Phase, BuildPlayer(PlayerId.Player1), BuildPlayer(PlayerId.Player2),
-                kind, copy);
+            PlayerUiModel[] players = race.Racers.Select(x => BuildPlayer(x.PlayerId)).ToArray();
+            (CenterMessageKind kind, string copy) = CenterMessage(race, players);
+            return new RaceUiModel(race.Phase, players, kind, copy);
         }
 
         private static string Status(RacerSnapshot racer, PitService selected, int laps)
@@ -380,8 +460,11 @@ namespace BoardRacing.Runtime
             {
                 if (race.Phase != RacePhase.Finished)
                     return new Instruction(PlayerUiInstructionKind.WaitForOtherRacer,
-                        "WAITING FOR " + (racer.PlayerId == PlayerId.Player1 ? "PURPLE" : "ORANGE") +
-                        " TO FINISH");
+                        race.Racers.Count == 2
+                            ? "WAITING FOR " +
+                              (racer.PlayerId == PlayerId.Player1 ? "PURPLE" : "ORANGE") +
+                              " TO FINISH"
+                            : "WAITING FOR OTHER RACERS TO FINISH");
                 if (!control.Car.Present)
                     return new Instruction(PlayerUiInstructionKind.PlaceShip,
                         "PLACE YOUR SHIP · REQUIRED FOR REMATCH");
@@ -397,10 +480,10 @@ namespace BoardRacing.Runtime
                     "PLACE YOUR SHIP · THROTTLE IS SAFELY AT BRAKE");
             if (race.Phase == RacePhase.Grid)
                 return new Instruction(PlayerUiInstructionKind.GridReady,
-                    "READY · SHIP CONTROLS BRAKE / DRIVE / BOOST");
+                    "SET SHIP TO DRIVE · ALL RACERS START TOGETHER");
             if (race.Phase == RacePhase.Countdown)
                 return new Instruction(PlayerUiInstructionKind.CountdownReady,
-                    "GET READY · ROTATE SHIP AFTER GO");
+                    "READY · HOLD DRIVE THROUGH THE COUNTDOWN");
 
             if (racer.Pit.Phase == PitPhase.InService)
                 return ServiceInstruction(racer, control, crew);
@@ -462,7 +545,8 @@ namespace BoardRacing.Runtime
                 "PLACE ROBOT IN HIGHLIGHTED " + service + " ZONE");
         }
 
-        private static (CenterMessageKind, string) CenterMessage(RaceSnapshot race)
+        private static (CenterMessageKind, string) CenterMessage(RaceSnapshot race,
+            IReadOnlyList<PlayerUiModel> players)
         {
             if (race.Phase == RacePhase.Paused)
                 return (CenterMessageKind.Paused, "PLACE SHIPS TO RESUME");
@@ -475,20 +559,23 @@ namespace BoardRacing.Runtime
             {
                 RacerSnapshot finished = race.Racers.Single(x => x.Finished);
                 return (CenterMessageKind.SplitFinish,
-                    (finished.PlayerId == PlayerId.Player1 ? "▲ ORANGE" : "● PURPLE") + " FINISHED");
+                    players.Single(x => x.PlayerId == finished.PlayerId).Identity + " FINISHED");
             }
             if (race.Phase != RacePhase.Finished) return (CenterMessageKind.None, null);
             RacerSnapshot winner = race.Racers.OrderBy(x => x.Place).First();
             return (CenterMessageKind.Winner,
-                (winner.PlayerId == PlayerId.Player1 ? "▲ ORANGE" : "● PURPLE") + " WINS");
+                players.Single(x => x.PlayerId == winner.PlayerId).Identity + " WINS");
         }
 
-        private static string Identity(PlayerId id) => id == PlayerId.Player1
-            ? "▲ PLAYER 1 · ORANGE" : "● PLAYER 2 · PURPLE";
+        private static string Identity(PlayerId id) =>
+            id == PlayerId.Player1 ? "▲ PLAYER 1 · ORANGE" :
+            id == PlayerId.Player2 ? "● PLAYER 2 · PURPLE" :
+            id == PlayerId.Player3 ? "◆ PLAYER 3 · PINK" : "■ PLAYER 4 · YELLOW";
         internal static string ServiceName(PitService service) => service == PitService.Tires
             ? "TIRES" : service == PitService.Fuel ? "FUEL" : "NO SERVICE";
         internal static string ThrottleName(ThrottleStep throttle) => throttle == ThrottleStep.Boost
             ? "BOOST" : throttle == ThrottleStep.Drive ? "DRIVE" : "BRAKE";
-        internal static string Ordinal(int place) => place == 1 ? "1ST" : "2ND";
+        internal static string Ordinal(int place) => place == 1 ? "1ST" :
+            place == 2 ? "2ND" : place == 3 ? "3RD" : place + "TH";
     }
 }

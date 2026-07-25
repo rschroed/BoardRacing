@@ -79,6 +79,20 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void MirroredOrientationReversesBrakeAndBoostAroundDrive()
+        {
+            var lowerLeft = Mapper(0f, true);
+            Assert.That(lowerLeft.Map(true, Deg(85f)), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(lowerLeft.Map(true, Deg(135f)), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(lowerLeft.Map(true, Deg(185f)), Is.EqualTo(ThrottleStep.Boost));
+
+            var upperRight = Mapper((float)Math.PI, true);
+            Assert.That(upperRight.Map(true, Deg(265f)), Is.EqualTo(ThrottleStep.Brake));
+            Assert.That(upperRight.Map(true, Deg(315f)), Is.EqualTo(ThrottleStep.Drive));
+            Assert.That(upperRight.Map(true, Deg(5f)), Is.EqualTo(ThrottleStep.Boost));
+        }
+
+        [Test]
         public void PitActionCompletesOnceAndRequiresExitToRearm()
         {
             var machine = Machine();
@@ -439,8 +453,9 @@ namespace BoardRacing.Tests
         private const float DriveRaw = 225f * (float)Math.PI / 180f;
         private static float Deg(float degrees) => degrees * (float)Math.PI / 180f;
         private static ThrottleStops Stops() => new ThrottleStops(Deg(275f), Deg(225f), Deg(175f));
-        private static CoarseThrottleMapper Mapper(float orientationOffset = 0f) =>
-            new CoarseThrottleMapper(.1f, Stops(), orientationOffset);
+        private static CoarseThrottleMapper Mapper(float orientationOffset = 0f,
+            bool mirroredOrientation = false) =>
+            new CoarseThrottleMapper(.1f, Stops(), orientationOffset, mirroredOrientation);
 
         private static ContactSnapshotReconciler Reconciler() =>
             new ContactSnapshotReconciler(TrancheOneAssignments.All, Stops(), 0.1f, 540f);

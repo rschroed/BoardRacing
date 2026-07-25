@@ -18,13 +18,15 @@ namespace BoardRacing.Domain
     {
         private readonly float hysteresis;
         private readonly float orientationOffset;
+        private readonly bool mirroredOrientation;
         private readonly float[] stopCenters;
         private int previousSector = -1;
         public CoarseThrottleMapper(float hysteresisRadians, ThrottleStops stops,
-            float orientationOffsetRadians = 0f)
+            float orientationOffsetRadians = 0f, bool mirroredOrientation = false)
         {
             hysteresis = Math.Max(0f, hysteresisRadians);
             orientationOffset = orientationOffsetRadians;
+            this.mirroredOrientation = mirroredOrientation;
             stopCenters = new[] { stops.Brake, stops.Drive, stops.Boost };
         }
         public void Reset() { previousSector = -1; }
@@ -32,7 +34,8 @@ namespace BoardRacing.Domain
         public ThrottleStep Map(bool present, float radians)
         {
             if (!present) { Reset(); return ThrottleStep.Brake; }
-            float angle = Normalize(radians - orientationOffset);
+            float angle = Normalize((radians - orientationOffset) *
+                (mirroredOrientation ? -1f : 1f));
             int nearest = 0;
             float nearestDistance = float.MaxValue;
             for (int i = 0; i < stopCenters.Length; i++)
