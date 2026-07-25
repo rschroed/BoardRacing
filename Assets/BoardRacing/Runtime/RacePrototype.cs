@@ -108,7 +108,7 @@ namespace BoardRacing.Runtime
 #else
             activeProvider = fallbackProvider;
 #endif
-            foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) CreateCrewAdapter(id);
+            foreach (PlayerId id in TrancheOneAssignments.ActivePlayers) CreateCrewAdapter(id);
             AttachResetSource(activeProvider);
             courseSelection = new CourseSelection(CourseCatalog.All(raceSettings.CornerSafeSpeed));
             course = courseSelection.Current;
@@ -269,7 +269,8 @@ namespace BoardRacing.Runtime
                 return;
             }
             float[] targets = CornerCharacter.CornerSpacingPads(simulation.Track,
-                racing.Select(r => r.TotalDistance).ToArray(), simulation.Rules.PassingDistance);
+                racing.Select(r => r.TotalDistance + r.LongitudinalOffset).ToArray(),
+                simulation.Rules.PassingDistance);
             for (int i = 0; i < racing.Length; i++)
             {
                 float pad = drawnPads.TryGetValue(racing[i].PlayerId, out float previous)
@@ -326,7 +327,8 @@ namespace BoardRacing.Runtime
                 : DuelBreath.Still;
 
         private float DrawnDistance(RacerSnapshot racer) =>
-            racer.TotalDistance + (drawnPads.TryGetValue(racer.PlayerId, out float pad) ? pad : 0f) -
+            racer.TotalDistance + racer.LongitudinalOffset +
+            (drawnPads.TryGetValue(racer.PlayerId, out float pad) ? pad : 0f) -
             Mathf.Min(LaunchTwitchFor(racer).Lag, racer.TotalDistance);
 
         // The launch twitch (issue #119): drawn hesitation off the line,

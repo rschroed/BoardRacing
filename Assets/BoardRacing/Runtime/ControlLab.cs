@@ -35,7 +35,7 @@ namespace BoardRacing.Runtime
 #endif
             CreatePit(PlayerId.Player1, settings.playerOneServiceCenter);
             CreatePit(PlayerId.Player2, settings.playerTwoServiceCenter);
-            foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) completions[id] = 0;
+            foreach (PlayerId id in TrancheOneAssignments.ActivePlayers) completions[id] = 0;
         }
 
         private void CreatePit(PlayerId id, Vector2 center) => pits[id] = new PitActionMachine(
@@ -67,7 +67,7 @@ namespace BoardRacing.Runtime
         private void ResetLab()
         {
             foreach (var pit in pits.Values) pit.Reset();
-            foreach (PlayerId id in Enum.GetValues(typeof(PlayerId))) completions[id] = 0;
+            foreach (PlayerId id in TrancheOneAssignments.ActivePlayers) completions[id] = 0;
         }
 
         public int GetCompletionCount(PlayerId playerId) => completions.TryGetValue(playerId, out int count) ? count : 0;

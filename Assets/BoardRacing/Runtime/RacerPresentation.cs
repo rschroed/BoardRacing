@@ -116,7 +116,8 @@ namespace BoardRacing.Runtime
                 current.CompletedLaps, current.Place, current.Finished, current.FinishTime,
                 track.Sample(distance), Lerp(before.LateralOffset, current.LateralOffset, t),
                 current.IncidentThisStep, current.RecoveryRemaining, current.IncidentCount,
-                current.Condition, pit);
+                current.Condition, pit,
+                Lerp(before.LongitudinalOffset, current.LongitudinalOffset, t));
         }
 
         // Progress values reset when a service completes or a phase turns over;

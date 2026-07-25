@@ -139,7 +139,7 @@ namespace BoardRacing.Tests
         [Test]
         public void CarBodiesKeepTheDrawnFootprint()
         {
-            // Both bodies are 54×30, nose along +X (issue #117 round 2, owner
+            // Both bodies are 54×26, nose along +X (issue #117 round 2, owner
             // direction): car proportions make the heading rotation read, and
             // a side-by-side pair fits the track ribbon. P1 the rounded
             // rectangle, P2 the capsule; the darker cockpit wedge lives
@@ -190,6 +190,34 @@ namespace BoardRacing.Tests
             // racing close (owner-tightened on hardware review).
             Assert.That(RaceRules.Defaults.PassingOffset * 2f,
                 Is.GreaterThan(RaceSurfaceGeometry.CarBodyHalfWidth * 2f + 1f));
+        }
+
+        [Test]
+        public void FourCarFormationFitsTwoLanesWithoutBodyOverlap()
+        {
+            RacingLinePlacement[] placements = RacingLineAllocator.Allocate(new[]
+            {
+                new RacingLineCandidate(PlayerId.Player1, 0, 500f),
+                new RacingLineCandidate(PlayerId.Player2, 1, 500f),
+                new RacingLineCandidate(PlayerId.Player3, 2, 500f),
+                new RacingLineCandidate(PlayerId.Player4, 3, 500f)
+            }, 2000f, RaceRules.Defaults.PassingDistance, RaceRules.Defaults.PassingOffset);
+            Assert.That(placements.Select(x => x.LateralOffset).Distinct().Count(), Is.EqualTo(2));
+            foreach (RacingLinePlacement placement in placements)
+                Assert.That(Mathf.Abs(placement.LateralOffset) + RaceSurfaceGeometry.CarBodyHalfWidth,
+                    Is.LessThanOrEqualTo(RaceSurfaceGeometry.TrackWidth * .5f + 1f),
+                    placement.PlayerId + " ribbon extent");
+            for (int i = 0; i < placements.Length; i++)
+                for (int j = i + 1; j < placements.Length; j++)
+                {
+                    float along = Mathf.Abs(placements[i].LongitudinalOffset -
+                        placements[j].LongitudinalOffset);
+                    float across = Mathf.Abs(placements[i].LateralOffset -
+                        placements[j].LateralOffset);
+                    Assert.That(along >= RaceSurfaceGeometry.CarBodyHalfSize * 2f ||
+                        across >= RaceSurfaceGeometry.CarBodyHalfWidth * 2f,
+                        Is.True, placements[i].PlayerId + " overlaps " + placements[j].PlayerId);
+                }
         }
 
         // The Y-junction pins (issue #107 phase 2): the pit lane meets the track

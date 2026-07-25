@@ -10,6 +10,170 @@ namespace BoardRacing.Domain
     public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting }
     public enum PitCallState { Unavailable, NeedsPlacement, Aligning, Holding, Requested }
 
+    public static class RacerRosters
+    {
+        public static readonly PlayerId[] Default =
+            { PlayerId.Player1, PlayerId.Player2 };
+
+        public static PlayerId[] ValidateAndCopy(IReadOnlyList<PlayerId> roster)
+        {
+            if (roster == null) throw new ArgumentNullException(nameof(roster));
+            if (roster.Count < 2 || roster.Count > 4)
+                throw new ArgumentException("A race requires an explicit roster of two to four racers.",
+                    nameof(roster));
+            var result = new PlayerId[roster.Count];
+            var unique = new HashSet<PlayerId>();
+            for (int i = 0; i < roster.Count; i++)
+            {
+                PlayerId id = roster[i];
+                if (!Enum.IsDefined(typeof(PlayerId), id))
+                    throw new ArgumentException("The racer roster contains an unknown player identity.",
+                        nameof(roster));
+                if (!unique.Add(id))
+                    throw new ArgumentException("The racer roster cannot contain duplicate identities.",
+                        nameof(roster));
+                result[i] = id;
+            }
+            return result;
+        }
+    }
+
+    public readonly struct RacingLineCandidate
+    {
+        public RacingLineCandidate(PlayerId playerId, int rosterIndex, float distance)
+        {
+            if (!Enum.IsDefined(typeof(PlayerId), playerId) || rosterIndex < 0 ||
+                float.IsNaN(distance) || float.IsInfinity(distance))
+                throw new ArgumentException("Racing-line candidate contains invalid values.");
+            PlayerId = playerId; RosterIndex = rosterIndex; Distance = distance;
+        }
+        public PlayerId PlayerId { get; }
+        public int RosterIndex { get; }
+        public float Distance { get; }
+    }
+
+    public readonly struct RacingLinePlacement
+    {
+        public RacingLinePlacement(PlayerId playerId, float longitudinalOffset, float lateralOffset)
+        {
+            PlayerId = playerId; LongitudinalOffset = longitudinalOffset;
+            LateralOffset = lateralOffset;
+        }
+        public PlayerId PlayerId { get; }
+        // Presentation-only distance along the racing line. Classification,
+        // laps, pit diversion, and finish truth continue to use TotalDistance.
+        public float LongitudinalOffset { get; }
+        public float LateralOffset { get; }
+    }
+
+    // Pure N-car formation allocator. Close cars use exactly two lateral lanes;
+    // any third or fourth body sharing a lane is pushed only far enough along
+    // the ribbon to maintain the proven 60 px nose-to-tail spacing. Lateral
+    // side follows explicit roster order, not enum value or race place, so an
+    // overtake cannot make cars swap sides.
+    public static class RacingLineAllocator
+    {
+        public const float NoseToTailSpacing = 60f;
+
+        public static RacingLinePlacement[] Allocate(
+            IReadOnlyList<RacingLineCandidate> candidates, float trackLength,
+            float clusterDistance, float lateralOffset)
+        {
+            if (candidates == null) throw new ArgumentNullException(nameof(candidates));
+            if (trackLength <= 0f || float.IsNaN(trackLength) || float.IsInfinity(trackLength) ||
+                clusterDistance < 0f || float.IsNaN(clusterDistance) || float.IsInfinity(clusterDistance) ||
+                lateralOffset < 0f || float.IsNaN(lateralOffset) || float.IsInfinity(lateralOffset))
+                throw new ArgumentException("Racing-line geometry contains invalid values.");
+            if (candidates.Count > 4)
+                throw new ArgumentException("The racing-line allocator supports at most four racers.");
+            var result = candidates.Select(x =>
+                new RacingLinePlacement(x.PlayerId, 0f, 0f)).ToArray();
+            if (candidates.Count < 2) return result;
+            if (candidates.Select(x => x.PlayerId).Distinct().Count() != candidates.Count ||
+                candidates.Select(x => x.RosterIndex).Distinct().Count() != candidates.Count)
+                throw new ArgumentException("Racing-line candidates must have unique identities and roster slots.");
+
+            int[] circularOrder = Enumerable.Range(0, candidates.Count)
+                .OrderBy(i => Wrap(candidates[i].Distance, trackLength))
+                .ThenBy(i => candidates[i].RosterIndex).ToArray();
+            int start = StartAfterWidestGap(candidates, circularOrder, trackLength);
+            var cluster = new List<int>();
+            var positions = new List<float>();
+            for (int step = 0; step < candidates.Count; step++)
+            {
+                int index = circularOrder[(start + step) % candidates.Count];
+                float wrapped = Wrap(candidates[index].Distance, trackLength);
+                float position = positions.Count == 0
+                    ? wrapped
+                    : positions[positions.Count - 1] +
+                      Wrap(wrapped - positions[positions.Count - 1], trackLength);
+                if (positions.Count > 0 && position - positions[positions.Count - 1] > clusterDistance)
+                {
+                    ApplyCluster(candidates, cluster, positions, lateralOffset, result);
+                    cluster.Clear(); positions.Clear();
+                    position = wrapped;
+                }
+                cluster.Add(index); positions.Add(position);
+            }
+            ApplyCluster(candidates, cluster, positions, lateralOffset, result);
+            return result;
+        }
+
+        private static int StartAfterWidestGap(IReadOnlyList<RacingLineCandidate> candidates,
+            int[] order, float trackLength)
+        {
+            int start = 0;
+            float widest = -1f;
+            for (int i = 0; i < order.Length; i++)
+            {
+                float here = Wrap(candidates[order[i]].Distance, trackLength);
+                float next = Wrap(candidates[order[(i + 1) % order.Length]].Distance, trackLength);
+                float gap = i == order.Length - 1 ? next - here + trackLength : next - here;
+                if (gap > widest) { widest = gap; start = (i + 1) % order.Length; }
+            }
+            return start;
+        }
+
+        private static void ApplyCluster(IReadOnlyList<RacingLineCandidate> candidates,
+            List<int> indices, List<float> positions, float lateralOffset,
+            RacingLinePlacement[] result)
+        {
+            if (indices.Count < 2) return;
+            int[] byRoster = Enumerable.Range(0, indices.Count)
+                .OrderBy(i => candidates[indices[i]].RosterIndex).ToArray();
+            var lane = new int[indices.Count];
+            for (int rank = 0; rank < byRoster.Length; rank++)
+                lane[byRoster[rank]] = rank % 2;
+
+            var drawn = positions.ToArray();
+            for (int side = 0; side < 2; side++)
+            {
+                int[] laneOrder = Enumerable.Range(0, indices.Count).Where(i => lane[i] == side)
+                    .OrderBy(i => positions[i]).ThenBy(i => candidates[indices[i]].RosterIndex).ToArray();
+                for (int i = 1; i < laneOrder.Length; i++)
+                {
+                    int prior = laneOrder[i - 1], current = laneOrder[i];
+                    drawn[current] = Math.Max(drawn[current], drawn[prior] + NoseToTailSpacing);
+                }
+            }
+            float shift = (positions.Sum() - drawn.Sum()) / indices.Count;
+            for (int i = 0; i < indices.Count; i++)
+            {
+                int candidateIndex = indices[i];
+                result[candidateIndex] = new RacingLinePlacement(
+                    candidates[candidateIndex].PlayerId,
+                    drawn[i] + shift - positions[i],
+                    lane[i] == 0 ? -lateralOffset : lateralOffset);
+            }
+        }
+
+        private static float Wrap(float value, float length)
+        {
+            value %= length;
+            return value < 0f ? value + length : value;
+        }
+    }
+
     public readonly struct TrackSegment
     {
         public TrackSegment(Vec2 start, Vec2 end, TrackSectionKind kind, float safeSpeed)
@@ -152,9 +316,9 @@ namespace BoardRacing.Domain
         public float SlipstreamWindow { get; }
         // Speeds derive from the pace scalar (issue #116) so the defaults —
         // and every balance test built on them — follow a pace retune.
-        // The 16 px passing offset pairs with the 54×30 car bodies (issue
+        // The 16 px passing offset pairs with the 54×26 car bodies (issue
         // #117 round 2; tightened from 18 on owner hardware review — racing
-        // close): ±16 leaves 30-wide bodies a 2 px seam of daylight and a
+        // close): ±16 leaves 26-wide bodies a 6 px seam of daylight and a
         // side-by-side pair stays on the 64 px track ribbon — the old ±38
         // hung both cars off the pavement.
         // The slipstream window is geometry (like the passing distance), not
@@ -346,12 +510,13 @@ namespace BoardRacing.Domain
     {
         public RacerSnapshot(PlayerId playerId, float speed, float totalDistance, int completedLaps, int place,
             bool finished, float finishTime, TrackSample track, float lateralOffset, bool incidentThisStep,
-            float recoveryRemaining, int incidentCount, RacerConditionSnapshot condition, RacerPitSnapshot pit)
+            float recoveryRemaining, int incidentCount, RacerConditionSnapshot condition, RacerPitSnapshot pit,
+            float longitudinalOffset = 0f)
         {
             PlayerId = playerId; Speed = speed; TotalDistance = totalDistance; CompletedLaps = completedLaps;
             Place = place; Finished = finished; FinishTime = finishTime; Track = track; LateralOffset = lateralOffset;
             IncidentThisStep = incidentThisStep; RecoveryRemaining = recoveryRemaining; IncidentCount = incidentCount;
-            Condition = condition; Pit = pit;
+            Condition = condition; Pit = pit; LongitudinalOffset = longitudinalOffset;
         }
         public PlayerId PlayerId { get; }
         public float Speed { get; }
@@ -362,6 +527,7 @@ namespace BoardRacing.Domain
         public float FinishTime { get; }
         public TrackSample Track { get; }
         public float LateralOffset { get; }
+        public float LongitudinalOffset { get; }
         public bool IncidentThisStep { get; }
         public float RecoveryRemaining { get; }
         public int IncidentCount { get; }
