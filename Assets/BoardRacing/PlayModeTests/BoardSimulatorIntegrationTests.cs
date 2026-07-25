@@ -82,7 +82,11 @@ namespace BoardRacing.PlayModeTests
                 Assert.That(Player(provider.ReadSnapshots(), PlayerId.Player1).Throttle, Is.EqualTo(ThrottleStep.Drive));
 
                 Call(robot, "Lift");
-                yield return null;
+                // The SDK exposes a per-frame contact snapshot but does not promise
+                // that simulator removal is visible in the first rendered frame.
+                for (int frame = 0; frame < 5 &&
+                    Player(provider.ReadSnapshots(), PlayerId.Player1).Car.Present; frame++)
+                    yield return null;
                 Assert.That(Player(provider.ReadSnapshots(), PlayerId.Player1).Car.Present, Is.False);
 
                 var replacement = CreateContact("BoardArcadeShipOrange", new Vector2(600f, 270f), true);

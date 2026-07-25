@@ -58,6 +58,18 @@ namespace BoardRacing.Tests
             AssertSector(keyboard.vKey, keyboard.digit0Key, ThrottleStep.Boost);
         }
 
+        [Test]
+        public void CrewMovementUsesInjectedFrameDelta()
+        {
+            provider = new KeyboardInputProvider(() => .5f);
+            Press(keyboard.fKey);
+
+            var snapshot = Player(provider.ReadSnapshots(), PlayerId.Player1);
+
+            Assert.That(snapshot.Crew.Position.X, Is.EqualTo(1692f).Within(.001f));
+            Assert.That(snapshot.Crew.Position.Y, Is.EqualTo(398f).Within(.001f));
+        }
+
         private void AssertSector(UnityEngine.InputSystem.Controls.ButtonControl p1,
             UnityEngine.InputSystem.Controls.ButtonControl p2, ThrottleStep expected)
         {

@@ -166,7 +166,11 @@ namespace BoardRacing.Runtime
             if (hud != null) Destroy(hud.gameObject);
         }
 
-        private void Update()
+        private void Update() => AdvanceFrame(Time.unscaledDeltaTime);
+
+        // Kept separate from Unity's clock so accelerated PlayMode coverage can
+        // advance an exact amount of simulation time regardless of editor load.
+        private void AdvanceFrame(float unscaledDeltaTime)
         {
 #if UNITY_EDITOR
             if (Keyboard.current != null && Keyboard.current.f1Key.wasPressedThisFrame)
@@ -180,7 +184,7 @@ namespace BoardRacing.Runtime
 #endif
             controls = activeProvider.ReadSnapshots();
             PollNewRaceTouch();
-            accumulator += Mathf.Min(Time.unscaledDeltaTime, .25f);
+            accumulator += Mathf.Min(unscaledDeltaTime, .25f);
             float step = Mathf.Max(.001f, raceSettings.fixedStepSeconds);
             while (accumulator >= step)
             {

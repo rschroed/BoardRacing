@@ -52,6 +52,8 @@ namespace BoardRacing.Runtime
 
     public sealed class KeyboardInputProvider : IPlayerInputProvider
     {
+        private readonly Func<float> frameDelta;
+
         private sealed class MutablePlayer
         {
             public bool CarPresent = true, CrewPresent = true;
@@ -64,31 +66,37 @@ namespace BoardRacing.Runtime
         private readonly MutablePlayer p1 = new MutablePlayer { CrewPosition = new Vector2(1832f, 398f) };
         private readonly MutablePlayer p2 = new MutablePlayer { CrewPosition = new Vector2(88f, 682f) };
 
+        public KeyboardInputProvider(Func<float> frameDelta = null)
+        {
+            this.frameDelta = frameDelta ?? (() => Time.unscaledDeltaTime);
+        }
+
         public IReadOnlyList<PlayerControlSnapshot> ReadSnapshots()
         {
+            float delta = frameDelta();
             UpdatePlayer(p1, Key.Q, Key.W, Key.E, Key.R, Key.A, Key.D,
-                Key.Z, Key.X, Key.C, Key.V, Key.F, Key.G, Key.T, Key.B);
+                Key.Z, Key.X, Key.C, Key.V, Key.F, Key.G, Key.T, Key.B, delta);
             UpdatePlayer(p2, Key.U, Key.I, Key.O, Key.P, Key.J, Key.L,
-                Key.Digit7, Key.Digit8, Key.Digit9, Key.Digit0, Key.H, Key.K, Key.Y, Key.N);
+                Key.Digit7, Key.Digit8, Key.Digit9, Key.Digit0, Key.H, Key.K, Key.Y, Key.N, delta);
             return new[] { Snapshot(PlayerId.Player1, p1, 1001), Snapshot(PlayerId.Player2, p2, 2001) };
         }
 
         private static void UpdatePlayer(MutablePlayer p, Key carTouch, Key crewTouch, Key carPresent,
             Key crewPresent, Key rotateLeft, Key rotateRight, Key s1, Key s2, Key s3,
-            Key s4, Key moveLeft, Key moveRight, Key moveUp, Key moveDown)
+            Key s4, Key moveLeft, Key moveRight, Key moveUp, Key moveDown, float delta)
         {
             // Touch keys are intentionally ignored: physical controls use placement and rotation only.
             if (Pressed(carPresent)) p.CarPresent = !p.CarPresent;
             if (Pressed(crewPresent)) p.CrewPresent = !p.CrewPresent;
             if (Pressed(s1)) p.Sector = 0; if (Pressed(s2)) p.Sector = 1;
             if (Pressed(s3) || Pressed(s4)) p.Sector = 2;
-            float speed = 280f * Time.unscaledDeltaTime;
+            float speed = 280f * delta;
             if (Held(moveLeft)) p.CrewPosition += Vector2.left * speed;
             if (Held(moveRight)) p.CrewPosition += Vector2.right * speed;
             if (Held(moveUp)) p.CrewPosition += Vector2.up * speed;
             if (Held(moveDown)) p.CrewPosition += Vector2.down * speed;
-            if (Held(rotateLeft)) p.CrewAngle -= 1.8f * Time.unscaledDeltaTime;
-            if (Held(rotateRight)) p.CrewAngle += 1.8f * Time.unscaledDeltaTime;
+            if (Held(rotateLeft)) p.CrewAngle -= 1.8f * delta;
+            if (Held(rotateRight)) p.CrewAngle += 1.8f * delta;
         }
 
         private static bool Pressed(Key key) => Keyboard.current != null && Keyboard.current[key].wasPressedThisFrame;
