@@ -463,11 +463,7 @@ namespace BoardRacing.Runtime
             {
                 if (race.Phase != RacePhase.Finished)
                     return new Instruction(PlayerUiInstructionKind.WaitForOtherRacer,
-                        race.Racers.Count == 2
-                            ? "WAITING FOR " +
-                              (racer.PlayerId == PlayerId.Player1 ? "PURPLE" : "ORANGE") +
-                              " TO FINISH"
-                            : "WAITING FOR OTHER RACERS TO FINISH");
+                        "WAITING FOR OTHER RACERS TO FINISH");
                 if (!control.Car.Present)
                     return new Instruction(PlayerUiInstructionKind.PlaceShip,
                         "PLACE YOUR SHIP · REQUIRED FOR REMATCH");
