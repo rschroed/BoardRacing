@@ -259,13 +259,61 @@ namespace BoardRacing.Domain
         }
     }
 
+    // Lateral position as a modeled quantity rather than a drawn decoration
+    // (issue #147). Off by default: every rule set that does not ask for it
+    // races exactly as before, on one line, with presentation inventing the
+    // separation as it always has.
+    //
+    // The model is deliberately small. A car holds a signed offset from the
+    // racing line, and that offset costs or saves real distance against the
+    // local curvature — the inside of a corner IS shorter, which is the whole
+    // point. Cars cannot drive through each other, expressed as a speed cap on
+    // the follower rather than as a shove, so position stays a consequence of
+    // integrating speed and never jumps. Line choice is automatic and blind to
+    // PlayerId: take the inside unless someone is already there.
+    public readonly struct LateralRules
+    {
+        public LateralRules(float maximumOffset, float moveRate, float minimumGap,
+            float lookAhead, float sameLineWidth)
+        {
+            var values = new[] { maximumOffset, moveRate, minimumGap, lookAhead, sameLineWidth };
+            if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x) || x <= 0f))
+                throw new ArgumentException("Lateral rules must contain finite positive values.");
+            Enabled = true; MaximumOffset = maximumOffset; MoveRate = moveRate;
+            MinimumGap = minimumGap; LookAhead = lookAhead; SameLineWidth = sameLineWidth;
+        }
+        public bool Enabled { get; }
+        // How far off the racing line a car may run, each way.
+        public float MaximumOffset { get; }
+        // px of lateral travel per second. The drawn body slides at this rate
+        // because the car does, so there is nothing left to smooth.
+        public float MoveRate { get; }
+        // Centerline gap a follower is held to behind a car on its line.
+        // A body length plus margin: the cap reads the leader's speed at the
+        // top of the step, and a leader that scrubs into a corner after that
+        // sheds speed the follower did not plan for, so the gap has to absorb
+        // one step of it.
+        public float MinimumGap { get; }
+        // How far ahead a car looks when choosing its line.
+        public float LookAhead { get; }
+        // Lateral distance within which two cars count as sharing a line, so
+        // one blocks the other: a body width.
+        public float SameLineWidth { get; }
+
+        // A body length ahead, a body width across, and a lateral move that
+        // crosses the 32 px between the two lanes in about a second.
+        public static LateralRules Defaults => new LateralRules(
+            maximumOffset: 16f, moveRate: 34f, minimumGap: 62f,
+            lookAhead: 150f, sameLineWidth: 27f);
+    }
+
     public readonly struct RaceRules
     {
         public RaceRules(int laps, float countdownSeconds, float maxSpeed, float acceleration, float drag,
             float braking, float cornerSpeedScrub, float cornerRecoverySeconds, float recoveryAccelerationScale,
             float passingDistance, float passingOffset, float rematchHoldSeconds, int requiredServiceCount = 0,
             ConditionRules conditionRules = default, PitRules pitRules = default, float pauseClearSeconds = 2f,
-            float slipstreamBonus = 0f, float slipstreamWindow = 0f)
+            float slipstreamBonus = 0f, float slipstreamWindow = 0f, LateralRules lateralRules = default)
         {
             var scalarValues = new[] { countdownSeconds, maxSpeed, acceleration, drag, braking, cornerSpeedScrub,
                 cornerRecoverySeconds, recoveryAccelerationScale, passingDistance, passingOffset, rematchHoldSeconds,
@@ -288,7 +336,9 @@ namespace BoardRacing.Domain
             RequiredServiceCount = requiredServiceCount; Conditions = conditionRules; Pit = pitRules;
             PauseClearSeconds = pauseClearSeconds;
             SlipstreamBonus = slipstreamBonus; SlipstreamWindow = slipstreamWindow;
+            Lateral = lateralRules;
         }
+        public LateralRules Lateral { get; }
         public int Laps { get; }
         public float CountdownSeconds { get; }
         public float MaxSpeed { get; }
