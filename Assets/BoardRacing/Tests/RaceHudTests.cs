@@ -94,6 +94,33 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void SetupSeatDisablesBrakeAndBoostAndOnlyLightsDrive()
+        {
+            RaceHud hud = CreateHud();
+            hud.Apply(Ui(RacePhase.Grid,
+                Player(PlayerId.Player1, throttle: ThrottleStep.Brake,
+                    driveOnlyThrottle: true),
+                Player(PlayerId.Player2)));
+
+            SeatHud seat = hud.PlayerOne;
+            Assert.That(seat.Brake.ActiveFill.enabled, Is.False);
+            Assert.That(seat.Boost.ActiveFill.enabled, Is.False);
+            Assert.That(seat.Drive.ActiveFill.enabled, Is.False);
+            Assert.That(seat.Brake.Band.color, Is.EqualTo(new Color(.16f, .19f, .24f)));
+            Assert.That(seat.Boost.Band.color, Is.EqualTo(new Color(.16f, .19f, .24f)));
+            Assert.That(seat.Drive.Band.color, Is.Not.EqualTo(new Color(.16f, .19f, .24f)),
+                "Drive remains enabled-looking while setup waits for readiness");
+
+            hud.Apply(Ui(RacePhase.Grid,
+                Player(PlayerId.Player1, throttle: ThrottleStep.Drive,
+                    driveOnlyThrottle: true),
+                Player(PlayerId.Player2)));
+            Assert.That(seat.Drive.ActiveFill.enabled, Is.True);
+            Assert.That(seat.Brake.ActiveFill.enabled, Is.False);
+            Assert.That(seat.Boost.ActiveFill.enabled, Is.False);
+        }
+
+        [Test]
         public void ParkedSeatMarksServiceTargetsAndProgress()
         {
             RaceHud hud = CreateHud();
@@ -239,12 +266,13 @@ namespace BoardRacing.Tests
             PitService selected = PitService.None, float serviceProgress = 0f,
             PitCallState callState = PitCallState.Unavailable,
             PitActionResult callAction = default, PitActionResult serviceAction = default,
-            bool shipPresent = true, float tireWear = .2f, float fuelUsed = .2f) =>
+            bool shipPresent = true, float tireWear = .2f, float fuelUsed = .2f,
+            bool driveOnlyThrottle = false) =>
             new PlayerUiModel(id, "IDENTITY", "STATUS", PlayerUiInstructionKind.DriveAndPit,
                 "DRIVE WITH SHIP · ROBOT CAN CALL PIT", throttle,
                 new CarConditionVisualState(fuelUsed, tireWear, ConditionVisualLevel.Normal,
                     ConditionVisualLevel.Normal),
                 pitPhase, selected, serviceProgress, callState, callAction, serviceAction,
-                shipPresent, true, InputWarning.None, false, false);
+                shipPresent, true, InputWarning.None, false, false, driveOnlyThrottle);
     }
 }

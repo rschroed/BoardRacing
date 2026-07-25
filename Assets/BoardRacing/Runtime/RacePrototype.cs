@@ -401,7 +401,8 @@ namespace BoardRacing.Runtime
                     new CarConditionVisualState(0f, 0f, ConditionVisualLevel.Normal,
                         ConditionVisualLevel.Normal),
                     PitPhase.OnTrack, PitService.None, 0f, PitCallState.Unavailable,
-                    default, default, hasShip, false, InputWarning.None, true, false);
+                    default, default, hasShip, false, InputWarning.None, true, false,
+                    driveOnlyThrottle: true);
             }
             return new RaceUiModel(RacePhase.Grid, new[]
                 {
