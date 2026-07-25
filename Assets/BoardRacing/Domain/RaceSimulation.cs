@@ -617,7 +617,18 @@ namespace BoardRacing.Domain
         // there is no qualifying here to earn the front row with. Whether
         // that is the right answer, or whether grid position should be a real
         // advantage, is the open question on #147.
-        private const float GridRowSpacing = 62f;
+        // Each slot sits back from the one ahead and on the other side, so no
+        // two cars are ever level: a staggered echelon, the way a real grid
+        // is drawn. Two rows of two read as a stacked block instead (owner
+        // report from hardware) — bodies are 54 long and 26 wide, so cars
+        // level with each other showed 6px of daylight and cars in the row
+        // behind 8px, which is one clump, not a grid. A stagger longer than
+        // the body clears every pair along the ribbon as well as across it,
+        // so each car is seen against open track rather than against another
+        // car's flank. About a body and a half, which is roughly the stagger
+        // a real grid uses, and leaves half a body of daylight between
+        // diagonal neighbours instead of the 6px a 2x2 block managed.
+        private const float GridSlotStagger = 80f;
 
         private void ApplyStartingGrid()
         {
@@ -625,7 +636,7 @@ namespace BoardRacing.Domain
             for (int i = 0; i < racers.Length; i++)
             {
                 racers[i].Lateral = (i % 2 == 0 ? -1f : 1f) * rules.Lateral.MaximumOffset;
-                racers[i].GridStart = -(i / 2) * GridRowSpacing;
+                racers[i].GridStart = -i * GridSlotStagger;
                 racers[i].Distance = racers[i].GridStart;
             }
         }

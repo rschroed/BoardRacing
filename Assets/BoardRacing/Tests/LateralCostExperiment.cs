@@ -180,14 +180,10 @@ namespace BoardRacing.Tests
                         else trace.HeldStreak[racer.PlayerId] = 0;
                     }
                     // Body clearance in the sim's own terms: along-track gap
-                    // and lateral gap, both real now. The standing start is
-                    // excluded: with lateral modeled, presentation no longer
-                    // invents the grid split, and the model has no starting
-                    // grid of its own yet — every car begins on the line at
-                    // distance zero, stacked. That is a known gap, measured
-                    // separately, not a racing overlap.
-                    bool onTheGrid = racing.All(r => r.TotalDistance < BodyLength);
-                    for (int i = 0; i < racing.Length && !onTheGrid; i++)
+                    // and lateral gap, both real now. The standing start is no
+                    // longer excused — the grid is a real staggered grid, so
+                    // this covers every frame from the lights.
+                    for (int i = 0; i < racing.Length; i++)
                         for (int j = i + 1; j < racing.Length; j++)
                         {
                             float along = Math.Abs(racing[i].TotalDistance - racing[j].TotalDistance);
