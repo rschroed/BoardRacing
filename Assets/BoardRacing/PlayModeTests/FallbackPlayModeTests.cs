@@ -53,10 +53,18 @@ namespace BoardRacing.PlayModeTests
         [UnityTest]
         public IEnumerator FourSeatFallbackLobbyCanAddAndClaimEveryPlayer()
         {
-            var session = new FallbackPlayerSession(2);
+            var session = new FallbackPlayerSession();
             var lobby = new PlayerLobbyPresentation(session, true);
-            session.AddPlayer().GetAwaiter().GetResult();
-            session.AddPlayer().GetAwaiter().GetResult();
+            Assert.That(lobby.Coordinator.Seats, Is.Empty,
+                "a cold lobby must not autoassign session players to corners");
+            PlayerId[] ids =
+                { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 };
+            for (int i = 0; i < ids.Length; i++)
+            {
+                session.AddPlayer().GetAwaiter().GetResult();
+                Assert.That(lobby.Coordinator.AssignPlayer(
+                    session.Players[i], ids[i]), Is.True);
+            }
             lobby.Coordinator.ClaimForFallback(PlayerId.Player1, 7);
             lobby.Coordinator.ClaimForFallback(PlayerId.Player2, 6);
             lobby.Coordinator.ClaimForFallback(PlayerId.Player3, 4);
@@ -77,6 +85,42 @@ namespace BoardRacing.PlayModeTests
             yield return null;
             Assert.That(UnityEngine.Object.FindObjectOfType<RacePrototype>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindObjectOfType<ControlLab>(), Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator ReturningToSetupPreservesPlayersCornersPiecesAndCourse()
+        {
+            yield return null;
+            var race = Object.FindObjectOfType<RacePrototype>();
+            var type = typeof(RacePrototype);
+            var raceSeatsField = type.GetField("raceSeats",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var courseField = type.GetField("course",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var lobbyField = type.GetField("lobby",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var returnToSetup = type.GetMethod("ReturnToSetup",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var beginRace = type.GetMethod("BeginRace",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+            var before = ((PlayerSeat[])raceSeatsField.GetValue(race))
+                .OrderBy(x => x.PlayerId).ToArray();
+            CourseDefinition courseBefore = (CourseDefinition)courseField.GetValue(race);
+            returnToSetup.Invoke(race, null);
+            var restoredLobby = (PlayerLobbyPresentation)lobbyField.GetValue(race);
+            var after = restoredLobby.Coordinator.Seats.OrderBy(x => x.PlayerId).ToArray();
+
+            Assert.That(after.Select(x => x.PlayerId),
+                Is.EqualTo(before.Select(x => x.PlayerId)));
+            Assert.That(after.Select(x => x.Player.SessionId),
+                Is.EqualTo(before.Select(x => x.Player.SessionId)));
+            Assert.That(after.Select(x => x.PieceIdentity.Value.ShipGlyphId),
+                Is.EqualTo(before.Select(x => x.PieceIdentity.Value.ShipGlyphId)));
+            Assert.That(courseField.GetValue(race), Is.SameAs(courseBefore));
+
+            // Leave the shared PlayMode prototype racing for the remaining tests.
+            beginRace.Invoke(race, null);
         }
 
         [UnityTest]

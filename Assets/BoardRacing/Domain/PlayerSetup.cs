@@ -190,6 +190,48 @@ namespace BoardRacing.Domain
 
         public bool CanStart => seats.Count >= 2 && seats.Values.All(x => x.PieceIdentity.HasValue);
 
+        // BoardOS always keeps its active profile in the session roster. Setup
+        // deliberately treats roster membership and corner ownership as
+        // separate concerns: a player owns a corner only after that corner is
+        // tapped.
+        public bool AssignPlayer(SessionPlayer player, PlayerId playerId,
+            PieceIdentity? pieceIdentity = null)
+        {
+            if (!SeatOrder.Contains(playerId) || seats.ContainsKey(playerId) ||
+                seats.Values.Any(x => x.Player.SessionId == player.SessionId))
+                return false;
+            SeatClaimRegion region = FourSeatLayout.For(playerId);
+            seats[playerId] = new MutableSeat
+            {
+                PlayerId = playerId,
+                Player = player,
+                Corner = region.Corner,
+                PieceIdentity = pieceIdentity
+            };
+            return true;
+        }
+
+        // Profile replacement/removal updates only players who already own a
+        // corner. Newly-added BoardOS profiles remain unseated until the
+        // corner that opened the selector explicitly claims them.
+        public void RetainRoster(IEnumerable<SessionPlayer> roster)
+        {
+            SessionPlayer[] players = (roster ?? Array.Empty<SessionPlayer>()).Take(4).ToArray();
+            if (players.Select(x => x.SessionId).Distinct().Count() != players.Length)
+                throw new ArgumentException("Session players must have unique session IDs.", nameof(roster));
+            var bySession = players.ToDictionary(x => x.SessionId);
+            foreach (PlayerId id in seats.Keys.ToArray())
+            {
+                MutableSeat seat = seats[id];
+                if (!bySession.TryGetValue(seat.Player.SessionId, out SessionPlayer player))
+                {
+                    seats.Remove(id);
+                    continue;
+                }
+                seat.Player = player;
+            }
+        }
+
         // Session IDs own seats. BoardOS replacement keeps the session ID, so a
         // profile edit preserves the corner and physical identity. A removed ID
         // releases both; newly-added players fill the first free approved corner.

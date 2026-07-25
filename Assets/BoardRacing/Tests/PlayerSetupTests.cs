@@ -8,6 +8,43 @@ namespace BoardRacing.Tests
     public sealed class PlayerSetupTests
     {
         [Test]
+        public void SessionRosterDoesNotOwnCornersUntilExplicitlyAssigned()
+        {
+            SessionPlayer[] roster = Roster(2);
+            var setup = new PlayerSetupCoordinator(Array.Empty<SessionPlayer>());
+
+            Assert.That(setup.Seats, Is.Empty);
+            Assert.That(setup.AssignPlayer(roster[0], PlayerId.Player4), Is.True);
+            Assert.That(setup.Seats.Single().PlayerId, Is.EqualTo(PlayerId.Player4));
+            Assert.That(setup.Seats.Single().Corner, Is.EqualTo(SeatCorner.UpperRight));
+            Assert.That(setup.AssignPlayer(roster[0], PlayerId.Player1), Is.False,
+                "one BoardOS player cannot occupy two corners");
+        }
+
+        [Test]
+        public void RetainingRosterUpdatesAndRemovesSeatsWithoutAutoAssigningNewPlayers()
+        {
+            SessionPlayer[] roster = Roster(2);
+            var setup = new PlayerSetupCoordinator(Array.Empty<SessionPlayer>());
+            setup.AssignPlayer(roster[0], PlayerId.Player3);
+            setup.ClaimForFallback(PlayerId.Player3, 4);
+
+            setup.RetainRoster(new[]
+            {
+                new SessionPlayer(1, "profile-1", "Renamed", "avatar-new"),
+                roster[1],
+                new SessionPlayer(3, "profile-3", "Unseated", "avatar-3")
+            });
+
+            Assert.That(setup.Seats.Count, Is.EqualTo(1));
+            Assert.That(setup.Seats.Single().Player.DisplayName, Is.EqualTo("Renamed"));
+            Assert.That(setup.Seats.Single().PieceIdentity.Value.ShipGlyphId, Is.EqualTo(4));
+
+            setup.RetainRoster(new[] { roster[1] });
+            Assert.That(setup.Seats, Is.Empty);
+        }
+
+        [Test]
         public void RosterOrderAssignsApprovedNeutralCorners()
         {
             var setup = new PlayerSetupCoordinator(Roster(4));

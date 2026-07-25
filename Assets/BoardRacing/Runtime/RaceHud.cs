@@ -160,9 +160,13 @@ namespace BoardRacing.Runtime
 
             bool throttleLive = model.PitPhase == PitPhase.OnTrack ||
                 model.PitPhase == PitPhase.Requested;
-            ApplySector(Brake, ThrottleStep.Brake, model.Throttle, throttleLive);
+            // Setup uses the same physical cockpit but has only one meaningful
+            // state: Drive means ready. Brake and Boost stay locked-looking
+            // instead of falsely interpreting any non-ready angle as Brake.
+            bool fullThrottle = throttleLive && !model.DriveOnlyThrottle;
+            ApplySector(Brake, ThrottleStep.Brake, model.Throttle, fullThrottle);
             ApplySector(Drive, ThrottleStep.Drive, model.Throttle, throttleLive);
-            ApplySector(Boost, ThrottleStep.Boost, model.Throttle, throttleLive);
+            ApplySector(Boost, ThrottleStep.Boost, model.Throttle, fullThrottle);
         }
 
         public void SetAccent(Color accent)

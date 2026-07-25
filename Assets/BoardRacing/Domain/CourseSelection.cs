@@ -5,12 +5,9 @@ using System.Linq;
 namespace BoardRacing.Domain
 {
     /// <summary>
-    /// Between-race course choice (issue #107 phase 5, owner decision: tap to
-    /// cycle). The finished/paused overlay shows the course the next race will
-    /// run; tapping the chip cycles through the catalog, tapping START NEW RACE
-    /// confirms. Defaults do the right thing untouched: a finished race arms
-    /// the next course in catalog rotation, a pause arms the same course — a
-    /// pause is an interruption, restarting it should not silently swap tracks.
+    /// Course choice shared by setup and the race lifecycle. Setup previews the
+    /// pending course as it cycles and confirms it only when the explicit Start
+    /// CTA is pressed. Returning to setup keeps the current course selected.
     /// </summary>
     public sealed class CourseSelection
     {
@@ -46,6 +43,16 @@ namespace BoardRacing.Domain
 
         /// <summary>The chip tap: advance the pending choice through the catalog.</summary>
         public void CycleNext() => nextIndex = (nextIndex + 1) % courses.Count;
+
+        /// <summary>
+        /// Returning to setup keeps the course that is already on the table,
+        /// rather than applying the old finished-screen automatic rotation.
+        /// </summary>
+        public CourseDefinition KeepCurrentForNext()
+        {
+            nextIndex = currentIndex;
+            return Next;
+        }
 
         /// <summary>The START NEW RACE tap: the pending choice becomes the racing course.</summary>
         public CourseDefinition ConfirmNext()

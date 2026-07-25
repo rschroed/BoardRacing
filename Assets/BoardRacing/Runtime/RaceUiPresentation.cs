@@ -304,7 +304,8 @@ namespace BoardRacing.Runtime
             ThrottleStep throttle, CarConditionVisualState condition, PitPhase pitPhase,
             PitService selectedService, float serviceProgress, PitCallState callState,
             PitActionResult callAction, PitActionResult serviceAction, bool shipPresent,
-            bool robotPresent, InputWarning inputWarnings, bool finishEligible, bool finished)
+            bool robotPresent, InputWarning inputWarnings, bool finishEligible, bool finished,
+            bool driveOnlyThrottle = false)
         {
             if (string.IsNullOrWhiteSpace(primaryInstruction))
                 throw new ArgumentException("Every player model needs one primary instruction.",
@@ -327,6 +328,7 @@ namespace BoardRacing.Runtime
             InputWarnings = inputWarnings;
             FinishEligible = finishEligible;
             Finished = finished;
+            DriveOnlyThrottle = driveOnlyThrottle;
         }
 
         public PlayerId PlayerId { get; }
@@ -347,6 +349,7 @@ namespace BoardRacing.Runtime
         public InputWarning InputWarnings { get; }
         public bool FinishEligible { get; }
         public bool Finished { get; }
+        public bool DriveOnlyThrottle { get; }
     }
 
     internal readonly struct RaceUiModel
