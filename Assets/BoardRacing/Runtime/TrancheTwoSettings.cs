@@ -57,12 +57,20 @@ namespace BoardRacing.Runtime
         // derived from the dial, never stored.
         public float CornerSafeSpeed => basePace * cornerSafeSpeedRatio;
 
+        [Header("Modeled lateral position (issue #147, experimental)")]
+        // Off is the shipped behaviour: one line, and presentation invents the
+        // separation. On, a car holds a real offset that costs real distance
+        // against the corner, cars cannot drive through each other, and the
+        // drawn car goes exactly where the simulation puts it.
+        public bool modeledLateral;
+
         public RaceRules ToRules(int laps, int requiredServiceCount = 0, ConditionRules conditions = default,
             PitRules pit = default) => new RaceRules(laps, countdownSeconds, basePace,
             basePace * accelerationRatio, basePace * dragRatio, basePace * brakingRatio,
             cornerSpeedScrub, cornerRecoverySeconds, recoveryAccelerationScale,
             passingDistance, passingOffset, rematchHoldSeconds, requiredServiceCount, conditions, pit,
-            pauseClearSeconds, basePace * slipstreamBonusRatio, slipstreamWindow);
+            pauseClearSeconds, basePace * slipstreamBonusRatio, slipstreamWindow,
+            modeledLateral ? LateralRules.Defaults : default);
 
         public static TrancheTwoSettings Defaults() => CreateInstance<TrancheTwoSettings>();
     }
