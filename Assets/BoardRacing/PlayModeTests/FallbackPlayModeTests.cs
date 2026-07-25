@@ -12,6 +12,27 @@ namespace BoardRacing.PlayModeTests
 {
     public sealed class FallbackPlayModeTests : InputTestFixture
     {
+        private const float SimulatedFrameSeconds = 1f / 60f;
+        private static readonly object[] SimulatedFrameArguments = { SimulatedFrameSeconds };
+
+        [SetUp]
+        public void ResetSharedRacePrototype()
+        {
+            // The runtime bootstrap is shared across this fixture. Rebuild its
+            // domain state so an assertion abort cannot strand the next test mid-pit.
+            var race = Object.FindObjectOfType<RacePrototype>();
+            Assert.That(race, Is.Not.Null);
+            var type = typeof(RacePrototype);
+            var buildRace = type.GetMethod("BuildRace",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var accumulator = type.GetField("accumulator",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(buildRace, Is.Not.Null);
+            Assert.That(accumulator, Is.Not.Null);
+            buildRace.Invoke(race, null);
+            accumulator.SetValue(race, 0f);
+        }
+
         [UnityTest]
         public IEnumerator FallbackProviderSupportsTwoPlayersInPlayMode()
         {
@@ -116,14 +137,14 @@ namespace BoardRacing.PlayModeTests
             yield return null;
             var race = Object.FindObjectOfType<RacePrototype>();
             var keyboard = InputSystem.AddDevice<Keyboard>();
-            var provider = new KeyboardInputProvider();
+            var provider = new KeyboardInputProvider(() => SimulatedFrameSeconds);
             race.SetInputProvider(provider);
-            var update = typeof(RacePrototype).GetMethod("Update",
+            var advanceFrame = typeof(RacePrototype).GetMethod("AdvanceFrame",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            Assert.That(update, Is.Not.Null);
+            Assert.That(advanceFrame, Is.Not.Null);
 
-            Assert.That(PumpUntil(race, update, 5f, x => x.Phase == RacePhase.Racing), Is.True);
-            PumpRace(race, update, .05f);
+            Assert.That(PumpUntil(race, advanceFrame, 5f, x => x.Phase == RacePhase.Racing), Is.True);
+            PumpRace(race, advanceFrame, .05f);
             var positioned = provider.ReadSnapshots();
             Assert.That(positioned.Single(x => x.PlayerId == PlayerId.Player1).Crew.Position.X,
                 Is.InRange(1782f, 1882f));
@@ -132,36 +153,28 @@ namespace BoardRacing.PlayModeTests
             Assert.That(race.GetCrewStrategy(PlayerId.Player1).CallState, Is.EqualTo(PitCallState.NeedsPlacement));
             Assert.That(race.GetCrewStrategy(PlayerId.Player2).CallState, Is.EqualTo(PitCallState.NeedsPlacement));
 
-            HoldRaceKey(race, update, keyboard.fKey, .7f);
-            HoldRaceKey(race, update, keyboard.kKey, .7f);
-            HoldRaceKey(race, update, keyboard.gKey, .7f);
-            HoldRaceKey(race, update, keyboard.hKey, .7f);
-            Assert.That(PumpUntil(race, update, 2f, x => x.Racers.Single(r =>
+            HoldRaceKey(race, advanceFrame, keyboard.fKey, .7f);
+            HoldRaceKey(race, advanceFrame, keyboard.kKey, .7f);
+            HoldRaceKey(race, advanceFrame, keyboard.gKey, .7f);
+            HoldRaceKey(race, advanceFrame, keyboard.hKey, .7f);
+            Assert.That(PumpUntil(race, advanceFrame, 2f, x => x.Racers.Single(r =>
                 r.PlayerId == PlayerId.Player1).Pit.Phase == PitPhase.Requested), Is.True);
-            Assert.That(PumpUntil(race, update, 2f, x => x.Racers.Single(r =>
+            Assert.That(PumpUntil(race, advanceFrame, 2f, x => x.Racers.Single(r =>
                 r.PlayerId == PlayerId.Player2).Pit.Phase == PitPhase.Requested), Is.True);
             Assert.That(race.GetRaceSnapshot().Racers.All(x => x.Pit.SelectedService == PitService.None), Is.True);
 
-            TapRaceKeys(race, update, keyboard.vKey);
-            TapRaceKeys(race, update, keyboard.digit0Key);
-            Assert.That(PumpUntil(race, update, 140f,
+            TapRaceKeys(race, advanceFrame, keyboard.vKey);
+            TapRaceKeys(race, advanceFrame, keyboard.digit0Key);
+            Assert.That(PumpUntil(race, advanceFrame, 140f,
                 x => x.Racers.All(r => r.Pit.Phase == PitPhase.InService)), Is.True);
 
             // Steer P2 to Fuel (330, 868) first and P1 to Tires (1692, 321) second.
             // Selection is placement-based; nothing completes until the Robots stir.
-            Press(keyboard.kKey);
-            yield return new WaitForSecondsRealtime(.85f);
-            Release(keyboard.kKey, queueEventOnly: true); InputSystem.Update(); yield return null;
-            Press(keyboard.yKey);
-            yield return new WaitForSecondsRealtime(.65f);
-            Release(keyboard.yKey, queueEventOnly: true); InputSystem.Update(); yield return null;
-            Press(keyboard.fKey);
-            yield return new WaitForSecondsRealtime(.5f);
-            Release(keyboard.fKey, queueEventOnly: true); InputSystem.Update(); yield return null;
-            Press(keyboard.bKey);
-            yield return new WaitForSecondsRealtime(.28f);
-            Release(keyboard.bKey, queueEventOnly: true); InputSystem.Update(); yield return null;
-            PumpRace(race, update, .05f);
+            HoldRaceKey(race, advanceFrame, keyboard.kKey, .85f);
+            HoldRaceKey(race, advanceFrame, keyboard.yKey, .65f);
+            HoldRaceKey(race, advanceFrame, keyboard.fKey, .5f);
+            HoldRaceKey(race, advanceFrame, keyboard.bKey, .28f);
+            PumpRace(race, advanceFrame, .05f);
             Assert.That(race.GetRaceSnapshot().Racers.Single(x => x.PlayerId == PlayerId.Player1)
                 .Pit.SelectedService, Is.EqualTo(PitService.Tires));
             Assert.That(race.GetRaceSnapshot().Racers.Single(x => x.PlayerId == PlayerId.Player2)
@@ -170,12 +183,12 @@ namespace BoardRacing.PlayModeTests
             // Services drain by stirring: offset both Robots from their dial centers,
             // then wiggle them vertically — every direction change sweeps an arc
             // around the dial center and drains the selected meter.
-            HoldRaceKeys(race, update, .07f, keyboard.gKey, keyboard.kKey);
+            HoldRaceKeys(race, advanceFrame, .07f, keyboard.gKey, keyboard.kKey);
             bool servicesCompleted = false;
             for (int i = 0; i < 60 && !servicesCompleted; i++)
             {
-                HoldRaceKeys(race, update, .1f, keyboard.tKey, keyboard.yKey);
-                HoldRaceKeys(race, update, .1f, keyboard.bKey, keyboard.nKey);
+                HoldRaceKeys(race, advanceFrame, .1f, keyboard.tKey, keyboard.yKey);
+                HoldRaceKeys(race, advanceFrame, .1f, keyboard.bKey, keyboard.nKey);
                 servicesCompleted = race.GetRaceSnapshot().Racers.All(r => r.Pit.CompletedServices == 1);
             }
             var serviceSnapshot = race.GetRaceSnapshot();
@@ -191,19 +204,19 @@ namespace BoardRacing.PlayModeTests
 
             // Steer each Robot into its Leave Pit circle (the Call Pit circle) and
             // hold it there — the same placement-plus-hold grammar as Call Pit.
-            SteerCrewTo(race, update, provider, PlayerId.Player1, new Vector2(1832f, 398f),
+            SteerCrewTo(race, advanceFrame, provider, PlayerId.Player1, new Vector2(1832f, 398f),
                 keyboard.fKey, keyboard.gKey, keyboard.tKey, keyboard.bKey);
-            SteerCrewTo(race, update, provider, PlayerId.Player2, new Vector2(88f, 682f),
+            SteerCrewTo(race, advanceFrame, provider, PlayerId.Player2, new Vector2(88f, 682f),
                 keyboard.hKey, keyboard.kKey, keyboard.yKey, keyboard.nKey);
-            PumpRace(race, update, 1.2f);
+            PumpRace(race, advanceFrame, 1.2f);
             Assert.That(race.GetRaceSnapshot().Racers.All(x =>
                 x.Pit.Phase == PitPhase.Exiting || x.Pit.Phase == PitPhase.OnTrack), Is.True);
 
-            Assert.That(PumpUntil(race, update, 180f, x => x.Phase == RacePhase.Finished), Is.True);
-            TapRaceKeys(race, update, keyboard.zKey, keyboard.digit7Key);
-            Assert.That(PumpUntil(race, update, 2f, x => x.AwaitingRematchRelease), Is.True);
-            TapRaceKeys(race, update, keyboard.xKey, keyboard.digit8Key);
-            PumpRace(race, update, .05f);
+            Assert.That(PumpUntil(race, advanceFrame, 180f, x => x.Phase == RacePhase.Finished), Is.True);
+            TapRaceKeys(race, advanceFrame, keyboard.zKey, keyboard.digit7Key);
+            Assert.That(PumpUntil(race, advanceFrame, 2f, x => x.AwaitingRematchRelease), Is.True);
+            TapRaceKeys(race, advanceFrame, keyboard.xKey, keyboard.digit8Key);
+            PumpRace(race, advanceFrame, .05f);
 
             var rematch = race.GetRaceSnapshot();
             Assert.That(rematch.Phase == RacePhase.Grid || rematch.Phase == RacePhase.Countdown, Is.True);
@@ -253,24 +266,24 @@ namespace BoardRacing.PlayModeTests
             return result;
         }
 
-        private void TapRaceKeys(RacePrototype race, System.Reflection.MethodInfo update,
+        private void TapRaceKeys(RacePrototype race, System.Reflection.MethodInfo advanceFrame,
             params ButtonControl[] buttons)
         {
             foreach (var button in buttons) Press(button, queueEventOnly: true);
             InputSystem.Update();
-            update.Invoke(race, null);
+            advanceFrame.Invoke(race, SimulatedFrameArguments);
             foreach (var button in buttons) Release(button, queueEventOnly: true);
             InputSystem.Update();
-            PumpRace(race, update, .05f);
+            PumpRace(race, advanceFrame, .05f);
         }
 
-        private void HoldRaceKey(RacePrototype race, System.Reflection.MethodInfo update,
+        private void HoldRaceKey(RacePrototype race, System.Reflection.MethodInfo advanceFrame,
             ButtonControl button, float seconds)
         {
-            HoldRaceKeys(race, update, seconds, button);
+            HoldRaceKeys(race, advanceFrame, seconds, button);
         }
 
-        private void SteerCrewTo(RacePrototype race, System.Reflection.MethodInfo update,
+        private void SteerCrewTo(RacePrototype race, System.Reflection.MethodInfo advanceFrame,
             KeyboardInputProvider provider, PlayerId player, Vector2 target,
             ButtonControl left, ButtonControl right, ButtonControl up, ButtonControl down)
         {
@@ -280,14 +293,14 @@ namespace BoardRacing.PlayModeTests
                 float dx = target.x - position.X, dy = target.y - position.Y;
                 if (Mathf.Abs(dx) <= 20f && Mathf.Abs(dy) <= 20f) return;
                 if (Mathf.Abs(dx) > 20f)
-                    HoldRaceKeys(race, update, Mathf.Min(.3f, Mathf.Abs(dx) / 280f), dx > 0f ? right : left);
+                    HoldRaceKeys(race, advanceFrame, Mathf.Min(.3f, Mathf.Abs(dx) / 280f), dx > 0f ? right : left);
                 if (Mathf.Abs(dy) > 20f)
-                    HoldRaceKeys(race, update, Mathf.Min(.3f, Mathf.Abs(dy) / 280f), dy > 0f ? up : down);
+                    HoldRaceKeys(race, advanceFrame, Mathf.Min(.3f, Mathf.Abs(dy) / 280f), dy > 0f ? up : down);
             }
             Assert.Fail("Crew steering did not converge for " + player);
         }
 
-        private void HoldRaceKeys(RacePrototype race, System.Reflection.MethodInfo update,
+        private void HoldRaceKeys(RacePrototype race, System.Reflection.MethodInfo advanceFrame,
             float seconds, params ButtonControl[] buttons)
         {
             // Process each press before queueing the next: InputTestFixture builds each
@@ -298,33 +311,31 @@ namespace BoardRacing.PlayModeTests
                 Press(button, queueEventOnly: true);
                 InputSystem.Update();
             }
-            PumpRace(race, update, seconds);
+            PumpRace(race, advanceFrame, seconds);
             foreach (var button in buttons)
             {
                 Release(button, queueEventOnly: true);
                 InputSystem.Update();
             }
-            PumpRace(race, update, .05f);
+            PumpRace(race, advanceFrame, .05f);
         }
 
-        private static bool PumpUntil(RacePrototype race, System.Reflection.MethodInfo update, float timeout,
+        private static bool PumpUntil(RacePrototype race, System.Reflection.MethodInfo advanceFrame, float timeout,
             System.Func<RaceSnapshot, bool> predicate)
         {
-            float step = Mathf.Max(.00001f, Time.unscaledDeltaTime);
-            int updates = Mathf.CeilToInt(timeout / step);
+            int updates = Mathf.CeilToInt(timeout / SimulatedFrameSeconds);
             for (int i = 0; i < updates; i++)
             {
-                update.Invoke(race, null);
+                advanceFrame.Invoke(race, SimulatedFrameArguments);
                 if (predicate(race.GetRaceSnapshot())) return true;
             }
             return false;
         }
 
-        private static void PumpRace(RacePrototype race, System.Reflection.MethodInfo update, float seconds)
+        private static void PumpRace(RacePrototype race, System.Reflection.MethodInfo advanceFrame, float seconds)
         {
-            float step = Mathf.Max(.00001f, Time.unscaledDeltaTime);
-            int updates = Mathf.CeilToInt(seconds / step);
-            for (int i = 0; i < updates; i++) update.Invoke(race, null);
+            int updates = Mathf.CeilToInt(seconds / SimulatedFrameSeconds);
+            for (int i = 0; i < updates; i++) advanceFrame.Invoke(race, SimulatedFrameArguments);
         }
 
         private sealed class ScriptedProvider : IPlayerInputProvider
