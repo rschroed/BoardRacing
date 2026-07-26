@@ -704,6 +704,9 @@ namespace BoardRacing.Runtime
             new Dictionary<PlayerId, Transform>();
         private Camera surfaceCamera;
         private MeshFilter surfaceFilter;
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+        private MeshFilter wireframeFilter;
+#endif
         private bool carsVisible = true;
 
         public static RaceSurfaceRenderer Create(SurfaceMeshData data)
@@ -734,18 +737,21 @@ namespace BoardRacing.Runtime
             surface.material = new Material(Shader.Find("Sprites/Default"));
             Transform surfaceObject = surface.CreateMeshObject("Race Surface Mesh", data);
             surface.surfaceFilter = surfaceObject.GetComponent<MeshFilter>();
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            Transform wireframeObject = surface.CreateWireframeObject(data);
+            surface.wireframeFilter = wireframeObject.GetComponent<MeshFilter>();
+            wireframeObject.gameObject.SetActive(false);
+#endif
             return surface;
         }
 
         public void ReplaceSurface(SurfaceMeshData data, Color groundColor)
         {
             if (data == null) throw new ArgumentNullException(nameof(data));
-            Mesh replacement = CreateMesh("Race Surface Mesh", data);
-            Mesh previous = surfaceFilter.sharedMesh;
-            surfaceFilter.sharedMesh = replacement;
-            meshes.Add(replacement);
-            meshes.Remove(previous);
-            DestroyOwned(previous);
+            ReplaceOwnedMesh(surfaceFilter, CreateMesh("Race Surface Mesh", data));
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            ReplaceOwnedMesh(wireframeFilter, CreateWireframeMesh(data));
+#endif
             surfaceCamera.backgroundColor = groundColor;
         }
 
@@ -762,6 +768,13 @@ namespace BoardRacing.Runtime
             foreach (Transform car in cars.Values)
                 if (car != null) car.gameObject.SetActive(visible);
         }
+
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+        public void SetWireframeVisible(bool visible)
+        {
+            if (wireframeFilter != null) wireframeFilter.gameObject.SetActive(visible);
+        }
+#endif
 
         // Reference-pixel position (Y down), straight onto the transform — world
         // space is reference space by the camera's projection. Rotation turns
@@ -785,13 +798,34 @@ namespace BoardRacing.Runtime
             Mesh mesh = CreateMesh(objectName, data);
             meshes.Add(mesh);
             meshObject.AddComponent<MeshFilter>().sharedMesh = mesh;
+            ConfigureMeshRenderer(meshObject);
+            return meshObject.transform;
+        }
+
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+        private Transform CreateWireframeObject(SurfaceMeshData data)
+        {
+            var meshObject = new GameObject("Race Surface Wireframe");
+            meshObject.transform.SetParent(transform, false);
+            // Between the surface (0) and cars (-1): the topology overlays the
+            // filled course while every racer remains readable above it.
+            meshObject.transform.localPosition = new Vector3(0f, 0f, -.5f);
+            Mesh mesh = CreateWireframeMesh(data);
+            meshes.Add(mesh);
+            meshObject.AddComponent<MeshFilter>().sharedMesh = mesh;
+            ConfigureMeshRenderer(meshObject);
+            return meshObject.transform;
+        }
+#endif
+
+        private void ConfigureMeshRenderer(GameObject meshObject)
+        {
             var meshRenderer = meshObject.AddComponent<MeshRenderer>();
             meshRenderer.sharedMaterial = material;
             meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             meshRenderer.receiveShadows = false;
             meshRenderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
             meshRenderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
-            return meshObject.transform;
         }
 
         private static Mesh CreateMesh(string meshName, SurfaceMeshData data)
@@ -802,6 +836,40 @@ namespace BoardRacing.Runtime
             mesh.SetTriangles(data.Triangles, 0);
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+        private static Mesh CreateWireframeMesh(SurfaceMeshData data)
+        {
+            var mesh = new Mesh { name = "Race Surface Wireframe" };
+            mesh.SetVertices(data.Vertices);
+            var colors = new List<Color>(data.Vertices.Count);
+            for (int i = 0; i < data.Vertices.Count; i++)
+                colors.Add(RaceSurfaceStyle.Default.RoadBoundaryColor);
+            mesh.SetColors(colors);
+            var lines = new List<int>(data.Triangles.Count * 2);
+            for (int i = 0; i < data.Triangles.Count; i += 3)
+            {
+                int a = data.Triangles[i];
+                int b = data.Triangles[i + 1];
+                int c = data.Triangles[i + 2];
+                lines.Add(a); lines.Add(b);
+                lines.Add(b); lines.Add(c);
+                lines.Add(c); lines.Add(a);
+            }
+            mesh.SetIndices(lines, MeshTopology.Lines, 0);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+#endif
+
+        private void ReplaceOwnedMesh(MeshFilter filter, Mesh replacement)
+        {
+            Mesh previous = filter.sharedMesh;
+            filter.sharedMesh = replacement;
+            meshes.Add(replacement);
+            meshes.Remove(previous);
+            DestroyOwned(previous);
         }
 
         private static void DestroyOwned(UnityEngine.Object owned)

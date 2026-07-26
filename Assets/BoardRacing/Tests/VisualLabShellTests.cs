@@ -153,7 +153,18 @@ namespace BoardRacing.Tests
             Transform car = surface.transform.Find("Race Car Player1");
             MeshFilter surfaceFilter =
                 surface.transform.Find("Race Surface Mesh").GetComponent<MeshFilter>();
+            Transform wireframe = surface.transform.Find("Race Surface Wireframe");
+            MeshFilter wireframeFilter = wireframe.GetComponent<MeshFilter>();
             Mesh originalMesh = surfaceFilter.sharedMesh;
+            Mesh originalWireframeMesh = wireframeFilter.sharedMesh;
+
+            Assert.That(wireframe.gameObject.activeSelf, Is.False);
+            surface.SetWireframeVisible(true);
+            Assert.That(wireframe.gameObject.activeSelf, Is.True);
+            Assert.That(wireframeFilter.sharedMesh.GetTopology(0), Is.EqualTo(MeshTopology.Lines));
+            CollectionAssert.AreEqual(
+                new[] { 0, 1, 1, 2, 2, 0, 0, 2, 2, 3, 3, 0 },
+                wireframeFilter.sharedMesh.GetIndices(0));
 
             var ground = new Color(.2f, .3f, .4f, 1f);
             surface.ReplaceSurface(second, ground);
@@ -164,6 +175,10 @@ namespace BoardRacing.Tests
             Assert.That(car.localScale, Is.EqualTo(new Vector3(.8f, 1.2f, 1f)));
             Assert.That(surfaceFilter.sharedMesh, Is.Not.SameAs(originalMesh));
             Assert.That(surfaceFilter.sharedMesh.vertexCount, Is.EqualTo(second.Vertices.Count));
+            Assert.That(surface.transform.Find("Race Surface Wireframe"), Is.SameAs(wireframe));
+            Assert.That(wireframeFilter.sharedMesh, Is.Not.SameAs(originalWireframeMesh));
+            Assert.That(wireframeFilter.sharedMesh.vertexCount, Is.EqualTo(second.Vertices.Count));
+            Assert.That(wireframe.gameObject.activeSelf, Is.True);
             Assert.That(surface.GetComponentInChildren<Camera>().backgroundColor,
                 Is.EqualTo(ground));
         }

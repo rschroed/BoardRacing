@@ -41,6 +41,7 @@ namespace BoardRacing.Runtime
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
         private VisualLabShell visualLab;
         private bool visualLabConsumedPress;
+        private bool visualLabWireframeVisible;
 #endif
         // Everything the current track IS — racing line, pit complex, race
         // length — comes from one authored artifact (issue #107 phase 1).
@@ -153,7 +154,8 @@ namespace BoardRacing.Runtime
                 () => lobby != null,
                 CycleSetupCourse,
                 surfaceStyle,
-                ApplyVisualLabSurfaceStyle));
+                ApplyVisualLabSurfaceStyle,
+                SetVisualLabWireframeVisible));
 #endif
         }
 
@@ -171,6 +173,9 @@ namespace BoardRacing.Runtime
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(
                 BuildSurfaceData(simulation.Track, true), surfaceStyle.GroundColor);
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            surface.SetWireframeVisible(visualLabWireframeVisible);
+#endif
             foreach (PlayerSeat seat in raceSeats)
                 surface.AttachCar(seat.PlayerId,
                     RaceSurfaceGeometry.BuildCarBody(seat.PlayerId, PlayerAccent(seat.PlayerId)));
@@ -185,6 +190,7 @@ namespace BoardRacing.Runtime
             surface = RaceSurfaceRenderer.Create(
                 BuildSurfaceData(course.Track, false), surfaceStyle.GroundColor);
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            surface.SetWireframeVisible(visualLabWireframeVisible);
             visualLab?.ReapplyStageComposition();
 #endif
         }
@@ -625,6 +631,12 @@ namespace BoardRacing.Runtime
             TrackDefinition track = racing ? simulation.Track : course.Track;
             surface.ReplaceSurface(
                 BuildSurfaceData(track, racing), surfaceStyle.GroundColor);
+        }
+
+        private void SetVisualLabWireframeVisible(bool visible)
+        {
+            visualLabWireframeVisible = visible;
+            if (surface != null) surface.SetWireframeVisible(visible);
         }
 #endif
 

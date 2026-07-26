@@ -11,17 +11,8 @@ namespace BoardRacing.Runtime
 {
     internal sealed class CourseSurfaceComposerPanel : IVisualLabPanel
     {
-        private enum ColorTarget
-        {
-            Ground,
-            Straight,
-            Corner,
-            Shoulder,
-        }
-
         private const float RowStep = 60f;
         private const float RowHeight = 50f;
-        private const float ColorStep = .05f;
         private const float ShoulderWidthStep = 4f;
         private const float MaxShoulderWidth = 64f;
 
@@ -33,24 +24,25 @@ namespace BoardRacing.Runtime
         private readonly Func<bool> canSelectCourse;
         private readonly Action selectNextCourse;
         private readonly Action<RaceSurfaceStyle> applyStyle;
+        private readonly Action<bool> setWireframeVisible;
         private RaceSurfaceStyle style;
-        private ColorTarget colorTarget;
+        private bool wireframeVisible;
         private Text courseValue;
-        private Text colorTargetValue;
-        private readonly Text[] componentValues = new Text[3];
         private Text opacityValue;
         private Text solidWidthValue;
         private Text featherWidthValue;
         private Text stripeValue;
         private Text pitValue;
         private Text debugValue;
+        private Text wireframeValue;
 
         internal CourseSurfaceComposerPanel(
             Func<string> courseName,
             Func<bool> canSelectCourse,
             Action selectNextCourse,
             RaceSurfaceStyle initialStyle,
-            Action<RaceSurfaceStyle> applyStyle)
+            Action<RaceSurfaceStyle> applyStyle,
+            Action<bool> setWireframeVisible)
         {
             this.courseName = courseName ?? throw new ArgumentNullException(nameof(courseName));
             this.canSelectCourse =
@@ -58,6 +50,8 @@ namespace BoardRacing.Runtime
             this.selectNextCourse =
                 selectNextCourse ?? throw new ArgumentNullException(nameof(selectNextCourse));
             this.applyStyle = applyStyle ?? throw new ArgumentNullException(nameof(applyStyle));
+            this.setWireframeVisible = setWireframeVisible ??
+                throw new ArgumentNullException(nameof(setWireframeVisible));
             style = initialStyle;
         }
 
@@ -68,18 +62,15 @@ namespace BoardRacing.Runtime
         {
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             CreateWideActionRow(parent, font, 0, "COURSE", out courseValue);
-            CreateWideActionRow(parent, font, 1, "COLOR", out colorTargetValue);
-            componentValues[0] = CreateStepperRow(parent, font, 2, "RED");
-            componentValues[1] = CreateStepperRow(parent, font, 3, "GREEN");
-            componentValues[2] = CreateStepperRow(parent, font, 4, "BLUE");
-            opacityValue = CreateStepperRow(parent, font, 5, "SHOULDER OPACITY");
-            solidWidthValue = CreateStepperRow(parent, font, 6, "SOLID WIDTH");
-            featherWidthValue = CreateStepperRow(parent, font, 7, "FEATHER");
-            CreateWideActionRow(parent, font, 8, "STRIPES", out stripeValue);
-            CreateWideActionRow(parent, font, 9, "PIT SURFACE", out pitValue);
-            CreateWideActionRow(parent, font, 10, "VIEW", out debugValue);
+            opacityValue = CreateStepperRow(parent, font, 1, "SHOULDER OPACITY");
+            solidWidthValue = CreateStepperRow(parent, font, 2, "SOLID WIDTH");
+            featherWidthValue = CreateStepperRow(parent, font, 3, "FEATHER");
+            CreateWideActionRow(parent, font, 4, "STRIPES", out stripeValue);
+            CreateWideActionRow(parent, font, 5, "PIT SURFACE", out pitValue);
+            CreateWideActionRow(parent, font, 6, "VIEW", out debugValue);
+            CreateWideActionRow(parent, font, 7, "MESH WIREFRAME", out wireframeValue);
 
-            Rect row = LocalRow(11);
+            Rect row = LocalRow(8);
             CreateButton(parent, font, "Reset", new Rect(10f, row.y, 180f, RowHeight), "RESET");
             CreateButton(parent, font, "Log", new Rect(210f, row.y, 180f, RowHeight), "LOG");
             RefreshLabels();
@@ -95,62 +86,50 @@ namespace BoardRacing.Runtime
                 RefreshLabels();
                 return true;
             }
-            if (ActionAt(1, ValueAction).Contains(local))
-            {
-                colorTarget = (ColorTarget)(((int)colorTarget + 1) %
-                    Enum.GetValues(typeof(ColorTarget)).Length);
-                RefreshLabels();
-                return true;
-            }
-            for (int component = 0; component < 3; component++)
-            {
-                int row = component + 2;
-                if (ActionAt(row, MinusAction).Contains(local))
-                {
-                    AdjustColor(component, -ColorStep);
-                    return true;
-                }
-                if (ActionAt(row, PlusAction).Contains(local))
-                {
-                    AdjustColor(component, ColorStep);
-                    return true;
-                }
-            }
-            if (HandleFloatStepper(local, 5, -0.1f, 0.1f,
+            if (HandleFloatStepper(local, 1, -0.1f, 0.1f,
                 () => style.ShoulderOpacity,
                 value => style.ShoulderOpacity = Mathf.Clamp01(value)))
                 return true;
-            if (HandleFloatStepper(local, 6, -ShoulderWidthStep, ShoulderWidthStep,
+            if (HandleFloatStepper(local, 2, -ShoulderWidthStep, ShoulderWidthStep,
                 () => style.ShoulderSolidWidth,
                 value => style.ShoulderSolidWidth = Mathf.Clamp(value, 0f, MaxShoulderWidth)))
                 return true;
-            if (HandleFloatStepper(local, 7, -ShoulderWidthStep, ShoulderWidthStep,
+            if (HandleFloatStepper(local, 3, -ShoulderWidthStep, ShoulderWidthStep,
                 () => style.ShoulderFeatherWidth,
                 value => style.ShoulderFeatherWidth = Mathf.Clamp(value, 0f, MaxShoulderWidth)))
                 return true;
-            if (ActionAt(8, ValueAction).Contains(local))
+            if (ActionAt(4, ValueAction).Contains(local))
             {
                 style.StripeVisible = !style.StripeVisible;
                 Apply();
                 return true;
             }
-            if (ActionAt(9, ValueAction).Contains(local))
+            if (ActionAt(5, ValueAction).Contains(local))
             {
                 style.PitSurfaceVisible = !style.PitSurfaceVisible;
                 Apply();
                 return true;
             }
-            if (ActionAt(10, ValueAction).Contains(local))
+            if (ActionAt(6, ValueAction).Contains(local))
             {
                 style.DebugView = (RaceSurfaceDebugView)(((int)style.DebugView + 1) %
                     Enum.GetValues(typeof(RaceSurfaceDebugView)).Length);
                 Apply();
                 return true;
             }
-            Rect actions = LocalRow(11);
+            if (ActionAt(7, ValueAction).Contains(local))
+            {
+                wireframeVisible = !wireframeVisible;
+                setWireframeVisible(wireframeVisible);
+                RefreshLabels();
+                return true;
+            }
+            Rect actions = LocalRow(8);
             if (new Rect(10f, actions.y, 180f, RowHeight).Contains(local))
             {
                 style = RaceSurfaceStyle.Default;
+                wireframeVisible = false;
+                setWireframeVisible(false);
                 Apply();
                 return true;
             }
@@ -166,6 +145,7 @@ namespace BoardRacing.Runtime
         public void OnHidden() { }
 
         internal RaceSurfaceStyle CurrentStyle => style;
+        internal bool WireframeVisible => wireframeVisible;
         internal static Rect ReferenceActionBounds(int row) =>
             OffsetToReference(ActionAt(row, ValueAction));
         internal static Rect ReferenceMinusBounds(int row) =>
@@ -173,20 +153,21 @@ namespace BoardRacing.Runtime
         internal static Rect ReferencePlusBounds(int row) =>
             OffsetToReference(ActionAt(row, PlusAction));
         internal static Rect ReferenceResetBounds =>
-            OffsetToReference(new Rect(10f, LocalRow(11).y, 180f, RowHeight));
+            OffsetToReference(new Rect(10f, LocalRow(8).y, 180f, RowHeight));
         internal static Rect ReferenceLogBounds =>
-            OffsetToReference(new Rect(210f, LocalRow(11).y, 180f, RowHeight));
+            OffsetToReference(new Rect(210f, LocalRow(8).y, 180f, RowHeight));
 
         internal string CurrentLogRecord()
         {
             return string.Format(CultureInfo.InvariantCulture,
                 "[CourseSurfaceComposer] course={0} ground={1} straight={2} corner={3} " +
                 "shoulder={4} shoulderOpacity={5:0.00} shoulderSolidWidth={6:0.0} " +
-                "shoulderFeatherWidth={7:0.0} stripes={8} pitSurface={9} view={10}",
+                "shoulderFeatherWidth={7:0.0} stripes={8} pitSurface={9} view={10} " +
+                "wireframe={11}",
                 courseName(), Hex(style.GroundColor), Hex(style.StraightRoadColor),
                 Hex(style.CornerRoadColor), Hex(style.ShoulderColor), style.ShoulderOpacity,
                 style.ShoulderSolidWidth, style.ShoulderFeatherWidth,
-                style.StripeVisible, style.PitSurfaceVisible, style.DebugView);
+                style.StripeVisible, style.PitSurfaceVisible, style.DebugView, wireframeVisible);
         }
 
         private bool HandleFloatStepper(Vector2 local, int row, float minus, float plus,
@@ -204,32 +185,6 @@ namespace BoardRacing.Runtime
             return true;
         }
 
-        private void AdjustColor(int component, float amount)
-        {
-            Color color = SelectedColor();
-            if (component == 0) color.r = Mathf.Clamp01(color.r + amount);
-            else if (component == 1) color.g = Mathf.Clamp01(color.g + amount);
-            else color.b = Mathf.Clamp01(color.b + amount);
-            SetSelectedColor(color);
-            Apply();
-        }
-
-        private Color SelectedColor()
-        {
-            if (colorTarget == ColorTarget.Ground) return style.GroundColor;
-            if (colorTarget == ColorTarget.Straight) return style.StraightRoadColor;
-            if (colorTarget == ColorTarget.Corner) return style.CornerRoadColor;
-            return style.ShoulderColor;
-        }
-
-        private void SetSelectedColor(Color color)
-        {
-            if (colorTarget == ColorTarget.Ground) style.GroundColor = color;
-            else if (colorTarget == ColorTarget.Straight) style.StraightRoadColor = color;
-            else if (colorTarget == ColorTarget.Corner) style.CornerRoadColor = color;
-            else style.ShoulderColor = color;
-        }
-
         private void Apply()
         {
             applyStyle(style);
@@ -242,11 +197,6 @@ namespace BoardRacing.Runtime
             courseValue.text = canSelectCourse()
                 ? courseName().ToUpperInvariant() + "  ›"
                 : courseName().ToUpperInvariant() + "  · LOCKED";
-            colorTargetValue.text = colorTarget.ToString().ToUpperInvariant() + "  ›";
-            Color color = SelectedColor();
-            componentValues[0].text = Mathf.RoundToInt(color.r * 255f).ToString();
-            componentValues[1].text = Mathf.RoundToInt(color.g * 255f).ToString();
-            componentValues[2].text = Mathf.RoundToInt(color.b * 255f).ToString();
             opacityValue.text = style.ShoulderOpacity.ToString("0.00", CultureInfo.InvariantCulture);
             solidWidthValue.text =
                 style.ShoulderSolidWidth.ToString("0", CultureInfo.InvariantCulture) + " PX";
@@ -255,6 +205,7 @@ namespace BoardRacing.Runtime
             stripeValue.text = style.StripeVisible ? "VISIBLE" : "HIDDEN";
             pitValue.text = style.PitSurfaceVisible ? "VISIBLE" : "HIDDEN";
             debugValue.text = DebugName(style.DebugView) + "  ›";
+            wireframeValue.text = wireframeVisible ? "VISIBLE" : "HIDDEN";
         }
 
         private static void CreateWideActionRow(RectTransform parent, Font font, int index,

@@ -37,20 +37,21 @@ driveable width, pit paths, or simulation.
 - Tap **COURSE** during setup to cycle Wedge, Hourglass, Infinity, and Fishhook.
   Course selection locks once a race begins so the rendered and simulated
   course cannot diverge.
-- Tap **COLOR** to choose ground, straight, corner, or shoulder, then adjust its
-  RGB channels.
 - Tune shoulder opacity, solid width, and feather width. The feather is built
   from opaque, ground-precomposed ribbons, so self-crossings and pit-adjacent
   coverage do not accumulate transparency.
 - Toggle stripes and the pit surface, or cycle through composed,
   shoulder-only, and authoritative-road-boundary views.
+- Toggle **MESH WIREFRAME** to overlay the triangle edges derived from the
+  current runtime surface mesh. It follows every surface rebuild but does not
+  itself rebuild the course or change simulation state.
 - **RESET** restores the deterministic committed style. **LOG** emits one
   `[CourseSurfaceComposer]` record containing the course and every exposed
   semantic value.
 
-Every control change replaces only the static course mesh and ground color.
-Cars, HUD objects, and simulation state remain live and retain their identity
-and pose.
+Surface-style control changes replace only the static course mesh and ground
+color. The wireframe control only toggles its derived line overlay. Cars, HUD
+objects, and simulation state remain live and retain their identity and pose.
 
 For a non-play-mode review of the same production mesh path across all four
 courses, run:
