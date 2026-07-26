@@ -33,6 +33,7 @@ The first prototype will use Unity and the Board Unity SDK. Unity currently prov
 - [Tranche 3 pit-crew proof](docs/testing/tranche-3-pit-crew-proof.md)
 - [Tranche 4 state-matrix validation](docs/testing/tranche-4-state-matrix-validation.md)
 - [Tranche 4 wireframe proof](docs/testing/tranche-4-wireframe-proof.md)
+- [Visual Lab development workflow](docs/testing/visual-lab.md)
 - [GitHub workflow](docs/workflow.md)
 
 ## Immediate milestone

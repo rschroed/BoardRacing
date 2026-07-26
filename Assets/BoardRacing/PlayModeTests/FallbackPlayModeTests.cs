@@ -85,6 +85,12 @@ namespace BoardRacing.PlayModeTests
             yield return null;
             Assert.That(UnityEngine.Object.FindObjectOfType<RacePrototype>(), Is.Not.Null);
             Assert.That(UnityEngine.Object.FindObjectOfType<ControlLab>(), Is.Null);
+            VisualLabShell visualLab =
+                UnityEngine.Object.FindObjectOfType<VisualLabShell>();
+            Assert.That(visualLab, Is.Not.Null,
+                "the development overlay attaches to the normal RacePrototype");
+            Assert.That(visualLab.Available, Is.False,
+                "editor runs require the explicit F10 workflow, keeping captures clean");
         }
 
         [UnityTest]
