@@ -450,11 +450,6 @@ namespace BoardRacing.Runtime
             duelEngagement.Clear();
             passClearance.Clear();
             bodyClearance.Clear();
-            // With lateral modeled (issue #147) the car already IS where it is:
-            // the pads, the taper, the pass clearance and the body floor all
-            // exist to police a fabricated offset, and pointed at a real one
-            // they would drag the drawn car away from the simulation.
-            if (simulation.Rules.Lateral.Enabled) { drawnPads.Clear(); duelBreathAmplitude = 0f; return; }
             duelBreathAmplitude = 0f;
             var racing = presentedRace.Racers.Where(r => OnRacingLine(r) && !r.Finished).ToArray();
             if (racing.Length < 2 || presentedRace.Phase != RacePhase.Racing)
@@ -595,13 +590,7 @@ namespace BoardRacing.Runtime
             // holds it: the car earned that position by paying for the longer
             // arc, so scaling it would be the lie this whole channel exists to
             // stop telling.
-            float lateralOffset = !OnRacingLine(racer) ? 0f
-                : simulation.Rules.Lateral.Enabled ? racer.LateralOffset
-                : racer.LateralOffset * PresentationLife.DrawnSplitScale(
-                    CornerCharacter.SplitScale(simulation.Track, DrawnDistance(racer)),
-                    passClearance.TryGetValue(racer.PlayerId, out float clearance) ? clearance : 0f,
-                    BreathFor(racer).FlareScale, EngagementFor(racer),
-                    bodyClearance.TryGetValue(racer.PlayerId, out float floor) ? floor : 0f);
+            float lateralOffset = OnRacingLine(racer) ? racer.LateralOffset : 0f;
             return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }
 

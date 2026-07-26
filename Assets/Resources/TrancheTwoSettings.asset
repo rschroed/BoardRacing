@@ -29,4 +29,3 @@ MonoBehaviour:
   pauseClearSeconds: 0.75
   slipstreamBonusRatio: 0.05
   slipstreamWindow: 150
-  modeledLateral: 1

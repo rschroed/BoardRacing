@@ -95,13 +95,22 @@ namespace BoardRacing.Tests
         [Test]
         public void CloseRacersReceiveStableOppositePassingOffsets()
         {
-            var simulation = StartedSimulation();
+            // Close cars take opposite sides because they DRIVE there now
+            // (issue #147), not because a presentation allocator hands out
+            // offsets. Same property, asked of the model: the rules that race
+            // with a modeled lateral position line the pair up on either side
+            // and hold them there while they run together.
+            var simulation = StartedSimulation(RaceRules.Defaults.WithLateral(LateralRules.Defaults));
             var p1 = Player(simulation, PlayerId.Player1);
             var p2 = Player(simulation, PlayerId.Player2);
-            Assert.That(p1.LateralOffset, Is.LessThan(0f));
-            Assert.That(p2.LateralOffset, Is.GreaterThan(0f));
+            Assert.That(p1.LateralOffset * p2.LateralOffset, Is.LessThan(0f), "opposite sides");
             Assert.That(p1.Place, Is.EqualTo(1));
             Assert.That(p2.Place, Is.EqualTo(2));
+
+            float firstSide = Math.Sign(p1.LateralOffset);
+            for (int i = 0; i < 120; i++) simulation.Step(1f / 60f, Commands(ThrottleStep.Drive, true));
+            Assert.That((float)Math.Sign(Player(simulation, PlayerId.Player1).LateralOffset),
+                Is.EqualTo(firstSide), "and stay on them");
         }
 
         [Test]

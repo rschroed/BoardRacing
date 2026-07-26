@@ -259,10 +259,13 @@ namespace BoardRacing.Domain
         }
     }
 
-    // Lateral position as a modeled quantity rather than a drawn decoration
-    // (issue #147). Off by default: every rule set that does not ask for it
-    // races exactly as before, on one line, with presentation inventing the
-    // separation as it always has.
+    // Lateral position as a modeled quantity (issue #147). The game always
+    // races with it — there is no setting, and the presentation-only formation
+    // it replaced has been deleted. It stays optional at the RULES level for
+    // the same reason ConditionRules and PitRules are: a unit test pinning pit
+    // pacing or slipstream geometry on a synthetic two-segment track wants one
+    // mechanic in isolation, and those tracks have no meaningful curvature for
+    // a racing line to mean anything on.
     //
     // The model is deliberately small. A car holds a signed offset from the
     // racing line, and that offset costs or saves real distance against the
@@ -397,6 +400,15 @@ namespace BoardRacing.Domain
         // pace: it reaches beyond the passing split so the reel-in starts
         // before the cars go two-wide.
         public const float DefaultSlipstreamWindow = 150f;
+        // The same rules, racing with a modeled lateral position. Tests that
+        // pin a mechanic in isolation take the defaults; tests about how cars
+        // sit on the road ask for this.
+        public RaceRules WithLateral(LateralRules lateral) => new RaceRules(
+            Laps, CountdownSeconds, MaxSpeed, Acceleration, Drag, Braking, CornerSpeedScrub,
+            CornerRecoverySeconds, RecoveryAccelerationScale, PassingDistance, PassingOffset,
+            RematchHoldSeconds, RequiredServiceCount, Conditions, Pit, PauseClearSeconds,
+            SlipstreamBonus, SlipstreamWindow, lateral);
+
         public static RaceRules Defaults => new RaceRules(5, 3f, Pace.BasePace, Pace.Acceleration,
             Pace.Drag, Pace.Braking, .55f, 1f, .35f, 180f, 16f, 1f,
             slipstreamBonus: Pace.SlipstreamBonus, slipstreamWindow: DefaultSlipstreamWindow);

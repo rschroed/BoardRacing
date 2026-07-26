@@ -183,8 +183,12 @@ namespace BoardRacing.Domain
             if (racer.PitPhase == PitPhase.Requested && rules.Pit.Enabled && WillDivertAtNextLine(racer))
             {
                 float toLine = ((int)(racer.Distance / track.Length) + 1) * track.Length - racer.Distance;
-                float allowed = (float)Math.Sqrt(
-                    rules.Pit.LaneSpeed * rules.Pit.LaneSpeed + 2f * rules.Drag * toLine);
+                // In the car's own path units, not centreline ones (issue
+                // #147): the distance it has left to shed speed over is the
+                // arc IT drives, and the inside line is shorter. Braking to a
+                // centreline figure arrived hot.
+                float allowed = (float)Math.Sqrt(rules.Pit.LaneSpeed * rules.Pit.LaneSpeed +
+                    2f * rules.Drag * toLine * LateralPathFactor(racer));
                 target = Math.Min(target, allowed);
             }
             target = Math.Min(target, followingCap);
@@ -345,7 +349,14 @@ namespace BoardRacing.Domain
                 if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
                 float gap = (stepStartDistances[i] - distance) % track.Length;
                 if (gap < 0f) gap += track.Length;
-                if (gap > 0f && gap <= rules.SlipstreamWindow) return rules.SlipstreamBonus;
+                if (gap <= 0f || gap > rules.SlipstreamWindow) continue;
+                // In the wake, not merely behind in distance (issue #147). A
+                // car runs in still air alongside a rival, however close: the
+                // tow needs the other body actually in front of this one, and
+                // with lateral modeled that is a question the rules can ask.
+                if (rules.Lateral.Enabled &&
+                    Math.Abs(other.Lateral - racer.Lateral) >= rules.Lateral.SameLineWidth) continue;
+                return rules.SlipstreamBonus;
             }
             return 0f;
         }
@@ -652,19 +663,10 @@ namespace BoardRacing.Domain
             var ordered = racers.OrderBy(x => x.Finished ? 0 : 1)
                 .ThenBy(x => x.Finished ? x.FinishTime : -x.Distance)
                 .ThenBy(x => Array.IndexOf(racers, x)).ToArray();
-            var candidates = racers.Select((racer, index) =>
-                    new RacingLineCandidate(racer.Id, index, racer.Distance))
-                .Where((candidate, index) => !racers[index].Finished &&
-                    (racers[index].PitPhase == PitPhase.OnTrack ||
-                     racers[index].PitPhase == PitPhase.Requested))
-                .ToArray();
-            // With lateral modeled (issue #147) the car IS somewhere: its own
-            // offset is the answer, and nothing needs allocating or staggering.
-            RacingLinePlacement[] placements = rules.Lateral.Enabled
-                ? racers.Select(x => new RacingLinePlacement(x.Id,
-                    0f, x.Finished ? 0f : x.Lateral)).ToArray()
-                : RacingLineAllocator.Allocate(candidates,
-                    track.Length, rules.PassingDistance, rules.PassingOffset);
+            // The car IS somewhere (issue #147): its own offset is the answer,
+            // and nothing needs allocating, staggering or padding.
+            RacingLinePlacement[] placements = racers.Select(x =>
+                new RacingLinePlacement(x.Id, 0f, x.Finished ? 0f : x.Lateral)).ToArray();
             var result = racers.Select(racer =>
             {
                 int place = Array.IndexOf(ordered, racer) + 1;
