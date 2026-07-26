@@ -675,13 +675,21 @@ namespace BoardRacing.Domain
                 var pit = new RacerPitSnapshot(racer.SelectedService, racer.PitPhase, racer.ServiceProgress,
                     racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount, phaseProgress);
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
-                    Math.Min(rules.Laps, (int)(racer.Distance / track.Length)), place, racer.Finished, racer.FinishTime,
+                    CompletedLaps(racer), place, racer.Finished, racer.FinishTime,
                     track.Sample(racer.Distance), racer.Finished ? 0f : racer.Lateral, racer.IncidentThisStep,
                     racer.Recovery, racer.Incidents, condition, pit);
             }).ToArray();
             float progress = rules.RematchHoldSeconds <= 0f ? 1f : Math.Min(1f, rematchHeld / rules.RematchHoldSeconds);
             return new RaceSnapshot(phase, countdown, elapsed, result, progress, awaitingRematchRelease);
         }
+
+        // Laps run, counted from this racer's own grid slot. Every racer covers
+        // Laps × Length from where it started, so a back-row car finishes at
+        // Laps × Length − GridRowSpacing — and counting from zero reported it
+        // one lap short at the flag, on every course, from the moment the real
+        // grid landed in #148.
+        private int CompletedLaps(RacerState racer) => Math.Min(rules.Laps,
+            (int)((racer.Distance - racer.GridStart) / track.Length));
 
         private static float MoveTowards(float current, float target, float maximumDelta)
         { return Math.Abs(target - current) <= maximumDelta ? target : current + Math.Sign(target - current) * maximumDelta; }
