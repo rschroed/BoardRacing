@@ -50,6 +50,12 @@ namespace BoardRacing.Runtime
         private RaceUiModel presentedUi;
 #if UNITY_EDITOR
         private int previewScenarioIndex = -1;
+
+        // Set by an editor automation driver before it enters play mode, for
+        // runs that need a race but cannot be batch mode. The capture harness
+        // disables domain reload, so a static set before EnterPlaymode survives
+        // into the play-mode session that reads it here.
+        internal static bool AutomationBypassesLobby;
 #endif
 
         // Legacy defaults remain the two-player preview colors; live races take
@@ -110,7 +116,12 @@ namespace BoardRacing.Runtime
 #if UNITY_EDITOR
             // Existing automated race probes intentionally bypass the interactive
             // lobby; lobby behavior has its own deterministic and PlayMode tests.
-            if (Application.isBatchMode)
+            // isBatchMode alone is not the right test: the capture harness must
+            // run a HEADED editor for a real Game view backbuffer, so gating on
+            // batch mode silently left it photographing the lobby instead of the
+            // scenarios (found by #153; the last good set predates the #139
+            // lobby). Automation declares itself instead of being inferred.
+            if (Application.isBatchMode || AutomationBypassesLobby)
             {
                 playerSession.AddPlayer().GetAwaiter().GetResult();
                 playerSession.AddPlayer().GetAwaiter().GetResult();
