@@ -6,15 +6,16 @@ Final fonts, art, effects, animation, audio, player setup, profiles, AI, tutoria
 
 ## Design direction and authority
 
-- Figma file: [Board Racing](https://www.figma.com/design/6lRFxoVugQBKedYIh8OiLl/Board-Racing) — this file supersedes the earlier Tranche 4 Wireframes file (`6UK6Kgvfamg4UU0UpkChlg`), which is retained only as history.
+- Active workspace for new visual design: [Board Racing in Paper](https://app.paper.design/file/01KYCXCG1HKJY7EDX7K7BS6PSY).
+- Historical Tranche 4 source: [approved Board Racing Figma file](https://www.figma.com/design/6lRFxoVugQBKedYIh8OiLl/Board-Racing). Its frame IDs remain below because they are the measurement provenance for the shipped wireframe geometry; it and the earlier Tranche 4 Wireframes file (`6UK6Kgvfamg4UU0UpkChlg`) are not active workspaces for new design.
 - Owner-approved named frames (recorded in issue #75, revised in issue #85 and in the issue #77 Round 1 review):
   - Throttle treatment — frame `17:14`: Ship tucked into the corner as the needle; arc and `BRAKE / DRIVE / BOOST` labels fan toward the track. Its separate large state word is superseded by frame `40:23`, where the lit sector's fill and accent label carry the throttle read.
-  - Condition dials — frame `35:2`: two fixed-size round dials (Tires, Fuel), fuller = worse; the same dial doubles as the parked service target. The frames still label the second dial `HEAT` — the owner renamed the mechanic to Fuel on 2026-07-19 (hardware review) and the Figma update is pending.
+  - Condition dials — frame `35:2`: two fixed-size round dials (Tires, Fuel), fuller = worse; the same dial doubles as the parked service target. The historical frames still label the second dial `HEAT`; the owner renamed the mechanic to Fuel on 2026-07-19, and new Paper work uses Fuel.
   - Full four-seat board — frame `40:23`: four corner seats around the central race area; Call Pit against each seat's short edge; two diagonal seats active in Tranche 4. **This frame is the measured source for seat-cluster geometry** — the right-side seat is component `44:124`, the left-side seat is component `44:229`.
 - Reference frame: 1920×1080.
 - Owner decision: use Corner Controllers as the primary layout and information-architecture direction, then refine it through full-resolution implementation captures.
 
-Round 1 of issue #77 established that "architectural reference" was too loose: a port that moved only the detection centers while keeping older chrome (square zone panels, caption bars, a per-seat text column) did not reflect the approved design. As of Round 2, seat-cluster positions, sizes, and label transforms in this contract are **measured from the `40:23` components** and the rendered treatment must match the frame's vocabulary: outline circles, rim dials, and a fan arc — no zone panels and no per-seat copy. Wireframe stroke construction (IMGUI scalloped arcs) may approximate Figma's smooth strokes; positions may not drift.
+Round 1 of issue #77 established that "architectural reference" was too loose: a port that moved only the detection centers while keeping older chrome (square zone panels, caption bars, a per-seat text column) did not reflect the approved design. As of Round 2, seat-cluster positions, sizes, and label transforms in this contract are **measured from the `40:23` components** and the rendered treatment must match the frame's vocabulary: outline circles, rim dials, and a fan arc — no zone panels and no per-seat copy. Wireframe stroke construction (IMGUI scalloped arcs) may approximate the historical frame's smooth strokes; positions may not drift.
 
 ## Current UI audit
 
@@ -51,7 +52,7 @@ Each active corner owns:
 - Fuel and tire condition as dial fill values.
 - The player's currently active Robot action regions.
 
-**Per-seat status and instruction text was removed by owner decision (issue #77 Round 2, 2026-07-18).** Frame `40:23` renders seats with no lap counter, no mandatory-stop line, no instruction sentence, and no separate state word; the seats show exactly what the frame shows. The dominant-instruction model (below) still governs *semantic priority* — which zone lights, emphasizes, or rings — and remains fully computed and tested in the UI model. If playtests (issue #79) show that lap/stop-required information is missed during play, its home gets designed in Figma first and then ported.
+**Per-seat status and instruction text was removed by owner decision (issue #77 Round 2, 2026-07-18).** Frame `40:23` renders seats with no lap counter, no mandatory-stop line, no instruction sentence, and no separate state word; the seats show exactly what the frame shows. The dominant-instruction model (below) still governs *semantic priority* — which zone lights, emphasizes, or rings — and remains fully computed and tested in the UI model. If playtests (issue #79) show that lap/stop-required information is missed during play, its home gets designed in Paper first and then ported.
 
 Treatment decisions fixed by owner approval (issue #85 and the issue #77 Round 1 review):
 
@@ -157,10 +158,10 @@ Detection centers are the **measured dial and circle centers from frame `40:23`,
 | --- | --- | --- | --- |
 | Orange Call Pit | `(1832, 398)` | circle r 59 | `x 1782, y 632, w 100, h 100` |
 | Orange Tires | `(1692, 321)` | dial r 46 | `x 1642, y 709, w 100, h 100` |
-| Orange Fuel (dial labeled HEAT in `40:23` — Figma rename pending) | `(1590, 212)` | dial r 46 | `x 1540, y 818, w 100, h 100` |
+| Orange Fuel (historical `40:23` frame says HEAT; new Paper work uses Fuel) | `(1590, 212)` | dial r 46 | `x 1540, y 818, w 100, h 100` |
 | Purple Call Pit | `(88, 682)` | circle r 59 | `x 38, y 348, w 100, h 100` |
 | Purple Tires | `(228, 759)` | dial r 46 | `x 178, y 271, w 100, h 100` |
-| Purple Fuel (dial labeled HEAT in `40:23` — Figma rename pending) | `(330, 868)` | dial r 46 | `x 280, y 162, w 100, h 100` |
+| Purple Fuel (historical `40:23` frame says HEAT; new Paper work uses Fuel) | `(330, 868)` | dial r 46 | `x 280, y 162, w 100, h 100` |
 
 Purple targets are the exact 180° mirror of Orange (`x → 1920 − x`, `y → 1080 − y`).
 
