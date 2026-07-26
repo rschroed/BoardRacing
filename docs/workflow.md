@@ -96,13 +96,16 @@ Completed issues close through their merged pull requests. If an issue is declin
 
 Layout and interaction-design work uses a separate approval gate before production implementation:
 
-1. Ask the owner for the target Figma project URL when none has been supplied. Do not place a new file in an inferred team, organization, project, or drafts folder.
+1. Use the shared [Board Racing Paper file](https://app.paper.design/file/01KYCXCG1HKJY7EDX7K7BS6PSY). If Paper Desktop is not connected or the intended file is unavailable, ask the owner to open it or provide the target Paper URL before creating a replacement.
 2. Create competing low-fidelity directions and present them for review with their meaningful tradeoffs and unresolved questions.
-3. Iterate in Figma from owner feedback. Agent audits may check consistency and mechanics but do not constitute design approval.
-4. Record explicit owner approval against named frames or a named direction.
+3. Iterate in Paper from owner feedback. Agent audits may check consistency and mechanics but do not constitute design approval.
+4. Record explicit owner approval against named artboards or a named direction.
 5. Only then mark dependent implementation issues ready and begin production UI changes.
 
-Pages or frames named draft, exploration, candidate, or review are not approved implementation sources.
+Paper artboards named draft, exploration, candidate, or review are not approved
+implementation sources. Historical Figma links and frame IDs remain valid
+provenance for already-approved Tranche 4 geometry, but new visual work and
+approval happen in Paper.
 
 ## Labels and triage
 

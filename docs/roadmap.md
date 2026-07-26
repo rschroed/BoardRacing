@@ -86,7 +86,8 @@ Player-facing solo play and AI opponents are deferred to Tranche 5 so this gate 
 **Deliverables**
 
 - A complete inventory of grid, countdown, racing, warning, pit, split-finish, results, and rematch states.
-- Approved low-fidelity Figma wireframes covering the full state matrix.
+- Approved low-fidelity wireframes covering the full state matrix (historically
+  approved in Figma; new visual design work uses Paper).
 - A user-facing hierarchy with one dominant next action per player.
 - Physical action affordances aligned exactly to the established Call Pit, Tires, and Cooling hit regions.
 - Results and rematch treatment that works from opposite table sides.

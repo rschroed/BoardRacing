@@ -245,11 +245,12 @@ GitHub issue creation and implementation are separate user decisions in this rep
 
 Visual design also has a mandatory review loop before implementation:
 
-- If a Figma file or project is required and the user has not supplied the target Figma project URL, ask for it before creating a file. Do not choose an organization, team, drafts location, or project from the authenticated account on the user's behalf.
+- Use the shared [Board Racing Paper file](https://app.paper.design/file/01KYCXCG1HKJY7EDX7K7BS6PSY) for new visual design work. If Paper Desktop is not connected or the intended file is unavailable, ask the owner to open it or provide the target Paper URL before creating a replacement file.
 - Start with competing low-fidelity layout directions and present links or screenshots for review. Explain the consequential differences and open questions without selecting a direction as “good” or “approved” on the user's behalf.
-- Incorporate the user's feedback in Figma and repeat the review loop until the user explicitly approves named frames or a named direction.
-- Only approved Figma frames are a source of truth for production UI work. Automated audits, design heuristics, and the agent's own visual judgment can identify problems, but cannot substitute for owner approval.
-- Do not implement production layout code while the relevant Figma page is labeled draft, exploration, candidate, or review.
+- Incorporate the user's feedback in Paper and repeat the review loop until the user explicitly approves named artboards or a named direction.
+- Only approved Paper artboards are a source of truth for new production visual work. Automated audits, design heuristics, and the agent's own visual judgment can identify problems, but cannot substitute for owner approval.
+- Do not implement production visual or layout code while the relevant Paper artboard is labeled draft, exploration, candidate, or review.
+- Historical Figma links and frame IDs may remain in decision records when they are the provenance for already-shipped Tranche 4 measurements. They are reference evidence, not the workspace for new design.
 
 ## Additional references
 
