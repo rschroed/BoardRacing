@@ -579,6 +579,7 @@ namespace BoardRacing.Runtime
         private readonly List<Mesh> meshes = new List<Mesh>();
         private readonly Dictionary<PlayerId, Transform> cars =
             new Dictionary<PlayerId, Transform>();
+        private bool carsVisible = true;
 
         public static RaceSurfaceRenderer Create(SurfaceMeshData data)
         {
@@ -607,8 +608,19 @@ namespace BoardRacing.Runtime
             return surface;
         }
 
-        public void AttachCar(PlayerId playerId, SurfaceMeshData body) =>
-            cars[playerId] = CreateMeshObject("Race Car " + playerId, body);
+        public void AttachCar(PlayerId playerId, SurfaceMeshData body)
+        {
+            Transform car = CreateMeshObject("Race Car " + playerId, body);
+            car.gameObject.SetActive(carsVisible);
+            cars[playerId] = car;
+        }
+
+        public void SetCarsVisible(bool visible)
+        {
+            carsVisible = visible;
+            foreach (Transform car in cars.Values)
+                if (car != null) car.gameObject.SetActive(visible);
+        }
 
         // Reference-pixel position (Y down), straight onto the transform — world
         // space is reference space by the camera's projection. Rotation turns

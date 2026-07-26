@@ -37,6 +37,10 @@ namespace BoardRacing.Runtime
         // canvas. ControlLab is the sole IMGUI diagnostic exemption.
         private RaceSurfaceRenderer surface;
         private RaceHud hud;
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+        private VisualLabShell visualLab;
+        private bool visualLabConsumedPress;
+#endif
         // Everything the current track IS — racing line, pit complex, race
         // length — comes from one authored artifact (issue #107 phase 1).
         private CourseDefinition course;
@@ -133,6 +137,17 @@ namespace BoardRacing.Runtime
             }
 #endif
 #endif
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            // Editor capture automation starts with the lab unavailable, so its
+            // established comparison images stay clean. F10 explicitly exposes
+            // it. Board development players expose the launcher immediately.
+            bool startAvailable = true;
+#if UNITY_EDITOR
+            startAvailable = false;
+#endif
+            visualLab = VisualLabShell.Create(transform,
+                SetVisualLabCarsVisible, SetVisualLabHudVisible, startAvailable);
+#endif
         }
 
         // Everything owned by the course on the table: the simulation and the
@@ -153,6 +168,9 @@ namespace BoardRacing.Runtime
             foreach (PlayerSeat seat in raceSeats)
                 surface.AttachCar(seat.PlayerId,
                     RaceSurfaceGeometry.BuildCarBody(seat.PlayerId, PlayerAccent(seat.PlayerId)));
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            visualLab?.ReapplyStageComposition();
+#endif
         }
 
         private void BuildLobbySurface()
@@ -160,6 +178,9 @@ namespace BoardRacing.Runtime
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
                 course.Track, PitLayout(), Array.Empty<Color>()));
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            visualLab?.ReapplyStageComposition();
+#endif
         }
 
         private void CreateCrewAdapter(PlayerId id)
@@ -217,12 +238,22 @@ namespace BoardRacing.Runtime
 
         private void Update()
         {
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            visualLab?.PollEditorShortcut();
+            visualLabConsumedPress = visualLab != null && visualLab.PollInput();
+#endif
             if (lobby != null)
             {
                 IReadOnlyList<RawPieceContact> contacts = activeProvider == boardProvider
                     ? ((BoardContactInputProvider)boardProvider).ReadRawContacts()
                     : Array.Empty<RawPieceContact>();
-                lobby.Update(contacts);
+                lobby.Update(contacts,
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+                    visualLabConsumedPress
+#else
+                    false
+#endif
+                );
                 if (activeProvider == boardProvider)
                     lobby.SetReadyPlayers(LobbyPlayersOnDrive(contacts));
                 if (lobby.ConsumeStartRequest() && lobby.AllPlayersReady)
@@ -292,6 +323,9 @@ namespace BoardRacing.Runtime
             hud = RaceHud.CreateFour(FourSeatRaceLayout(),
                 PlayerAccent(PlayerId.Player1), PlayerAccent(PlayerId.Player2),
                 PlayerAccent(PlayerId.Player3), PlayerAccent(PlayerId.Player4));
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            visualLab?.ReapplyStageComposition();
+#endif
             RefreshPresentation();
             UpdateWorldCars();
         }
@@ -488,6 +522,9 @@ namespace BoardRacing.Runtime
 
         private void PollRaceNavigation()
         {
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            if (visualLabConsumedPress) return;
+#endif
             // On the Board every contact — fingers included — arrives through the
             // SDK's native contact pipeline, not Unity's Touchscreen, so a tap is a
             // Finger contact in its Began phase (same stream the pieces ride as
@@ -558,7 +595,22 @@ namespace BoardRacing.Runtime
                 RaceSurfaceGeometry.InactivePitBoxAccent,
                 RaceSurfaceGeometry.InactivePitBoxAccent,
                 RaceSurfaceGeometry.InactivePitBoxAccent);
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            visualLab?.ReapplyStageComposition();
+#endif
         }
+
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+        private void SetVisualLabCarsVisible(bool visible)
+        {
+            if (surface != null) surface.SetCarsVisible(visible);
+        }
+
+        private void SetVisualLabHudVisible(bool visible)
+        {
+            if (hud != null) hud.gameObject.SetActive(visible);
+        }
+#endif
 
         private void CreateLobby(IEnumerable<PlayerSeat> restoredSeats = null)
         {

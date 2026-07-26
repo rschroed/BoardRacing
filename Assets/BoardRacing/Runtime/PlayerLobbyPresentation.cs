@@ -134,7 +134,8 @@ namespace BoardRacing.Runtime
             foreach (PlayerId player in players) readyPlayers.Add(player);
         }
 
-        public void Update(IReadOnlyList<RawPieceContact> contacts)
+        public void Update(IReadOnlyList<RawPieceContact> contacts,
+            bool suppressPointerPress = false)
         {
             if (!fallback) Coordinator.Observe(contacts);
             if (fallback)
@@ -142,7 +143,8 @@ namespace BoardRacing.Runtime
                 PollFallbackClaims();
                 PollFallbackReadiness();
             }
-            if (!TryPressed(out Vector2 point) || session.SelectorInFlight) return;
+            if (suppressPointerPress ||
+                !TryPressed(out Vector2 point) || session.SelectorInFlight) return;
 
             foreach (PlayerId id in SeatOrder)
             {
