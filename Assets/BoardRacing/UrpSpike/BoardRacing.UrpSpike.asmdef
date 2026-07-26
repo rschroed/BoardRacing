@@ -1,0 +1,9 @@
+{
+  "name": "BoardRacing.UrpSpike",
+  "rootNamespace": "BoardRacing.UrpSpike",
+  "references": [
+    "Unity.RenderPipelines.Universal.Runtime",
+    "Unity.RenderPipelines.Core.Runtime"
+  ],
+  "autoReferenced": false
+}

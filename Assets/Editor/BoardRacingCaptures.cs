@@ -12,9 +12,19 @@ using UnityEngine;
 // The method exits the editor itself when the last capture is on disk.
 public static class BoardRacingCaptures
 {
-    private const string OutputDirectory = "docs/captures/junctions-round1";
-    private const string Prefix = "junctions-round1";
+    private const string DefaultOutputDirectory = "docs/captures/junctions-round1";
+    private const string DefaultPrefix = "junctions-round1";
     private const int SettleTicksPerScenario = 20;
+
+    // A capture set is only evidence when it can be compared against another
+    // one, so the destination is overridable per run (issue #153 diffs a
+    // baseline set against a post-migration set of the same scenarios):
+    //   Unity -projectPath . -executeMethod BoardRacingCaptures.Run \
+    //     -captureSet urp-baseline
+    // The set name is both the folder under docs/captures and the file prefix,
+    // so a stray capture file always names the run that produced it.
+    private static string OutputDirectory = DefaultOutputDirectory;
+    private static string Prefix = DefaultPrefix;
 
     private static string[] scenarios;
     private static FieldInfo scenarioField;
@@ -27,6 +37,8 @@ public static class BoardRacingCaptures
 
     public static void Run()
     {
+        ApplyCaptureSetArgument();
+        PinDeviceQualityLevel();
         Directory.CreateDirectory(OutputDirectory);
         Type scenarioType = typeof(RacePrototype).Assembly
             .GetType("BoardRacing.Runtime.RaceUiPreviewScenario");
@@ -41,6 +53,9 @@ public static class BoardRacingCaptures
         EditorSettings.enterPlayModeOptionsEnabled = true;
         EditorSettings.enterPlayModeOptions =
             EnterPlayModeOptions.DisableDomainReload | EnterPlayModeOptions.DisableSceneReload;
+        // This run is headed, so the prototype's batch-mode lobby bypass will not
+        // fire on its own and every scenario would photograph the lobby.
+        RacePrototype.AutomationBypassesLobby = true;
         EditorApplication.update += Step;
         EditorApplication.EnterPlaymode();
     }
@@ -84,7 +99,49 @@ public static class BoardRacingCaptures
         EditorApplication.update -= Step;
         EditorSettings.enterPlayModeOptionsEnabled = prevOptionsEnabled;
         EditorSettings.enterPlayModeOptions = prevOptions;
+        RacePrototype.AutomationBypassesLobby = false;
         EditorApplication.Exit(0);
+    }
+
+    // The editor opens on the Standalone default quality tier (Ultra, 2x MSAA)
+    // while ProjectSettings pins Android to Medium, which has MSAA off. Captures
+    // taken at the editor's tier therefore showed anti-aliased edges the Board
+    // has never drawn — a quiet misrepresentation, and one that shows up as a
+    // whole-image diff the moment anything else about rendering changes (#153).
+    // Pin the tier the device actually runs, and say so in the log.
+    private const string DeviceQualityLevelName = "Medium";
+
+    private static void PinDeviceQualityLevel()
+    {
+        string[] names = QualitySettings.names;
+        int level = Array.IndexOf(names, DeviceQualityLevelName);
+        if (level < 0)
+        {
+            Debug.LogWarning($"[BoardRacingCaptures] no '{DeviceQualityLevelName}' quality level; " +
+                             $"capturing at '{names[QualitySettings.GetQualityLevel()]}' instead. " +
+                             "Captures may not represent the device.");
+            return;
+        }
+        QualitySettings.SetQualityLevel(level, true);
+        Debug.Log($"[BoardRacingCaptures] quality level '{names[level]}' " +
+                  $"(antiAliasing={QualitySettings.antiAliasing})");
+    }
+
+    // Unity forwards unrecognized command-line arguments through untouched, so
+    // -captureSet <name> reaches the editor verbatim. Absent, the run keeps the
+    // committed default set and behaves exactly as it did before.
+    private static void ApplyCaptureSetArgument()
+    {
+        string[] args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] != "-captureSet") continue;
+            string set = args[i + 1].Trim();
+            if (set.Length == 0) break;
+            OutputDirectory = "docs/captures/" + set;
+            Prefix = set;
+            return;
+        }
     }
 
     // The Game view renders (and ScreenCapture captures) at its selected size, so the
