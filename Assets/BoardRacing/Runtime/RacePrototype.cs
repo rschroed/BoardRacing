@@ -95,6 +95,10 @@ namespace BoardRacing.Runtime
             inputSettings = Resources.Load<TrancheOneSettings>("TrancheOneSettings") ?? TrancheOneSettings.Defaults();
             raceSettings = Resources.Load<TrancheTwoSettings>("TrancheTwoSettings") ?? TrancheTwoSettings.Defaults();
             strategySettings = Resources.Load<TrancheThreeSettings>("TrancheThreeSettings") ?? TrancheThreeSettings.Defaults();
+            // The committed course treatment (#161). Absent theme asset
+            // means the flat pre-#161 default, which is also the
+            // deterministic fallback the gallery captures compare against.
+            surfaceStyle = CourseSurfaceTheme.LoadStyleOrDefault();
             boardProvider = new BoardContactInputProvider(inputSettings.ToThrottleStops(),
                 inputSettings.throttleHysteresisDegrees * Mathf.Deg2Rad,
                 inputSettings.playerRegionBoundaryY);
@@ -172,7 +176,7 @@ namespace BoardRacing.Runtime
             previousSnapshot = simulation.Snapshot;
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(
-                BuildSurfaceData(simulation.Track, true), surfaceStyle.GroundColor);
+                BuildSurfaceData(simulation.Track, true), surfaceStyle);
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             surface.SetWireframeVisible(visualLabWireframeVisible);
 #endif
@@ -188,7 +192,7 @@ namespace BoardRacing.Runtime
         {
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(
-                BuildSurfaceData(course.Track, false), surfaceStyle.GroundColor);
+                BuildSurfaceData(course.Track, false), surfaceStyle);
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             surface.SetWireframeVisible(visualLabWireframeVisible);
             visualLab?.ReapplyStageComposition();
@@ -630,7 +634,7 @@ namespace BoardRacing.Runtime
             bool racing = lobby == null && simulation != null;
             TrackDefinition track = racing ? simulation.Track : course.Track;
             surface.ReplaceSurface(
-                BuildSurfaceData(track, racing), surfaceStyle.GroundColor);
+                BuildSurfaceData(track, racing), surfaceStyle);
         }
 
         private void SetVisualLabWireframeVisible(bool visible)

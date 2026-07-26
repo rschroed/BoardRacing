@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5e82755b25574eb7bb7d3951931f457a, type: 3}
+  m_Name: CourseSurfaceTheme
+  m_EditorClassIdentifier:
+  surfaceMaterial: {fileID: 2100000, guid: 0248eaa384ad4acda356a69aba93c0d4, type: 2}
+  groundColor: {r: 0.84705883, g: 0.8235294, b: 0.76862746, a: 1}
+  groundDetail: {fileID: 2800000, guid: 3d5fa66695a14c2fb305fedf9e04ac35, type: 3}
+  groundDetailTile: 130
+  straightRoadColor: {r: 0.2901961, g: 0.29803923, b: 0.29411766, a: 1}
+  cornerRoadColor: {r: 0.36862746, g: 0.3764706, b: 0.36862746, a: 1}
+  roadDetail: {fileID: 2800000, guid: d7c248b28f0b498c9b6b6ee5056be2fa, type: 3}
+  roadDetailTile: 88
+  shoulderColor: {r: 0.8117647, g: 0.77254903, b: 0.69803923, a: 1}
+  shoulderOpacity: 1
+  shoulderSolidWidth: 13
+  shoulderFeatherWidth: 18
+  shoulderDetail: {fileID: 2800000, guid: 2b610b27574b412ea7659722d52ca266, type: 3}
+  shoulderDetailTile: 110
+  pitSurfaceColor: {r: 0.22745098, g: 0.23529412, b: 0.23137255, a: 1}
+  pitStripeColor: {r: 0.62, g: 0.68, b: 0.74, a: 0.55}
+  inactivePitBoxAccent: {r: 0.48, g: 0.52, b: 0.58, a: 1}
+  stripeColor: {r: 0.9098039, g: 0.89411765, b: 0.85490197, a: 0.5}
+  crossingShadowColor: {r: 0, g: 0, b: 0, a: 0.35}
+  detailStrength: 1
