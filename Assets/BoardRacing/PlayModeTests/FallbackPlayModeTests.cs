@@ -91,6 +91,50 @@ namespace BoardRacing.PlayModeTests
                 "the development overlay attaches to the normal RacePrototype");
             Assert.That(visualLab.Available, Is.False,
                 "editor runs require the explicit F10 workflow, keeping captures clean");
+            Assert.That(visualLab.RegisteredPanelCount, Is.EqualTo(1));
+            Assert.That(visualLab.ActivePanelId, Is.EqualTo("course-surface"));
+        }
+
+        [UnityTest]
+        public IEnumerator LiveSurfaceRebuildPreservesSimulationAndCarObjects()
+        {
+            yield return null;
+            var race = Object.FindObjectOfType<RacePrototype>();
+            var type = typeof(RacePrototype);
+            const System.Reflection.BindingFlags fields =
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic;
+            var simulationField = type.GetField("simulation", fields);
+            var surfaceField = type.GetField("surface", fields);
+            var applyStyle = type.GetMethod("ApplyVisualLabSurfaceStyle", fields);
+            Assert.That(simulationField, Is.Not.Null);
+            Assert.That(surfaceField, Is.Not.Null);
+            Assert.That(applyStyle, Is.Not.Null);
+            object simulation = simulationField.GetValue(race);
+            var surface = (RaceSurfaceRenderer)surfaceField.GetValue(race);
+            Transform car = surface.transform.Find("Race Car Player1");
+            Vector3 position = car.localPosition;
+            Quaternion rotation = car.localRotation;
+            Vector3 scale = car.localScale;
+            RaceSnapshot snapshot = race.GetRaceSnapshot();
+            RaceSurfaceStyle style = RaceSurfaceStyle.Default;
+            style.ShoulderOpacity = .7f;
+            style.ShoulderSolidWidth = 12f;
+            style.ShoulderFeatherWidth = 16f;
+
+            applyStyle.Invoke(race, new object[] { style });
+
+            Assert.That(simulationField.GetValue(race), Is.SameAs(simulation));
+            Assert.That(surfaceField.GetValue(race), Is.SameAs(surface));
+            Assert.That(surface.transform.Find("Race Car Player1"), Is.SameAs(car));
+            Assert.That(car.localPosition, Is.EqualTo(position));
+            Assert.That(car.localRotation, Is.EqualTo(rotation));
+            Assert.That(car.localScale, Is.EqualTo(scale));
+            Assert.That(race.GetRaceSnapshot().Phase, Is.EqualTo(snapshot.Phase));
+            Assert.That(race.GetRaceSnapshot().ElapsedSeconds,
+                Is.EqualTo(snapshot.ElapsedSeconds));
+
+            applyStyle.Invoke(race, new object[] { RaceSurfaceStyle.Default });
         }
 
         [UnityTest]
