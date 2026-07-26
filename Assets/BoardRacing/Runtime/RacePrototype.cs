@@ -36,6 +36,7 @@ namespace BoardRacing.Runtime
         // clusters and the remaining player-facing overlays are one uGUI
         // canvas. ControlLab is the sole IMGUI diagnostic exemption.
         private RaceSurfaceRenderer surface;
+        private RaceSurfaceStyle surfaceStyle = RaceSurfaceStyle.Default;
         private RaceHud hud;
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
         private VisualLabShell visualLab;
@@ -147,6 +148,12 @@ namespace BoardRacing.Runtime
 #endif
             visualLab = VisualLabShell.Create(transform,
                 SetVisualLabCarsVisible, SetVisualLabHudVisible, startAvailable);
+            visualLab.Register(new CourseSurfaceComposerPanel(
+                () => course.Name,
+                () => lobby != null,
+                CycleSetupCourse,
+                surfaceStyle,
+                ApplyVisualLabSurfaceStyle));
 #endif
         }
 
@@ -162,9 +169,8 @@ namespace BoardRacing.Runtime
                 raceSeats.Select(x => x.PlayerId).ToArray());
             previousSnapshot = simulation.Snapshot;
             if (surface != null) Destroy(surface.gameObject);
-            surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
-                simulation.Track, PitLayout(), raceSeats.ToDictionary(
-                    x => x.PlayerId, x => PlayerAccent(x.PlayerId))));
+            surface = RaceSurfaceRenderer.Create(
+                BuildSurfaceData(simulation.Track, true), surfaceStyle.GroundColor);
             foreach (PlayerSeat seat in raceSeats)
                 surface.AttachCar(seat.PlayerId,
                     RaceSurfaceGeometry.BuildCarBody(seat.PlayerId, PlayerAccent(seat.PlayerId)));
@@ -176,8 +182,8 @@ namespace BoardRacing.Runtime
         private void BuildLobbySurface()
         {
             if (surface != null) Destroy(surface.gameObject);
-            surface = RaceSurfaceRenderer.Create(RaceSurfaceGeometry.Build(
-                course.Track, PitLayout(), Array.Empty<Color>()));
+            surface = RaceSurfaceRenderer.Create(
+                BuildSurfaceData(course.Track, false), surfaceStyle.GroundColor);
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             visualLab?.ReapplyStageComposition();
 #endif
@@ -610,7 +616,26 @@ namespace BoardRacing.Runtime
         {
             if (hud != null) hud.gameObject.SetActive(visible);
         }
+
+        private void ApplyVisualLabSurfaceStyle(RaceSurfaceStyle style)
+        {
+            surfaceStyle = style;
+            if (surface == null) return;
+            bool racing = lobby == null && simulation != null;
+            TrackDefinition track = racing ? simulation.Track : course.Track;
+            surface.ReplaceSurface(
+                BuildSurfaceData(track, racing), surfaceStyle.GroundColor);
+        }
 #endif
+
+        private SurfaceMeshData BuildSurfaceData(TrackDefinition track, bool includeRaceAccents)
+        {
+            IReadOnlyDictionary<PlayerId, Color> accents = includeRaceAccents
+                ? raceSeats.ToDictionary(x => x.PlayerId, x => PlayerAccent(x.PlayerId))
+                : new Dictionary<PlayerId, Color>();
+            return RaceSurfaceGeometry.Build(
+                track, PitLayout(), accents, surfaceStyle);
+        }
 
         private void CreateLobby(IEnumerable<PlayerSeat> restoredSeats = null)
         {

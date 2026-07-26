@@ -102,6 +102,61 @@ namespace BoardRacing.Runtime
         public bool Corner { get; }
     }
 
+    internal enum RaceSurfaceDebugView
+    {
+        Composed,
+        ShoulderOnly,
+        RoadBoundary,
+    }
+
+    /// <summary>
+    /// Rendering-only course treatment. CourseDefinition remains the single
+    /// source of truth for racing line, pits, laps, and simulation behavior;
+    /// this value only changes how RaceSurfaceGeometry paints that definition.
+    /// </summary>
+    [Serializable]
+    internal struct RaceSurfaceStyle
+    {
+        public Color GroundColor;
+        public Color StraightRoadColor;
+        public Color CornerRoadColor;
+        public Color StripeColor;
+        public Color PitSurfaceColor;
+        public Color PitStripeColor;
+        public Color InactivePitBoxAccent;
+        public Color CrossingShadowColor;
+        public Color ShoulderColor;
+        [Range(0f, 1f)] public float ShoulderOpacity;
+        [Min(0f)] public float ShoulderSolidWidth;
+        [Min(0f)] public float ShoulderFeatherWidth;
+        public Color RoadBoundaryColor;
+        public bool StripeVisible;
+        public bool PitSurfaceVisible;
+        public RaceSurfaceDebugView DebugView;
+
+        public static RaceSurfaceStyle Default => new RaceSurfaceStyle
+        {
+            GroundColor = RaceSurfaceGeometry.BackgroundColor,
+            StraightRoadColor = RaceSurfaceGeometry.StraightColor,
+            CornerRoadColor = RaceSurfaceGeometry.CornerColor,
+            StripeColor = RaceSurfaceGeometry.StripeColor,
+            PitSurfaceColor = RaceSurfaceGeometry.PitLaneColor,
+            PitStripeColor = RaceSurfaceGeometry.PitStripeColor,
+            InactivePitBoxAccent = RaceSurfaceGeometry.InactivePitBoxAccent,
+            CrossingShadowColor = RaceSurfaceGeometry.CrossingShadowColor,
+            ShoulderColor = new Color(.28f, .24f, .18f, 1f),
+            ShoulderOpacity = 0f,
+            // Latent useful geometry: the committed look has no shoulder
+            // contribution, but one opacity tap produces a reviewable result.
+            ShoulderSolidWidth = 12f,
+            ShoulderFeatherWidth = 24f,
+            RoadBoundaryColor = new Color(.95f, .2f, .75f, 1f),
+            StripeVisible = true,
+            PitSurfaceVisible = true,
+            DebugView = RaceSurfaceDebugView.Composed,
+        };
+    }
+
     internal static class RaceSurfaceGeometry
     {
         public const float TrackWidth = 64f;
@@ -133,24 +188,47 @@ namespace BoardRacing.Runtime
 
         public static SurfaceMeshData Build(TrackDefinition track,
             PitLanePresentationLayout pitLayout, Color playerOneAccent, Color playerTwoAccent)
-            => Build(track, pitLayout, new[] { playerOneAccent, playerTwoAccent });
+            => Build(track, pitLayout, new[] { playerOneAccent, playerTwoAccent },
+                RaceSurfaceStyle.Default);
 
         public static SurfaceMeshData Build(TrackDefinition track,
             PitLanePresentationLayout pitLayout, IReadOnlyList<Color> playerAccents)
+            => Build(track, pitLayout, playerAccents, RaceSurfaceStyle.Default);
+
+        public static SurfaceMeshData Build(TrackDefinition track,
+            PitLanePresentationLayout pitLayout, IReadOnlyList<Color> playerAccents,
+            RaceSurfaceStyle style)
         {
             if (playerAccents == null) throw new ArgumentNullException(nameof(playerAccents));
             return Build(track, pitLayout, playerAccents
                 .Select((accent, index) =>
                     new KeyValuePair<PlayerId, Color>((PlayerId)(index + 1), accent))
-                .ToDictionary(x => x.Key, x => x.Value));
+                .ToDictionary(x => x.Key, x => x.Value), style);
         }
 
         public static SurfaceMeshData Build(TrackDefinition track,
             PitLanePresentationLayout pitLayout,
             IReadOnlyDictionary<PlayerId, Color> playerAccents)
+            => Build(track, pitLayout, playerAccents, RaceSurfaceStyle.Default);
+
+        public static SurfaceMeshData Build(TrackDefinition track,
+            PitLanePresentationLayout pitLayout,
+            IReadOnlyDictionary<PlayerId, Color> playerAccents,
+            RaceSurfaceStyle style)
         {
             if (playerAccents == null) throw new ArgumentNullException(nameof(playerAccents));
             var mesh = new SurfaceMeshData();
+            List<CenterlineSample> centerline = SmoothCenterline(track, SamplesPerChord);
+            AppendShoulder(mesh, centerline, style);
+            if (style.DebugView == RaceSurfaceDebugView.ShoulderOnly)
+            {
+                AppendClosedRibbon(mesh, centerline, TrackWidth + 4f,
+                    style.RoadBoundaryColor, style.RoadBoundaryColor);
+                AppendClosedRibbon(mesh, centerline, TrackWidth,
+                    Opaque(style.GroundColor), Opaque(style.GroundColor));
+                return mesh;
+            }
+
             // The pit lane draws first, under the track fill, as one knot-shared
             // chain: pit line ~entry spline~> entry -> box row -> ~exit spline~>
             // rejoin. Where a leg meets the track, AppendJunctionRibbon clamps
@@ -158,22 +236,33 @@ namespace BoardRacing.Runtime
             // running along the edge — a slip-road gore whose seam IS the edge
             // (issue #107 phase 2; the round-2.2 full ribbon under the fill
             // crossed at ~40° and read as the lane vanishing under the track).
-            List<Vector2> entry = EntryLanePoints(pitLayout);
-            var serviceRow = new List<Vector2>(pitLayout.Boxes.Count);
-            foreach (Vec2 box in pitLayout.Boxes) serviceRow.Add(ToVector(box));
-            List<Vector2> merge = MergeLanePoints(pitLayout);
-            foreach (float width in new[] { PitLaneWidth, PitStripeWidth })
+            if (style.PitSurfaceVisible)
             {
-                Color color = width == PitLaneWidth ? PitLaneColor : PitStripeColor;
-                AppendJunctionRibbon(mesh, entry, width, color, track);
-                AppendOpenRibbon(mesh, serviceRow, width, color);
-                AppendJunctionRibbon(mesh, merge, width, color, track);
+                List<Vector2> entry = EntryLanePoints(pitLayout);
+                var serviceRow = new List<Vector2>(pitLayout.Boxes.Count);
+                foreach (Vec2 box in pitLayout.Boxes) serviceRow.Add(ToVector(box));
+                List<Vector2> merge = MergeLanePoints(pitLayout);
+                AppendJunctionRibbon(mesh, entry, PitLaneWidth, style.PitSurfaceColor, track);
+                AppendOpenRibbon(mesh, serviceRow, PitLaneWidth, style.PitSurfaceColor);
+                AppendJunctionRibbon(mesh, merge, PitLaneWidth, style.PitSurfaceColor, track);
+                if (style.StripeVisible)
+                {
+                    AppendJunctionRibbon(mesh, entry, PitStripeWidth, style.PitStripeColor, track);
+                    AppendOpenRibbon(mesh, serviceRow, PitStripeWidth, style.PitStripeColor);
+                    AppendJunctionRibbon(mesh, merge, PitStripeWidth, style.PitStripeColor, track);
+                }
             }
-            List<CenterlineSample> centerline = SmoothCenterline(track, SamplesPerChord);
-            AppendClosedRibbon(mesh, centerline, TrackWidth, CornerColor, StraightColor);
-            AppendClosedRibbon(mesh, centerline, TrackStripeWidth, StripeColor, StripeColor);
+
+            if (style.DebugView == RaceSurfaceDebugView.RoadBoundary)
+                AppendClosedRibbon(mesh, centerline, TrackWidth + 4f,
+                    style.RoadBoundaryColor, style.RoadBoundaryColor);
+            AppendClosedRibbon(mesh, centerline, TrackWidth,
+                style.CornerRoadColor, style.StraightRoadColor);
+            if (style.StripeVisible)
+                AppendClosedRibbon(mesh, centerline, TrackStripeWidth,
+                    style.StripeColor, style.StripeColor);
             foreach (TrackCrossing crossing in FindCrossings(track))
-                AppendCrossingDeck(mesh, crossing);
+                AppendCrossingDeck(mesh, crossing, style);
             // The start line and box quads follow the local travel direction —
             // horizontal pit straights were a Wedge special case; the phase-4b
             // courses pit on diagonals.
@@ -181,18 +270,48 @@ namespace BoardRacing.Runtime
             Vector2 startDirection = (ToVector(first.End) - ToVector(first.Start)).normalized;
             AppendOrientedRect(mesh, ToVector(track.Sample(0f).Position), startDirection,
                 12f, 28f, Color.white);
-            Vector2 laneDirection =
-                (ToVector(pitLayout.Boxes[pitLayout.Boxes.Count - 1]) -
-                 ToVector(pitLayout.Boxes[0])).normalized;
-            for (int i = 0; i < pitLayout.Boxes.Count; i++)
+            if (style.PitSurfaceVisible)
             {
-                PlayerId playerId = (PlayerId)(i + 1);
-                Color accent = playerAccents.TryGetValue(playerId, out Color activeAccent)
-                    ? activeAccent : InactivePitBoxAccent;
-                AppendPitBox(mesh, pitLayout.Boxes[i], laneDirection, accent);
+                Vector2 laneDirection =
+                    (ToVector(pitLayout.Boxes[pitLayout.Boxes.Count - 1]) -
+                     ToVector(pitLayout.Boxes[0])).normalized;
+                for (int i = 0; i < pitLayout.Boxes.Count; i++)
+                {
+                    PlayerId playerId = (PlayerId)(i + 1);
+                    Color accent = playerAccents.TryGetValue(playerId, out Color activeAccent)
+                        ? activeAccent : style.InactivePitBoxAccent;
+                    AppendPitBox(mesh, pitLayout.Boxes[i], laneDirection, accent);
+                }
             }
             return mesh;
         }
+
+        private static void AppendShoulder(SurfaceMeshData mesh,
+            IReadOnlyList<CenterlineSample> centerline, RaceSurfaceStyle style)
+        {
+            float opacity = Mathf.Clamp01(style.ShoulderOpacity);
+            float solid = Mathf.Max(0f, style.ShoulderSolidWidth);
+            float feather = Mathf.Max(0f, style.ShoulderFeatherWidth);
+            if (opacity <= 0f || solid + feather <= 0f) return;
+
+            // Wide-to-narrow opaque ribbons pre-compose the fade against the
+            // ground. Their overlap therefore selects the closest/strongest
+            // shoulder sample instead of accumulating alpha at self-crossings.
+            int steps = Mathf.Max(1, Mathf.CeilToInt(feather / 2f));
+            Color ground = Opaque(style.GroundColor);
+            Color shoulder = Opaque(Color.Lerp(ground, Opaque(style.ShoulderColor), opacity));
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = i / (float)steps;
+                float eased = t * t * (3f - 2f * t);
+                float outsideWidth = solid + feather * (1f - t);
+                Color color = Opaque(Color.Lerp(ground, shoulder, eased));
+                AppendClosedRibbon(mesh, centerline, TrackWidth + 2f * outsideWidth,
+                    color, color);
+            }
+        }
+
+        private static Color Opaque(Color color) => new Color(color.r, color.g, color.b, 1f);
 
         // Corner chords smooth through centripetal Catmull-Rom (interpolates
         // every authored point exactly; centripetal knots keep the long straight
@@ -379,19 +498,23 @@ namespace BoardRacing.Runtime
 
         private const float CrossingDeckReach = 80f;
 
-        private static void AppendCrossingDeck(SurfaceMeshData mesh, TrackCrossing crossing)
+        private static void AppendCrossingDeck(SurfaceMeshData mesh, TrackCrossing crossing,
+            RaceSurfaceStyle style)
         {
             // Strips run along the LATER (bridge) strand, centered on the
             // crossing: shadows a few px outside the deck edges, parapets just
             // inside them. Both draw after the closed ribbons, over each strand.
             foreach ((float offset, float width, Color color) in new[]
             {
-                (TrackWidth * .5f + 6f, 10f, CrossingShadowColor),
-                (-(TrackWidth * .5f + 6f), 10f, CrossingShadowColor),
-                (TrackWidth * .5f - 2f, 3f, StripeColor),
-                (-(TrackWidth * .5f - 2f), 3f, StripeColor),
+                (TrackWidth * .5f + 6f, 10f, style.CrossingShadowColor),
+                (-(TrackWidth * .5f + 6f), 10f, style.CrossingShadowColor),
+                (TrackWidth * .5f - 2f, 3f,
+                    style.StripeVisible ? style.StripeColor : Color.clear),
+                (-(TrackWidth * .5f - 2f), 3f,
+                    style.StripeVisible ? style.StripeColor : Color.clear),
             })
             {
+                if (color.a <= 0f) continue;
                 Vector2 direction = crossing.LaterDirection;
                 var normal = new Vector2(-direction.y, direction.x);
                 Vector2 center = crossing.Point + normal * offset;
@@ -579,9 +702,14 @@ namespace BoardRacing.Runtime
         private readonly List<Mesh> meshes = new List<Mesh>();
         private readonly Dictionary<PlayerId, Transform> cars =
             new Dictionary<PlayerId, Transform>();
+        private Camera surfaceCamera;
+        private MeshFilter surfaceFilter;
         private bool carsVisible = true;
 
         public static RaceSurfaceRenderer Create(SurfaceMeshData data)
+            => Create(data, RaceSurfaceStyle.Default.GroundColor);
+
+        public static RaceSurfaceRenderer Create(SurfaceMeshData data, Color groundColor)
         {
             var root = new GameObject("Board Racing Race Surface");
             var surface = root.AddComponent<RaceSurfaceRenderer>();
@@ -589,23 +717,36 @@ namespace BoardRacing.Runtime
             var cameraObject = new GameObject("Race Surface Camera");
             cameraObject.transform.SetParent(root.transform, false);
             cameraObject.transform.localPosition = new Vector3(0f, 0f, -10f);
-            var surfaceCamera = cameraObject.AddComponent<Camera>();
-            surfaceCamera.orthographic = true;
-            surfaceCamera.clearFlags = CameraClearFlags.SolidColor;
-            surfaceCamera.backgroundColor = RaceSurfaceGeometry.BackgroundColor;
-            surfaceCamera.nearClipPlane = .3f;
-            surfaceCamera.farClipPlane = 50f;
+            surface.surfaceCamera = cameraObject.AddComponent<Camera>();
+            surface.surfaceCamera.orthographic = true;
+            surface.surfaceCamera.clearFlags = CameraClearFlags.SolidColor;
+            surface.surfaceCamera.backgroundColor = groundColor;
+            surface.surfaceCamera.nearClipPlane = .3f;
+            surface.surfaceCamera.farClipPlane = 50f;
             // Pin the projection to the reference rect, top-left origin and Y
             // down: world space is exactly RaceLayout's 1920×1080 pixel space,
             // and the image stretches with the backbuffer the same way the
             // IMGUI scale matrix does. Assigned explicitly, so Unity's aspect
             // handling never rewrites it.
-            surfaceCamera.projectionMatrix = Matrix4x4.Ortho(
+            surface.surfaceCamera.projectionMatrix = Matrix4x4.Ortho(
                 0f, RaceLayout.ReferenceWidth, RaceLayout.ReferenceHeight, 0f, .3f, 50f);
 
             surface.material = new Material(Shader.Find("Sprites/Default"));
-            surface.CreateMeshObject("Race Surface Mesh", data);
+            Transform surfaceObject = surface.CreateMeshObject("Race Surface Mesh", data);
+            surface.surfaceFilter = surfaceObject.GetComponent<MeshFilter>();
             return surface;
+        }
+
+        public void ReplaceSurface(SurfaceMeshData data, Color groundColor)
+        {
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            Mesh replacement = CreateMesh("Race Surface Mesh", data);
+            Mesh previous = surfaceFilter.sharedMesh;
+            surfaceFilter.sharedMesh = replacement;
+            meshes.Add(replacement);
+            meshes.Remove(previous);
+            DestroyOwned(previous);
+            surfaceCamera.backgroundColor = groundColor;
         }
 
         public void AttachCar(PlayerId playerId, SurfaceMeshData body)
@@ -641,11 +782,7 @@ namespace BoardRacing.Runtime
         {
             var meshObject = new GameObject(objectName);
             meshObject.transform.SetParent(transform, false);
-            var mesh = new Mesh { name = objectName };
-            mesh.SetVertices(data.Vertices);
-            mesh.SetColors(data.Colors);
-            mesh.SetTriangles(data.Triangles, 0);
-            mesh.RecalculateBounds();
+            Mesh mesh = CreateMesh(objectName, data);
             meshes.Add(mesh);
             meshObject.AddComponent<MeshFilter>().sharedMesh = mesh;
             var meshRenderer = meshObject.AddComponent<MeshRenderer>();
@@ -657,10 +794,27 @@ namespace BoardRacing.Runtime
             return meshObject.transform;
         }
 
+        private static Mesh CreateMesh(string meshName, SurfaceMeshData data)
+        {
+            var mesh = new Mesh { name = meshName };
+            mesh.SetVertices(data.Vertices);
+            mesh.SetColors(data.Colors);
+            mesh.SetTriangles(data.Triangles, 0);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static void DestroyOwned(UnityEngine.Object owned)
+        {
+            if (owned == null) return;
+            if (Application.isPlaying) Destroy(owned);
+            else DestroyImmediate(owned);
+        }
+
         private void OnDestroy()
         {
-            foreach (Mesh mesh in meshes) if (mesh != null) Destroy(mesh);
-            if (material != null) Destroy(material);
+            foreach (Mesh mesh in meshes) DestroyOwned(mesh);
+            DestroyOwned(material);
         }
     }
 }

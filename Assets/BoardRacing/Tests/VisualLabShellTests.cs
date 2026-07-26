@@ -139,6 +139,36 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void ReplacingTheStaticSurfacePreservesCarObjectAndPose()
+        {
+            var first = new SurfaceMeshData();
+            first.AddRect(new Rect(0f, 0f, 10f, 10f), Color.white);
+            var second = new SurfaceMeshData();
+            second.AddRect(new Rect(0f, 0f, 20f, 20f), Color.red);
+            RaceSurfaceRenderer surface = RaceSurfaceRenderer.Create(first, Color.black);
+            spawned.Add(surface.gameObject);
+            surface.AttachCar(PlayerId.Player1, first);
+            surface.SetCarPose(PlayerId.Player1, new Vector2(123f, 456f), 37f,
+                new Vector2(.8f, 1.2f));
+            Transform car = surface.transform.Find("Race Car Player1");
+            MeshFilter surfaceFilter =
+                surface.transform.Find("Race Surface Mesh").GetComponent<MeshFilter>();
+            Mesh originalMesh = surfaceFilter.sharedMesh;
+
+            var ground = new Color(.2f, .3f, .4f, 1f);
+            surface.ReplaceSurface(second, ground);
+
+            Assert.That(surface.transform.Find("Race Car Player1"), Is.SameAs(car));
+            Assert.That(car.localPosition, Is.EqualTo(new Vector3(123f, 456f, -1f)));
+            Assert.That(car.localRotation.eulerAngles.z, Is.EqualTo(37f).Within(.01f));
+            Assert.That(car.localScale, Is.EqualTo(new Vector3(.8f, 1.2f, 1f)));
+            Assert.That(surfaceFilter.sharedMesh, Is.Not.SameAs(originalMesh));
+            Assert.That(surfaceFilter.sharedMesh.vertexCount, Is.EqualTo(second.Vertices.Count));
+            Assert.That(surface.GetComponentInChildren<Camera>().backgroundColor,
+                Is.EqualTo(ground));
+        }
+
+        [Test]
         public void VisualLabUsesUguiAndHasNoImguiEntryPoint()
         {
             BindingFlags methods = BindingFlags.Instance |

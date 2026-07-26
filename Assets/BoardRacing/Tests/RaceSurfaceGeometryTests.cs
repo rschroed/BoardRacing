@@ -137,6 +137,83 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void CommittedSurfaceStyleReproducesTheLegacyBuildExactly()
+        {
+            SurfaceMeshData legacy = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), Color.red, Color.blue);
+            SurfaceMeshData styled = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new[] { Color.red, Color.blue },
+                RaceSurfaceStyle.Default);
+
+            Assert.That(styled.Vertices, Is.EqualTo(legacy.Vertices));
+            Assert.That(styled.Colors, Is.EqualTo(legacy.Colors));
+            Assert.That(styled.Triangles, Is.EqualTo(legacy.Triangles));
+        }
+
+        [Test]
+        public void StyleChangesRoadColorsAndCanHideStripesAndPitSurface()
+        {
+            RaceSurfaceStyle style = RaceSurfaceStyle.Default;
+            style.StraightRoadColor = new Color(.11f, .22f, .33f, 1f);
+            style.CornerRoadColor = new Color(.44f, .55f, .66f, 1f);
+            style.StripeVisible = false;
+            style.PitSurfaceVisible = false;
+
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new[] { Color.red, Color.blue }, style);
+
+            Assert.That(mesh.Colors, Has.Some.EqualTo(style.StraightRoadColor));
+            Assert.That(mesh.Colors, Has.Some.EqualTo(style.CornerRoadColor));
+            Assert.That(mesh.Colors, Has.None.EqualTo(RaceSurfaceGeometry.StripeColor));
+            Assert.That(mesh.Colors, Has.None.EqualTo(RaceSurfaceGeometry.PitStripeColor));
+            Assert.That(mesh.Colors, Has.None.EqualTo(RaceSurfaceGeometry.PitLaneColor));
+        }
+
+        [Test]
+        public void ShoulderUsesOpaquePrecomposedCoverageOnEveryCatalogCourse()
+        {
+            RaceSurfaceStyle style = RaceSurfaceStyle.Default;
+            style.ShoulderOpacity = .8f;
+            style.ShoulderSolidWidth = 12f;
+            style.ShoulderFeatherWidth = 16f;
+            style.DebugView = RaceSurfaceDebugView.ShoulderOnly;
+
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track,
+                    PitLanePresentationLayout.ForCourse(course), new Color[0], style);
+                Assert.That(mesh.Vertices.Count, Is.GreaterThan(0), course.Name);
+                Assert.That(mesh.Colors.All(color => Mathf.Approximately(color.a, 1f)),
+                    Is.True, course.Name + " must never compound translucent shoulder coverage");
+                Assert.That(mesh.Colors, Has.Some.EqualTo(
+                    new Color(style.GroundColor.r, style.GroundColor.g, style.GroundColor.b, 1f)),
+                    course.Name + " shoulder outer edge must reach the ground");
+                Assert.That(mesh.Vertices.All(vertex =>
+                        float.IsFinite(vertex.x) && float.IsFinite(vertex.y)),
+                    Is.True, course.Name + " shoulder join must remain finite");
+            }
+        }
+
+        [Test]
+        public void RoadBoundaryDebugViewDoesNotMoveTheAuthoredRoadRibbon()
+        {
+            RaceSurfaceStyle composedStyle = RaceSurfaceStyle.Default;
+            RaceSurfaceStyle boundaryStyle = RaceSurfaceStyle.Default;
+            boundaryStyle.DebugView = RaceSurfaceDebugView.RoadBoundary;
+            SurfaceMeshData composed = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new Color[0], composedStyle);
+            SurfaceMeshData boundary = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new Color[0], boundaryStyle);
+
+            Vector3[] composedRoad = VerticesWithColor(composed, composedStyle.StraightRoadColor)
+                .Concat(VerticesWithColor(composed, composedStyle.CornerRoadColor)).ToArray();
+            Vector3[] boundaryRoad = VerticesWithColor(boundary, boundaryStyle.StraightRoadColor)
+                .Concat(VerticesWithColor(boundary, boundaryStyle.CornerRoadColor)).ToArray();
+            Assert.That(boundaryRoad, Is.EqualTo(composedRoad),
+                "the debug outline may surround but must never alter the 64 px road");
+        }
+
+        [Test]
         public void CarBodiesKeepTheDrawnFootprint()
         {
             // Both bodies are 54×26, nose along +X (issue #117 round 2, owner
@@ -532,6 +609,12 @@ namespace BoardRacing.Tests
                 best = Mathf.Min(best, Vector2.Distance(point, start + direction * t));
             }
             return best;
+        }
+
+        private static IEnumerable<Vector3> VerticesWithColor(SurfaceMeshData mesh, Color color)
+        {
+            for (int i = 0; i < mesh.Vertices.Count; i++)
+                if (mesh.Colors[i] == color) yield return mesh.Vertices[i];
         }
     }
 }
