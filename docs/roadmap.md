@@ -53,7 +53,7 @@ Work is divided into gated tranches. Each tranche answers one major risk before 
 
 - One placeholder track and spline-based car movement.
 - Acceleration, coasting, braking, and corner-speed consequences.
-- Automatic collision-free overtaking with presentation-only lateral separation; player-controlled lane changes remain deferred.
+- Automatic collision-free overtaking with presentation-only lateral separation; player-controlled lane changes remain deferred. **Superseded in Tranche 5 (issue #147):** lateral position is now modeled, so a car's line costs it real distance against the corner and cars cannot drive through each other. Line choice stays automatic and player-controlled lane changes stay deferred, so what this criterion was gating — a race that is understandable and competitive on the Car Piece alone — is unchanged.
 - Starting grid, laps, finish order, and restart.
 - Deterministic scripted throttle traces for repeatable testing.
 

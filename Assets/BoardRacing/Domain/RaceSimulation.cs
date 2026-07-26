@@ -663,14 +663,9 @@ namespace BoardRacing.Domain
             var ordered = racers.OrderBy(x => x.Finished ? 0 : 1)
                 .ThenBy(x => x.Finished ? x.FinishTime : -x.Distance)
                 .ThenBy(x => Array.IndexOf(racers, x)).ToArray();
-            // The car IS somewhere (issue #147): its own offset is the answer,
-            // and nothing needs allocating, staggering or padding.
-            RacingLinePlacement[] placements = racers.Select(x =>
-                new RacingLinePlacement(x.Id, 0f, x.Finished ? 0f : x.Lateral)).ToArray();
             var result = racers.Select(racer =>
             {
                 int place = Array.IndexOf(ordered, racer) + 1;
-                RacingLinePlacement placement = placements.FirstOrDefault(x => x.PlayerId == racer.Id);
                 var condition = new RacerConditionSnapshot(racer.FuelUsed, racer.TireWear,
                     FuelPenaltyActive(racer), TirePenaltyActive(racer));
                 float phaseProgress = racer.PitPhase == PitPhase.Entering
@@ -681,8 +676,8 @@ namespace BoardRacing.Domain
                     racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount, phaseProgress);
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
                     Math.Min(rules.Laps, (int)(racer.Distance / track.Length)), place, racer.Finished, racer.FinishTime,
-                    track.Sample(racer.Distance), placement.LateralOffset, racer.IncidentThisStep,
-                    racer.Recovery, racer.Incidents, condition, pit, placement.LongitudinalOffset);
+                    track.Sample(racer.Distance), racer.Finished ? 0f : racer.Lateral, racer.IncidentThisStep,
+                    racer.Recovery, racer.Incidents, condition, pit);
             }).ToArray();
             float progress = rules.RematchHoldSeconds <= 0f ? 1f : Math.Min(1f, rematchHeld / rules.RematchHoldSeconds);
             return new RaceSnapshot(phase, countdown, elapsed, result, progress, awaitingRematchRelease);

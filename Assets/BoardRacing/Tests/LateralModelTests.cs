@@ -6,18 +6,16 @@ using NUnit.Framework;
 
 namespace BoardRacing.Tests
 {
-    // The experiment issue #147 turns on: give lateral position a real path
-    // cost and cars a real separation constraint, then ask the two questions
-    // that decide whether the idea is worth a tranche.
+    // What racing with a modeled lateral position has to keep true (issue
+    // #147). These began as an experiment asking whether a real path cost
+    // produces racing or a train; the answer was racing, it shipped, and the
+    // questions became the gate.
     //
-    // 1. Does anyone ever take the outside line, or does a real distance
-    //    penalty just produce single file for an honest reason?
-    // 2. Does a field held up in traffic still resolve, or does throttle-only
-    //    control plus a real speed cap deadlock behind a slow leader?
-    //
-    // Reports rather than asserts, except where an answer would be
-    // disqualifying: bodies must not overlap, and a race must finish.
-    public sealed class LateralCostExperiment
+    // Bodies must never overlap — with separation real there is nothing left
+    // to hide one — a field held up in traffic must still resolve rather than
+    // deadlock behind a slow leader, and no seat may be favoured. The numbers
+    // each run prints are the ones the hardware sessions were tuned against.
+    public sealed class LateralModelTests
     {
         private const float Step = 1f / 60f;
         private const float BodyLength = 54f;
@@ -29,7 +27,6 @@ namespace BoardRacing.Tests
             slipstreamWindow: RaceRules.DefaultSlipstreamWindow,
             lateralRules: LateralRules.Defaults);
 
-        [Explicit("Experiment: reports whether a real lateral cost produces racing or a train.")]
         [TestCase("Wedge")]
         [TestCase("Fishhook")]
         [TestCase("Hourglass")]
@@ -67,7 +64,6 @@ namespace BoardRacing.Tests
                 courseName + " bodies overlapped despite a real separation constraint");
         }
 
-        [Explicit("Experiment: can the field get past a deliberately slow leader?")]
         [TestCase("Wedge")]
         [TestCase("Fishhook")]
         public void TheFieldCanPassASlowLeader(string courseName)
@@ -86,7 +82,6 @@ namespace BoardRacing.Tests
             Assert.That(trace.Finished, Is.True, courseName + " deadlocked behind the slow leader");
         }
 
-        [Explicit("Experiment: does a real lateral cost create a seat advantage?")]
         [TestCase("Wedge")]
         public void LineChoiceDoesNotFavourASeat(string courseName)
         {
@@ -112,7 +107,12 @@ namespace BoardRacing.Tests
                     $"  {kv.Key}: mean {kv.Value.Average():0.00}s  " +
                     $"spread {kv.Value.Max() - kv.Value.Min():0.00}s");
             float[] means = times.Values.Select(x => x.Average()).ToArray();
-            TestContext.Out.WriteLine($"  worst mean gap between seats: {means.Max() - means.Min():0.00}s");
+            float worst = means.Max() - means.Min();
+            TestContext.Out.WriteLine($"  worst mean gap between seats: {worst:0.00}s");
+            // Where a seat finishes must depend on the race, not on which seat
+            // it is: a single race varies with grid slot and traffic, but
+            // averaged over roster orders every seat must come out level.
+            Assert.That(worst, Is.LessThan(.05f), "a seat is systematically favoured");
         }
 
         // The grid is laid out in ARC LENGTH behind the line. If the run-up to
