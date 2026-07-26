@@ -38,6 +38,7 @@ public static class BoardRacingCaptures
     public static void Run()
     {
         ApplyCaptureSetArgument();
+        PinDeviceQualityLevel();
         Directory.CreateDirectory(OutputDirectory);
         Type scenarioType = typeof(RacePrototype).Assembly
             .GetType("BoardRacing.Runtime.RaceUiPreviewScenario");
@@ -100,6 +101,30 @@ public static class BoardRacingCaptures
         EditorSettings.enterPlayModeOptions = prevOptions;
         RacePrototype.AutomationBypassesLobby = false;
         EditorApplication.Exit(0);
+    }
+
+    // The editor opens on the Standalone default quality tier (Ultra, 2x MSAA)
+    // while ProjectSettings pins Android to Medium, which has MSAA off. Captures
+    // taken at the editor's tier therefore showed anti-aliased edges the Board
+    // has never drawn — a quiet misrepresentation, and one that shows up as a
+    // whole-image diff the moment anything else about rendering changes (#153).
+    // Pin the tier the device actually runs, and say so in the log.
+    private const string DeviceQualityLevelName = "Medium";
+
+    private static void PinDeviceQualityLevel()
+    {
+        string[] names = QualitySettings.names;
+        int level = Array.IndexOf(names, DeviceQualityLevelName);
+        if (level < 0)
+        {
+            Debug.LogWarning($"[BoardRacingCaptures] no '{DeviceQualityLevelName}' quality level; " +
+                             $"capturing at '{names[QualitySettings.GetQualityLevel()]}' instead. " +
+                             "Captures may not represent the device.");
+            return;
+        }
+        QualitySettings.SetQualityLevel(level, true);
+        Debug.Log($"[BoardRacingCaptures] quality level '{names[level]}' " +
+                  $"(antiAliasing={QualitySettings.antiAliasing})");
     }
 
     // Unity forwards unrecognized command-line arguments through untouched, so
