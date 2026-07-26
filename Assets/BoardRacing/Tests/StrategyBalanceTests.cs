@@ -285,7 +285,11 @@ namespace BoardRacing.Tests
                     (from == PitPhase.Requested && to == PitPhase.Entering) ||
                     (from == PitPhase.Entering && to == PitPhase.InService) ||
                     (from == PitPhase.InService && to == PitPhase.Exiting) ||
-                    (from == PitPhase.Exiting && to == PitPhase.OnTrack);
+                    (from == PitPhase.Exiting && to == PitPhase.OnTrack) ||
+                    // Classification parks the car (issue #149).
+                    (to == PitPhase.Parking && (from == PitPhase.OnTrack ||
+                        from == PitPhase.Requested || from == PitPhase.Exiting)) ||
+                    (from == PitPhase.Parking && to == PitPhase.Parked);
             }
         }
 

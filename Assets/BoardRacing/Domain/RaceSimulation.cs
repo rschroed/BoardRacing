@@ -118,8 +118,30 @@ namespace BoardRacing.Domain
             }
             else HandleRematch(commands == null ? Array.Empty<RacerCommand>() : commands, fixedDeltaSeconds);
 
+            if (phase != RacePhase.Grid && phase != RacePhase.Countdown)
+                AdvanceParking(fixedDeltaSeconds);
             snapshot = BuildSnapshot();
             return snapshot;
+        }
+
+        // A classified car settles into its box under its own deterministic
+        // progress, and keeps doing so after the last racer classifies: the
+        // final finisher has to be able to complete its park underneath the
+        // results. Parking never touches finish time, order or eligibility.
+        private void AdvanceParking(float delta)
+        {
+            foreach (var racer in racers)
+            {
+                if (racer.PitPhase != PitPhase.Parking) continue;
+                racer.PitTimer += delta;
+                float seconds = rules.Pit.Enabled ? rules.Pit.EntrySeconds(racer.Id) : 0f;
+                racer.Speed = seconds <= 0f ? 0f
+                    : Math.Max(0f, racer.Speed * (1f - racer.PitTimer / seconds));
+                if (racer.PitTimer < seconds) continue;
+                racer.PitPhase = PitPhase.Parked;
+                racer.PitTimer = 0f;
+                racer.Speed = 0f;
+            }
         }
 
         private void CaptureStrategyIntent(RacerState racer, RacerCommand command)
@@ -548,9 +570,18 @@ namespace BoardRacing.Domain
 
         private static void FinishRacer(RacerState racer, float distance, float finishTime)
         {
-            racer.Distance = distance; racer.Finished = true; racer.FinishTime = finishTime; racer.Speed = 0f;
-            // A pending pit call expires with the race.
-            racer.PitPhase = PitPhase.OnTrack;
+            racer.Distance = distance; racer.Finished = true; racer.FinishTime = finishTime;
+            // The flag ends the race, not the car (issue #149). Stopping dead
+            // here left a body parked on the racing line that every remaining
+            // racer drove through — the one object in the game another car
+            // could pass through, once #148 made separation real everywhere
+            // else. It keeps the speed it crossed at and drives the pit entry
+            // it is already sitting on, since the entry begins at the line. A
+            // pending pit call expires with the race; the car is parking, not
+            // servicing, and never leaves the box.
+            racer.SelectedService = PitService.None;
+            racer.PitPhase = PitPhase.Parking;
+            racer.PitTimer = 0f;
         }
 
         private void BurnFuel(RacerState racer, ThrottleStep step, float delta)
@@ -668,7 +699,9 @@ namespace BoardRacing.Domain
                 int place = Array.IndexOf(ordered, racer) + 1;
                 var condition = new RacerConditionSnapshot(racer.FuelUsed, racer.TireWear,
                     FuelPenaltyActive(racer), TirePenaltyActive(racer));
-                float phaseProgress = racer.PitPhase == PitPhase.Entering
+                float phaseProgress = racer.PitPhase == PitPhase.Parking
+                    ? Clamp01(racer.PitTimer / rules.Pit.EntrySeconds(racer.Id))
+                    : racer.PitPhase == PitPhase.Entering
                     ? Clamp01(racer.PitTimer / rules.Pit.EntrySeconds(racer.Id))
                     : racer.PitPhase == PitPhase.Exiting
                         ? Clamp01(racer.PitTimer / rules.Pit.ExitSeconds(racer.Id)) : 0f;

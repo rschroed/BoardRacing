@@ -37,7 +37,7 @@ namespace BoardRacing.Tests
                 Assert.That(result.Snapshot.Racers.All(x => x.Pit.CompletedServices >= 1),
                     Is.True, scenario + " required service");
                 Assert.That(result.Snapshot.Racers.All(x =>
-                    x.Pit.Phase == PitPhase.OnTrack), Is.True, scenario + " pit exit");
+                    x.Pit.Phase == PitPhase.Parked), Is.True, scenario + " every car parked");
                 Assert.That(result.InvalidTransitions, Is.Zero, scenario + " transitions");
                 Assert.That(result.Snapshot.Racers.Select(x => x.Place),
                     Is.EquivalentTo(Enumerable.Range(1, roster.Length)),
@@ -123,8 +123,12 @@ namespace BoardRacing.Tests
             simulation.Step(Step, Commands());
             simulation.Step(Step, Commands());
             int maximumSteps = (int)(300f / Step);
+            // Runs past classification until every car has finished parking
+            // (issue #149): the last finisher completes its settle underneath
+            // RacePhase.Finished, and the transitions on the way are checked
+            // like any other.
             for (int step = 0; step < maximumSteps &&
-                simulation.Snapshot.Phase != RacePhase.Finished; step++)
+                !simulation.Snapshot.Racers.All(x => x.Pit.Phase == PitPhase.Parked); step++)
             {
                 simulation.Step(Step, Commands());
                 foreach (RacerSnapshot racer in simulation.Snapshot.Racers)
@@ -165,7 +169,13 @@ namespace BoardRacing.Tests
             (from == PitPhase.Requested && to == PitPhase.Entering) ||
             (from == PitPhase.Entering && to == PitPhase.InService) ||
             (from == PitPhase.InService && to == PitPhase.Exiting) ||
-            (from == PitPhase.Exiting && to == PitPhase.OnTrack);
+            (from == PitPhase.Exiting && to == PitPhase.OnTrack) ||
+            // Classification sends a car to its box (issue #149): from the
+            // track, from a call that expired at the flag, or straight off a
+            // pit exit that crossed the finish distance.
+            (to == PitPhase.Parking && (from == PitPhase.OnTrack ||
+                from == PitPhase.Requested || from == PitPhase.Exiting)) ||
+            (from == PitPhase.Parking && to == PitPhase.Parked);
 
         private readonly struct IntegrationResult
         {

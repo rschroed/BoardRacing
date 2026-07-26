@@ -680,7 +680,11 @@ namespace BoardRacing.Tests
             var finished = Player(simulation, PlayerId.Player1);
             Assert.That(finished.Finished, Is.True);
             Assert.That(finished.TotalDistance, Is.EqualTo(simulation.Track.Length).Within(.001f));
-            Assert.That(finished.Pit.Phase, Is.EqualTo(PitPhase.OnTrack));
+            // The call expired at the flag: the car parks (issue #149) rather
+            // than being serviced, and never selects or completes a service.
+            Assert.That(finished.Pit.Phase, Is.EqualTo(PitPhase.Parking));
+            Assert.That(finished.Pit.SelectedService, Is.EqualTo(PitService.None));
+            Assert.That(finished.Pit.CompletedServices, Is.Zero);
         }
 
         [Test]
