@@ -1,8 +1,14 @@
-// Device development players only, for the same reasons as FrameTimeProbe —
-// and one more that matters here: the #153 capture criterion requires the
-// editor to render exactly what the Built-in baseline rendered, so the post
-// pass must never exist during a capture run.
-#if DEVELOPMENT_BUILD && UNITY_ANDROID && !UNITY_EDITOR
+// Opt-in, and off by default. The bloom settings below were chosen to load the
+// post-processing path for measurement, not by anyone's eye, so leaving this on
+// would put un-art-directed glow in every device build and quietly change what
+// the next hardware test looks at. Build a measurement APK by adding
+// BOARDRACING_BLOOM_PROBE to the Android scripting define symbols.
+//
+// Device development players only, for the same reasons as FrameTimeProbe — and
+// one more that matters here: the #153 capture criterion requires the editor to
+// render exactly what the Built-in baseline rendered, so the post pass must
+// never exist during a capture run.
+#if BOARDRACING_BLOOM_PROBE && DEVELOPMENT_BUILD && UNITY_ANDROID && !UNITY_EDITOR
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
