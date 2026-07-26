@@ -48,6 +48,26 @@ public static class UrpSpikeSetup
                   $"active={GraphicsSettings.currentRenderPipeline?.GetType().Name ?? "BuiltIn"}");
     }
 
+    // The coupled decision (#153): Linear is materially better for bloom and
+    // any lighting-driven look, and switching it changes how every existing
+    // colour renders — cheap now, expensive once a palette is authored against
+    // it. Evaluated on the same branch, decided separately.
+    public static void SetLinearColorSpace() => SetColorSpace(ColorSpace.Linear);
+
+    public static void SetGammaColorSpace() => SetColorSpace(ColorSpace.Gamma);
+
+    private static void SetColorSpace(ColorSpace space)
+    {
+        if (PlayerSettings.colorSpace == space)
+        {
+            Debug.Log($"[UrpSpikeSetup] colour space already {space}");
+            return;
+        }
+        PlayerSettings.colorSpace = space;
+        AssetDatabase.SaveAssets();
+        Debug.Log($"[UrpSpikeSetup] colour space set to {space}");
+    }
+
     // Restores the Built-in pipeline and deletes the spike's assets, so an
     // abort verdict can be carried out without hand-editing project settings.
     public static void Revert()
