@@ -96,6 +96,10 @@ Player-facing solo play and AI opponents are deferred to Tranche 5 so this gate 
 
 ## 5. Complete social game
 
+**Status:** In progress. The race itself is complete for one to four players — explicit rosters, four-car pits, seat activation and Piece claiming, the setup loop, results and rematch (#124, #133, #134, #135, #136, #139). Player identity, including guests, is handled by the platform's own profile selectors rather than reimplemented, so that deliverable was met by not building it. Simulation fidelity work that came out of four-player racing closed alongside (#143, #147, #149). Onboarding, player rotation, AI opponents, tournament structure, and save integration remain.
+
+**Sequencing (July 25, 2026):** The onboarding deliverable is deliberately taken *after* Tranche 6 establishes its visual language, not before. A tutorial teaches players to read the screen, and the screen is about to change substantially; built first, it would be built twice. Two known readability defects are already waiting on the same decisions — a parked finisher reads as a car being serviced, and the results overlay covers the pit complex — and a tutorial would otherwise have to explain around both. This tranche therefore closes after Tranche 6 opens, and its exit criterion is judged then.
+
 **Goal:** Turn the prototype into a repeatable group experience.
 
 **Deliverables**
@@ -109,6 +113,14 @@ Player-facing solo play and AI opponents are deferred to Tranche 5 so this gate 
 **Exit criterion:** A new group can launch, understand, finish, and replay the game without developer assistance.
 
 ## 6. Presentation and content
+
+**Status:** Opened July 25, 2026, ahead of Tranche 5 closing — see the sequencing note there. The investment rule below is discharged: Tranche 4 proved the two-player experience readable on hardware on July 19.
+
+**Constraints carried in**
+
+- **Car and track dimensions are load-bearing, not drawing choices.** Since #147 the separation guarantees are expressed in them: 54×26 bodies, ±16 lanes on a 64 px ribbon, 114 px of grid depth, a 62 px following gap. Restyling a silhouette is free; changing car size or ribbon width re-opens the body-clearance maths and the corner path-cost tuning, and `LateralModelTests` fails when they stop holding.
+- **Some screens do not exist yet.** Onboarding, rotation, tournament and save/resume flows are unbuilt, so this tranche can finish the screens that exist but cannot finalize a system for screens it has never seen. Aim it at the visual language — type, color, spacing, component vocabulary — so the unbuilt flows inherit it later, rather than at finishing every screen.
+- **"Additional tracks justified by playtesting" is thinner than it reads.** With AI opponents unbuilt, playtest evidence comes only from live two-to-four-human sessions.
 
 **Goal:** Establish a distinctive, coherent production experience.
 
@@ -137,3 +149,5 @@ Player-facing solo play and AI opponents are deferred to Tranche 5 so this gate 
 ## Investment rule
 
 Do not invest heavily in final art, multiple tracks, championship content, or marketing production until Tranche 4 proves the complete two-player experience is readable on physical hardware.
+
+**Discharged July 19, 2026**, when Tranche 4 passed on hardware. Recorded rather than deleted: the rule is why the prototype ran on wireframe visuals for four tranches, and the reasoning stands if a later tranche is ever tempted to spend ahead of its proof.
