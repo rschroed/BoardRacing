@@ -219,8 +219,10 @@ namespace BoardRacing.Runtime
             Vec2 trackTangent, PitLanePresentationLayout layout)
         {
             Vec2 box = layout.Box(racer.PlayerId);
-            if (racer.Pit.Phase == PitPhase.Entering)
+            if (racer.Pit.Phase == PitPhase.Entering || racer.Pit.Phase == PitPhase.Parking)
                 return EntryPose(racer.PlayerId, racer.Pit.PhaseProgress, racer.Finished, layout);
+            if (racer.Pit.Phase == PitPhase.Parked)
+                return new CarPresentationPose(box, Unit(layout.Exit, box), racer.Finished);
             if (racer.Pit.Phase == PitPhase.InService)
                 return new CarPresentationPose(box, Unit(layout.Exit, box), racer.Finished);
             if (racer.Pit.Phase == PitPhase.Exiting)

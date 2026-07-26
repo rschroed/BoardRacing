@@ -7,7 +7,10 @@ namespace BoardRacing.Domain
     public enum RacePhase { Grid, Countdown, Racing, Finished, Paused }
     public enum TrackSectionKind { Straight, Corner }
     public enum PitService { None, Tires, Fuel }
-    public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting }
+    // Parking and Parked are where a classified car goes (issue #149): it
+    // drives the pit entry it is already sitting on and stops in its own box.
+    // Appended so the existing ordinals do not move.
+    public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting, Parking, Parked }
     public enum PitCallState { Unavailable, NeedsPlacement, Aligning, Holding, Requested }
 
     public static class RacerRosters

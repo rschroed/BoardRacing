@@ -145,6 +145,21 @@ namespace BoardRacing.Tests
                 $"closest rows {worstAdjacent:0}px");
         }
 
+        [TestCase("Wedge")]
+        [TestCase("Fishhook")]
+        public void EveryRacerRunsTheFullLapCountFromItsOwnGridSlot(string courseName)
+        {
+            CourseDefinition course = CourseCatalog.All().Single(c => c.Name == courseName);
+            Trace trace = Run(course, new[]
+            {
+                PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4
+            }, slowLeader: false);
+            Assert.That(trace.Finished, Is.True);
+            foreach (var kv in trace.CompletedLaps.OrderBy(x => x.Key))
+                Assert.That(kv.Value, Is.EqualTo(Rules.Laps),
+                    $"{kv.Key} classified reporting {kv.Value} of {Rules.Laps} laps");
+        }
+
         private sealed class Trace
         {
             public bool Finished;
@@ -158,6 +173,7 @@ namespace BoardRacing.Tests
             public readonly Dictionary<PlayerId, int> HeldStreak = new Dictionary<PlayerId, int>();
             public readonly Dictionary<PlayerId, float> FinishTime = new Dictionary<PlayerId, float>();
             public readonly Dictionary<PlayerId, int> FinalPlace = new Dictionary<PlayerId, int>();
+            public readonly Dictionary<PlayerId, int> CompletedLaps = new Dictionary<PlayerId, int>();
         }
 
         private static Trace Run(CourseDefinition course, PlayerId[] roster, bool slowLeader)
@@ -248,6 +264,7 @@ namespace BoardRacing.Tests
                     {
                         trace.FinishTime[racer.PlayerId] = racer.FinishTime;
                         trace.FinalPlace[racer.PlayerId] = racer.Place;
+                        trace.CompletedLaps[racer.PlayerId] = racer.CompletedLaps;
                     }
                     float[] finishes = trace.FinishTime.Values.ToArray();
                     trace.FinishSpread = finishes.Max() - finishes.Min();
