@@ -49,7 +49,7 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void StageTogglesAndCleanViewDoNotChangePanelState()
+        public void StageTogglesAndEditorAvailabilityDoNotChangePanelState()
         {
             var stage = new Stage();
             VisualLabShell shell = CreateShell(stage);
@@ -62,19 +62,26 @@ namespace BoardRacing.Tests
             Assert.That(stage.CarsVisible, Is.False);
             Assert.That(stage.HudVisible, Is.False);
 
-            shell.HandleReferencePress(VisualLabShell.CleanViewBounds.center);
-            Assert.That(shell.IsCleanView, Is.True);
+            shell.SetAvailable(false);
             Assert.That(shell.GetComponent<Canvas>().enabled, Is.False);
             Assert.That(panel.Hidden, Is.EqualTo(1));
-            Assert.That(shell.HandleReferencePress(Vector2.zero), Is.False,
-                "clean view must leave the live race interactive away from its restore region");
+            Assert.That(shell.HandleReferencePress(VisualLabShell.LauncherBounds.center), Is.False);
 
-            Assert.That(shell.HandleReferencePress(VisualLabShell.LauncherBounds.center), Is.True);
-            Assert.That(shell.IsCleanView, Is.False);
+            shell.SetAvailable(true);
+            Assert.That(shell.GetComponent<Canvas>().enabled, Is.True);
             Assert.That(panel.Shown, Is.EqualTo(2));
             Assert.That(panel.TemporaryValue, Is.EqualTo(17));
             Assert.That(stage.CarsVisible, Is.False);
             Assert.That(stage.HudVisible, Is.False);
+        }
+
+        [Test]
+        public void CollapsedLauncherIsANarrowVisibleEdgeTab()
+        {
+            Assert.That(VisualLabShell.LauncherBounds.xMax,
+                Is.LessThanOrEqualTo(RaceLayout.ReferenceWidth));
+            Assert.That(VisualLabShell.LauncherBounds.xMin, Is.GreaterThan(1800f));
+            Assert.That(VisualLabShell.LauncherBounds.width, Is.LessThanOrEqualTo(64f));
         }
 
         [Test]

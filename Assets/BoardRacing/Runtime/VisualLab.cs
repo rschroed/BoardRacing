@@ -31,13 +31,12 @@ namespace BoardRacing.Runtime
     {
         // Reference-space geometry is intentionally fixed and utilitarian. It
         // is development chrome, not a production layout or a window manager.
-        internal static readonly Rect LauncherBounds = new Rect(1740f, 500f, 150f, 80f);
+        internal static readonly Rect LauncherBounds = new Rect(1844f, 490f, 64f, 100f);
         internal static readonly Rect PanelBounds = new Rect(1390f, 60f, 470f, 960f);
         internal static readonly Rect CloseBounds = new Rect(1790f, 80f, 50f, 50f);
-        internal static readonly Rect CleanViewBounds = new Rect(1420f, 150f, 190f, 58f);
-        internal static readonly Rect CarsBounds = new Rect(1420f, 224f, 190f, 58f);
-        internal static readonly Rect HudBounds = new Rect(1630f, 224f, 190f, 58f);
-        internal static readonly Rect ContentBounds = new Rect(1420f, 310f, 400f, 670f);
+        internal static readonly Rect CarsBounds = new Rect(1420f, 160f, 190f, 58f);
+        internal static readonly Rect HudBounds = new Rect(1630f, 160f, 190f, 58f);
+        internal static readonly Rect ContentBounds = new Rect(1420f, 240f, 400f, 740f);
 
         private sealed class PanelSlot
         {
@@ -65,13 +64,11 @@ namespace BoardRacing.Runtime
         private bool activePanelShown;
         private bool available;
         private bool open;
-        private bool cleanView;
         private bool carsVisible = true;
         private bool hudVisible = true;
 
         internal bool Available => available;
         internal bool IsOpen => open;
-        internal bool IsCleanView => cleanView;
         internal bool CarsVisible => carsVisible;
         internal bool HudVisible => hudVisible;
         internal string ActivePanelId => activePanel?.Panel.Id;
@@ -141,7 +138,6 @@ namespace BoardRacing.Runtime
         {
             if (available == value) return;
             available = value;
-            if (!available) cleanView = false;
             RefreshVisibility();
         }
 
@@ -164,13 +160,6 @@ namespace BoardRacing.Runtime
         internal bool HandleReferencePress(Vector2 referencePoint)
         {
             if (!available) return false;
-            if (cleanView)
-            {
-                if (!LauncherBounds.Contains(referencePoint)) return false;
-                cleanView = false;
-                RefreshVisibility();
-                return true;
-            }
             if (!open)
             {
                 if (!LauncherBounds.Contains(referencePoint)) return false;
@@ -183,11 +172,6 @@ namespace BoardRacing.Runtime
             if (CloseBounds.Contains(referencePoint))
             {
                 open = false;
-                RefreshVisibility();
-            }
-            else if (CleanViewBounds.Contains(referencePoint))
-            {
-                cleanView = true;
                 RefreshVisibility();
             }
             else if (CarsBounds.Contains(referencePoint))
@@ -235,7 +219,7 @@ namespace BoardRacing.Runtime
                 new Color(.04f, .06f, .09f, .94f), 12f).gameObject;
             RaceHud.CreateLabel(launcher.transform, "Launcher Label",
                 new Rect(0f, 0f, LauncherBounds.width, LauncherBounds.height),
-                18, Color.white, font).text = "VISUAL LAB";
+                16, Color.white, font).text = "LAB";
 
             panelChrome = RaceHud.CreateFullScreenNode(transform, "Visual Lab Panel").gameObject;
             RaceHud.CreatePanel(panelChrome.transform, "Panel Background", PanelBounds,
@@ -243,7 +227,6 @@ namespace BoardRacing.Runtime
             title = RaceHud.CreateLabel(panelChrome.transform, "Panel Title",
                 new Rect(1420f, 80f, 350f, 50f), 23, Color.white, font);
             CreateButton(panelChrome.transform, "Close", CloseBounds, "×", font);
-            CreateButton(panelChrome.transform, "Clean View", CleanViewBounds, "CLEAN VIEW", font);
             carsLabel = CreateButton(panelChrome.transform, "Cars", CarsBounds, null, font);
             hudLabel = CreateButton(panelChrome.transform, "HUD", HudBounds, null, font);
             noPanelsLabel = RaceHud.CreateLabel(panelChrome.transform, "No Panels",
@@ -265,7 +248,7 @@ namespace BoardRacing.Runtime
 
         private void RefreshVisibility()
         {
-            bool chromeVisible = available && !cleanView;
+            bool chromeVisible = available;
             canvas.enabled = chromeVisible;
             launcher.SetActive(chromeVisible && !open);
             panelChrome.SetActive(chromeVisible && open);
