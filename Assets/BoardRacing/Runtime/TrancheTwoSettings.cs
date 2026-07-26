@@ -57,12 +57,14 @@ namespace BoardRacing.Runtime
         // derived from the dial, never stored.
         public float CornerSafeSpeed => basePace * cornerSafeSpeedRatio;
 
+
         public RaceRules ToRules(int laps, int requiredServiceCount = 0, ConditionRules conditions = default,
             PitRules pit = default) => new RaceRules(laps, countdownSeconds, basePace,
             basePace * accelerationRatio, basePace * dragRatio, basePace * brakingRatio,
             cornerSpeedScrub, cornerRecoverySeconds, recoveryAccelerationScale,
             passingDistance, passingOffset, rematchHoldSeconds, requiredServiceCount, conditions, pit,
-            pauseClearSeconds, basePace * slipstreamBonusRatio, slipstreamWindow);
+            pauseClearSeconds, basePace * slipstreamBonusRatio, slipstreamWindow,
+            LateralRules.Defaults);
 
         public static TrancheTwoSettings Defaults() => CreateInstance<TrancheTwoSettings>();
     }

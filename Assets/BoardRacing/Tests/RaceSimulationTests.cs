@@ -95,13 +95,22 @@ namespace BoardRacing.Tests
         [Test]
         public void CloseRacersReceiveStableOppositePassingOffsets()
         {
-            var simulation = StartedSimulation();
+            // Close cars take opposite sides because they DRIVE there now
+            // (issue #147), not because a presentation allocator hands out
+            // offsets. Same property, asked of the model: the rules that race
+            // with a modeled lateral position line the pair up on either side
+            // and hold them there while they run together.
+            var simulation = StartedSimulation(RaceRules.Defaults.WithLateral(LateralRules.Defaults));
             var p1 = Player(simulation, PlayerId.Player1);
             var p2 = Player(simulation, PlayerId.Player2);
-            Assert.That(p1.LateralOffset, Is.LessThan(0f));
-            Assert.That(p2.LateralOffset, Is.GreaterThan(0f));
+            Assert.That(p1.LateralOffset * p2.LateralOffset, Is.LessThan(0f), "opposite sides");
             Assert.That(p1.Place, Is.EqualTo(1));
             Assert.That(p2.Place, Is.EqualTo(2));
+
+            float firstSide = Math.Sign(p1.LateralOffset);
+            for (int i = 0; i < 120; i++) simulation.Step(1f / 60f, Commands(ThrottleStep.Drive, true));
+            Assert.That((float)Math.Sign(Player(simulation, PlayerId.Player1).LateralOffset),
+                Is.EqualTo(firstSide), "and stay on them");
         }
 
         [Test]
@@ -204,125 +213,6 @@ namespace BoardRacing.Tests
             Assert.That(guard, Is.LessThan(10000));
             Assert.That(simulation.Snapshot.Racers.All(x => x.Pit.Phase == PitPhase.OnTrack),
                 Is.True);
-        }
-
-        [Test]
-        public void RacingLineAllocatorLeavesIsolatedCarsCenteredAndSplitsOnlyTheClosePair()
-        {
-            RacingLinePlacement[] placements = RacingLineAllocator.Allocate(new[]
-            {
-                Candidate(PlayerId.Player1, 0, 100f),
-                Candidate(PlayerId.Player2, 1, 700f),
-                Candidate(PlayerId.Player3, 2, 720f),
-                Candidate(PlayerId.Player4, 3, 1300f)
-            }, 2000f, 180f, 16f);
-            Assert.That(Placement(placements, PlayerId.Player1).LateralOffset, Is.Zero);
-            Assert.That(Placement(placements, PlayerId.Player4).LateralOffset, Is.Zero);
-            Assert.That(Placement(placements, PlayerId.Player2).LateralOffset, Is.EqualTo(-16f));
-            Assert.That(Placement(placements, PlayerId.Player3).LateralOffset, Is.EqualTo(16f));
-            Assert.That(placements.All(x => x.LongitudinalOffset == 0f), Is.True);
-        }
-
-        [Test]
-        public void ThreeAndFourCarDeadHeatsUseTwoLanesAndNoseToTailRows()
-        {
-            foreach (int count in new[] { 3, 4 })
-            {
-                RacingLineCandidate[] candidates =
-                {
-                    Candidate(PlayerId.Player1, 0, 500f),
-                    Candidate(PlayerId.Player2, 1, 500f),
-                    Candidate(PlayerId.Player3, 2, 500f),
-                    Candidate(PlayerId.Player4, 3, 500f)
-                };
-                RacingLinePlacement[] placements = RacingLineAllocator.Allocate(
-                    candidates.Take(count).ToArray(), 2000f, 180f, 16f);
-                Assert.That(placements.Select(x => x.LateralOffset).Distinct().Count(),
-                    Is.EqualTo(2), count + " racers used more than two lanes");
-                Assert.That(placements.Sum(x => x.LongitudinalOffset),
-                    Is.EqualTo(0f).Within(.001f), count + " racer pack moved its midpoint");
-                foreach (var lane in placements.GroupBy(x => x.LateralOffset))
-                {
-                    float[] rows = lane.Select(x => x.LongitudinalOffset).OrderBy(x => x).ToArray();
-                    for (int i = 1; i < rows.Length; i++)
-                        Assert.That(rows[i] - rows[i - 1],
-                            Is.GreaterThanOrEqualTo(RacingLineAllocator.NoseToTailSpacing - .001f));
-                }
-            }
-        }
-
-        [Test]
-        public void RacingLineClustersJoinAcrossTheStartFinishWrap()
-        {
-            RacingLinePlacement[] placements = RacingLineAllocator.Allocate(new[]
-            {
-                Candidate(PlayerId.Player1, 0, 1990f),
-                Candidate(PlayerId.Player2, 1, 10f),
-                Candidate(PlayerId.Player3, 2, 700f)
-            }, 2000f, 180f, 16f);
-            Assert.That(Placement(placements, PlayerId.Player1).LateralOffset, Is.EqualTo(-16f));
-            Assert.That(Placement(placements, PlayerId.Player2).LateralOffset, Is.EqualTo(16f));
-            Assert.That(Placement(placements, PlayerId.Player3).LateralOffset, Is.Zero);
-        }
-
-        [Test]
-        public void RacingLineSidesStayStableAcrossOrderExchangesAndRepeatedRuns()
-        {
-            var before = new[]
-            {
-                Candidate(PlayerId.Player1, 0, 495f),
-                Candidate(PlayerId.Player2, 1, 500f),
-                Candidate(PlayerId.Player3, 2, 505f),
-                Candidate(PlayerId.Player4, 3, 510f)
-            };
-            var after = new[]
-            {
-                Candidate(PlayerId.Player1, 0, 506f),
-                Candidate(PlayerId.Player2, 1, 503f),
-                Candidate(PlayerId.Player3, 2, 500f),
-                Candidate(PlayerId.Player4, 3, 497f)
-            };
-            RacingLinePlacement[] first = RacingLineAllocator.Allocate(before, 2000f, 180f, 16f);
-            RacingLinePlacement[] repeated = RacingLineAllocator.Allocate(before, 2000f, 180f, 16f);
-            RacingLinePlacement[] exchanged = RacingLineAllocator.Allocate(after, 2000f, 180f, 16f);
-            foreach (PlayerId id in RacerRosters.ValidateAndCopy(new[]
-            {
-                PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4
-            }))
-            {
-                Assert.That(Placement(repeated, id).LateralOffset,
-                    Is.EqualTo(Placement(first, id).LateralOffset), id + " replay side");
-                Assert.That(Placement(repeated, id).LongitudinalOffset,
-                    Is.EqualTo(Placement(first, id).LongitudinalOffset), id + " replay row");
-                Assert.That(Placement(exchanged, id).LateralOffset,
-                    Is.EqualTo(Placement(first, id).LateralOffset), id + " exchange side");
-            }
-        }
-
-        [Test]
-        public void RacingLineOffsetsChangeContinuouslyUnderSmallDistanceChanges()
-        {
-            RacingLinePlacement[] before = RacingLineAllocator.Allocate(new[]
-            {
-                Candidate(PlayerId.Player1, 0, 500f),
-                Candidate(PlayerId.Player2, 1, 502f),
-                Candidate(PlayerId.Player3, 2, 504f),
-                Candidate(PlayerId.Player4, 3, 506f)
-            }, 2000f, 180f, 16f);
-            RacingLinePlacement[] after = RacingLineAllocator.Allocate(new[]
-            {
-                Candidate(PlayerId.Player1, 0, 500.1f),
-                Candidate(PlayerId.Player2, 1, 502.1f),
-                Candidate(PlayerId.Player3, 2, 504.1f),
-                Candidate(PlayerId.Player4, 3, 506.1f)
-            }, 2000f, 180f, 16f);
-            foreach (RacingLinePlacement placement in before)
-            {
-                RacingLinePlacement moved = Placement(after, placement.PlayerId);
-                Assert.That(moved.LateralOffset, Is.EqualTo(placement.LateralOffset));
-                Assert.That(Math.Abs(moved.LongitudinalOffset - placement.LongitudinalOffset),
-                    Is.LessThan(.001f));
-            }
         }
 
         [Test]
@@ -1099,13 +989,6 @@ namespace BoardRacing.Tests
 
         private static RacerSnapshot Player(RaceSimulation simulation, PlayerId id) =>
             simulation.Snapshot.Racers.Single(x => x.PlayerId == id);
-
-        private static RacingLineCandidate Candidate(PlayerId id, int rosterIndex, float distance) =>
-            new RacingLineCandidate(id, rosterIndex, distance);
-
-        private static RacingLinePlacement Placement(
-            RacingLinePlacement[] placements, PlayerId id) =>
-            placements.Single(x => x.PlayerId == id);
 
         private static RacerCommand[] Commands(ThrottleStep throttle, bool touched) => new[]
         {

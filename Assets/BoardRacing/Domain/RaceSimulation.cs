@@ -9,7 +9,7 @@ namespace BoardRacing.Domain
         private sealed class RacerState
         {
             public PlayerId Id;
-            public float Speed, Distance, FinishTime = -1f, Recovery;
+            public float Speed, Distance, FinishTime = -1f, Recovery, Lateral, GridStart;
             public TrackSectionKind PriorKind;
             public int Incidents;
             public bool Finished, IncidentThisStep;
@@ -41,6 +41,7 @@ namespace BoardRacing.Domain
             PlayerId[] roster = RacerRosters.ValidateAndCopy(racerRoster);
             racers = roster.Select(id =>
                 new RacerState { Id = id, PriorKind = track.Sample(0f).Kind }).ToArray();
+            ApplyStartingGrid();
             stepStartDistances = new float[racers.Length];
             snapshot = BuildSnapshot();
         }
@@ -143,7 +144,27 @@ namespace BoardRacing.Domain
                 return;
             }
             float throttleFraction = command.DrivingPiecePresent ? (int)command.Throttle / 100f : 0f;
-            BurnFuel(racer, command.DrivingPiecePresent ? command.Throttle : ThrottleStep.Brake, delta);
+            ThrottleStep commanded = command.DrivingPiecePresent ? command.Throttle : ThrottleStep.Brake;
+            // Traffic is settled before the fuel is charged (issue #147, owner
+            // report from hardware: a car on Boost caught in traffic paid the
+            // usage cost without the benefit). You are billed for the speed
+            // you actually got, not the throttle you asked for. Steering runs
+            // first so the cap reads the line this car is on THIS step.
+            float followingCap = float.MaxValue;
+            if (rules.Lateral.Enabled)
+            {
+                // What this car COULD do if the road were clear, tow included.
+                // Not its current speed: a held-up car has already been capped
+                // to the speed of the car ahead, so comparing what the two are
+                // doing can never reveal that the one behind is faster. A
+                // driver knows they are quicker because they are having to
+                // lift, not because they are going quicker.
+                float desired = rules.MaxSpeed * throttleFraction +
+                    (throttleFraction > 0f ? SlipstreamBonus(racer) : 0f);
+                SteerLateral(racer, delta, desired);
+                followingCap = FollowingSpeedCap(racer, delta);
+            }
+            BurnFuel(racer, ThrottleActuallyUsed(commanded, followingCap), delta);
             bool fuelPenalty = FuelPenaltyActive(racer);
             float maximumSpeed = rules.MaxSpeed * (fuelPenalty ? rules.Conditions.EmptyMaximumSpeedScale : 1f);
             float target = maximumSpeed * throttleFraction;
@@ -162,10 +183,15 @@ namespace BoardRacing.Domain
             if (racer.PitPhase == PitPhase.Requested && rules.Pit.Enabled && WillDivertAtNextLine(racer))
             {
                 float toLine = ((int)(racer.Distance / track.Length) + 1) * track.Length - racer.Distance;
-                float allowed = (float)Math.Sqrt(
-                    rules.Pit.LaneSpeed * rules.Pit.LaneSpeed + 2f * rules.Drag * toLine);
+                // In the car's own path units, not centreline ones (issue
+                // #147): the distance it has left to shed speed over is the
+                // arc IT drives, and the inside line is shorter. Braking to a
+                // centreline figure arrived hot.
+                float allowed = (float)Math.Sqrt(rules.Pit.LaneSpeed * rules.Pit.LaneSpeed +
+                    2f * rules.Drag * toLine * LateralPathFactor(racer));
                 target = Math.Min(target, allowed);
             }
+            target = Math.Min(target, followingCap);
             float rate;
             if (target > racer.Speed)
                 rate = rules.Acceleration * (racer.Recovery > 0f ? rules.RecoveryAccelerationScale : 1f) *
@@ -185,6 +211,16 @@ namespace BoardRacing.Domain
             float effectiveSafeSpeed = before.SafeSpeed;
             if (before.Kind == TrackSectionKind.Corner && rules.Conditions.Enabled)
                 effectiveSafeSpeed *= 1f - racer.TireWear * (1f - rules.Conditions.FullyWornSafeSpeedScale);
+            // The other half of the racing line (issue #147, owner report from
+            // hardware: being caught outside a big corner cost too much). The
+            // outside is longer, which the path factor already charges for —
+            // but it is also a WIDER ARC, and a wider arc corners faster. Grip
+            // holds v² ∝ r, so the safe speed follows the square root of the
+            // car's own radius. Without this the outside was pure cost and no
+            // driver would ever want it; with it the line becomes the real
+            // trade: short and slow against long and fast.
+            if (rules.Lateral.Enabled && before.Kind == TrackSectionKind.Corner)
+                effectiveSafeSpeed *= (float)Math.Sqrt(LateralPathFactor(racer));
             if (enteringCorner && racer.Speed > effectiveSafeSpeed)
             {
                 racer.Speed *= rules.CornerSpeedScrub;
@@ -196,8 +232,16 @@ namespace BoardRacing.Domain
             racer.PriorKind = before.Kind;
 
             float prior = racer.Distance;
-            racer.Distance += racer.Speed * delta;
-            float finishDistance = track.Length * rules.Laps;
+            if (rules.Lateral.Enabled) racer.Speed = Math.Min(racer.Speed, followingCap);
+            // The car's speed is along the line IT is driving; progress along
+            // the reference line is that travel divided by how much longer the
+            // car's own arc is (issue #147). Inside a corner of signed
+            // curvature k, an offset of lat rides a radius of R − k·lat·R, so
+            // the inside line converts the same speed into more lap. The
+            // clamp keeps a car from being credited more than a modest gain
+            // when the sampled curvature spikes on a chord seam.
+            racer.Distance += racer.Speed * delta / LateralPathFactor(racer);
+            float finishDistance = track.Length * rules.Laps + racer.GridStart;
             // Reaching the line eligible to classify finishes the race even with a
             // pit call pending (issue #95) — the call expires with the race. Only an
             // ineligible racer's call may still divert them into the pit at the line.
@@ -262,7 +306,7 @@ namespace BoardRacing.Domain
             if (racer.PitTimer < rules.Pit.ExitSeconds(racer.Id)) return;
             racer.PitPhase = PitPhase.OnTrack; racer.PitTimer = racer.ServiceProgress = 0f;
             racer.SelectedService = PitService.None;
-            float finishDistance = track.Length * rules.Laps;
+            float finishDistance = track.Length * rules.Laps + racer.GridStart;
             if (racer.Distance >= finishDistance && racer.CompletedServices >= rules.RequiredServiceCount)
             {
                 FinishRacer(racer, racer.Distance, elapsed + delta);
@@ -305,9 +349,170 @@ namespace BoardRacing.Domain
                 if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
                 float gap = (stepStartDistances[i] - distance) % track.Length;
                 if (gap < 0f) gap += track.Length;
-                if (gap > 0f && gap <= rules.SlipstreamWindow) return rules.SlipstreamBonus;
+                if (gap <= 0f || gap > rules.SlipstreamWindow) continue;
+                // In the wake, not merely behind in distance (issue #147). A
+                // car runs in still air alongside a rival, however close: the
+                // tow needs the other body actually in front of this one, and
+                // with lateral modeled that is a question the rules can ask.
+                if (rules.Lateral.Enabled &&
+                    Math.Abs(other.Lateral - racer.Lateral) >= rules.Lateral.SameLineWidth) continue;
+                return rules.SlipstreamBonus;
             }
             return 0f;
+        }
+
+        // The throttle a car actually got. A driver held behind a rival is
+        // billed for the step its speed was capped to, never for the one it
+        // asked for — the generous rounding, since a car capped between two
+        // steps did not get the higher one.
+        private ThrottleStep ThrottleActuallyUsed(ThrottleStep commanded, float cap)
+        {
+            if (!rules.Lateral.Enabled || cap == float.MaxValue) return commanded;
+            if (cap >= rules.MaxSpeed * (int)commanded / 100f) return commanded;
+            return cap >= rules.MaxSpeed * (int)ThrottleStep.Drive / 100f
+                ? ThrottleStep.Drive : ThrottleStep.Brake;
+        }
+
+        // How much longer this car's arc is than the reference line, as a
+        // divisor on its progress. 1 on a straight and for a car on the line.
+        private float LateralPathFactor(RacerState racer)
+        {
+            if (!rules.Lateral.Enabled || racer.Lateral == 0f) return 1f;
+            float factor = 1f - SignedCurvature(racer.Distance) * racer.Lateral *
+                rules.Lateral.PathCostScale;
+            return Math.Max(.75f, Math.Min(1.25f, factor));
+        }
+
+        // Signed curvature of the racing line (1/px), positive turning toward
+        // the +normal side — the same convention the drawn heading and the
+        // lateral offset use, so a positive offset is the inside of a positive
+        // corner.
+        private float SignedCurvature(float distance)
+        {
+            const float halfSpan = 40f;
+            Vec2 behind = track.Sample(distance - halfSpan).Position;
+            Vec2 at = track.Sample(distance).Position;
+            Vec2 ahead = track.Sample(distance + halfSpan).Position;
+            float aX = at.X - behind.X, aY = at.Y - behind.Y;
+            float bX = ahead.X - at.X, bY = ahead.Y - at.Y;
+            float cross = aX * bY - aY * bX, dot = aX * bX + aY * bY;
+            if (cross == 0f && dot == 0f) return 0f;
+            return (float)Math.Atan2(cross, dot) / halfSpan;
+        }
+
+        // Automatic line choice (issue #147): hold the inside of what is
+        // coming, unless a car ahead on that line is close enough to be in the
+        // way, in which case try the other side. Deterministic and blind to
+        // PlayerId — the only inputs are geometry and who is actually ahead.
+        private void SteerLateral(RacerState racer, float delta, float desiredSpeed)
+        {
+            var lateral = rules.Lateral;
+            float curvature = SignedCurvature(racer.Distance + lateral.LookAhead * .5f);
+            // Inside is the side the corner turns toward; on a straight there
+            // is no inside, so a car simply returns to the line.
+            float inside = curvature > 0f ? lateral.MaximumOffset
+                : curvature < 0f ? -lateral.MaximumOffset : 0f;
+            float target = inside;
+            RacerState blocker = BlockerOn(racer, inside, lateral);
+            // Pulling out is a decision, not a reflex (owner report from
+            // hardware). A car only leaves the inside when the move is
+            // actually on — the car in the way cannot hold the speed this one
+            // has in hand, so there is something to gain for the longer arc. Otherwise it tucks in
+            // behind and waits for the straight, which is what the tow is
+            // for. Before this, any car ahead sent a driver around the
+            // outside to pay the distance for nothing.
+            if (blocker != null && blocker.Speed < desiredSpeed - rules.MaxSpeed * .01f)
+            {
+                float outside = -inside;
+                if (inside == 0f) outside = racer.Lateral >= 0f
+                    ? lateral.MaximumOffset : -lateral.MaximumOffset;
+                if (BlockerOn(racer, outside, lateral) == null) target = outside;
+            }
+            // Held up on the inside with no move on: sit behind, do not drift
+            // out into the longer line by accident.
+            else if (blocker != null) target = racer.Lateral;
+            float moved = MoveTowards(racer.Lateral, target, lateral.MoveRate * delta);
+            // A car may not move sideways into a body that is already there.
+            // The speed cap holds a following gap open, but it says nothing
+            // about a rival ALONGSIDE — without this a car steering across
+            // simply drives through one, which the first run of the #147
+            // experiment measured as a full body-width overlap.
+            racer.Lateral = WouldStrikeAlongside(racer, moved, lateral) ? racer.Lateral : moved;
+        }
+
+        // Whether this lateral would put the car inside a rival's body, for a
+        // rival close enough alongside — either direction, since a car being
+        // passed is behind and still very much there.
+        private bool WouldStrikeAlongside(RacerState racer, float lateral, LateralRules rules2)
+        {
+            int self = Array.IndexOf(racers, racer);
+            for (int i = 0; i < racers.Length; i++)
+            {
+                var other = racers[i];
+                if (i == self || other.Finished) continue;
+                if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
+                float gap = AheadGap(racer, other);
+                float along = Math.Min(gap, track.Length - gap);
+                if (along >= rules2.MinimumGap) continue;
+                // Only a move that closes on the rival is refused; a car
+                // already inside the width must always be free to escape.
+                if (Math.Abs(lateral - other.Lateral) < rules2.SameLineWidth &&
+                    Math.Abs(lateral - other.Lateral) < Math.Abs(racer.Lateral - other.Lateral))
+                    return true;
+            }
+            return false;
+        }
+
+        // The nearest car occupying this line ahead, or null if it is clear.
+        private RacerState BlockerOn(RacerState racer, float line, LateralRules lateral)
+        {
+            int self = Array.IndexOf(racers, racer);
+            RacerState nearest = null;
+            float nearestGap = float.MaxValue;
+            for (int i = 0; i < racers.Length; i++)
+            {
+                var other = racers[i];
+                if (i == self || other.Finished) continue;
+                if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
+                float gap = AheadGap(racer, other);
+                if (gap <= 0f || gap > lateral.LookAhead) continue;
+                if (Math.Abs(other.Lateral - line) >= lateral.SameLineWidth) continue;
+                if (gap >= nearestGap) continue;
+                nearestGap = gap; nearest = other;
+            }
+            return nearest;
+        }
+
+        // Bodies cannot pass through each other: a car sharing a line with the
+        // car ahead may go no faster than keeps the minimum gap open at the
+        // end of this step. A cap, never a shove, so the follower's position
+        // stays the integral of its own speed and can never jump.
+        private float FollowingSpeedCap(RacerState racer, float delta)
+        {
+            var lateral = rules.Lateral;
+            int self = Array.IndexOf(racers, racer);
+            float cap = float.MaxValue;
+            for (int i = 0; i < racers.Length; i++)
+            {
+                var other = racers[i];
+                if (i == self || other.Finished) continue;
+                if (other.PitPhase != PitPhase.OnTrack && other.PitPhase != PitPhase.Requested) continue;
+                if (Math.Abs(other.Lateral - racer.Lateral) >= lateral.SameLineWidth) continue;
+                float gap = AheadGap(racer, other);
+                if (gap <= 0f || gap > lateral.LookAhead) continue;
+                // Close the surplus over the minimum gap within this step, no
+                // faster: at the gap itself the cap is the leader's own speed.
+                cap = Math.Min(cap, Math.Max(0f, other.Speed + (gap - lateral.MinimumGap) / delta));
+            }
+            return cap;
+        }
+
+        // Centerline distance from this car forward to another, wrapped.
+        private float AheadGap(RacerState racer, RacerState other)
+        {
+            float gap = (other.Distance - racer.Distance) % track.Length;
+            if (gap < 0f) gap += track.Length;
+            return gap;
         }
 
         private float DistanceToNextCorner(float distance)
@@ -400,12 +605,56 @@ namespace BoardRacing.Domain
             awaitingRematchRelease = resumingFromPause = false;
             foreach (var racer in racers)
             {
-                racer.Speed = racer.Distance = racer.Recovery = 0f; racer.FinishTime = -1f;
+                racer.Speed = racer.Recovery = racer.Lateral = 0f; racer.Distance = 0f; racer.FinishTime = -1f;
                 racer.Finished = racer.IncidentThisStep = false; racer.Incidents = 0;
                 racer.PriorKind = track.Sample(0f).Kind;
                 racer.FuelUsed = racer.TireWear = racer.ServiceProgress = racer.PitTimer = 0f;
                 racer.SelectedService = PitService.None; racer.PitPhase = PitPhase.OnTrack;
                 racer.CompletedServices = 0;
+            }
+            ApplyStartingGrid();
+        }
+
+        // With lateral modeled (issue #147) presentation stops inventing the
+        // grid split, and nothing else was placing the cars: every racer began
+        // stacked on the line at distance zero. That is an overlap on frame
+        // one, and worse, the following cap reads a zero gap and pins the
+        // whole field to a standstill until whoever nudges ahead first clears
+        // a body length — the grid released one car at a time.
+        //
+        // So the grid becomes real too: two columns a body apart, staggered
+        // back from the line. Each racer still covers exactly Laps × Length,
+        // measured from its own slot, so a back-row start costs nothing —
+        // there is no qualifying here to earn the front row with. Whether
+        // that is the right answer, or whether grid position should be a real
+        // advantage, is the open question on #147.
+        // Two rows of two, as tight as the formation the cars actually race
+        // in (owner, 2026-07-25: the field was more spread out on the grid
+        // than during the race, and racing looks right).
+        //
+        // A racing pair runs side by side at 32px of centres against 26px of
+        // body — 6px of daylight — so the grid pairs up level at exactly that,
+        // and sets the rows a body plus the same 6px apart. Every gap on the
+        // grid is then the gap the cars race with, and the whole thing is 60px
+        // deep instead of 120.
+        //
+        // This IS the 2x2 that was replaced by a staggered echelon earlier
+        // today, and the history is worth keeping: it was replaced because it
+        // read as one stacked clump on hardware, but that was the drawn-
+        // distance bug — every car was being drawn at distance zero whatever
+        // its slot, so the layout was never the problem and a working 2x2 had
+        // never actually been seen. Do not re-stagger this without checking
+        // that the cars are drawn where the simulation puts them.
+        public const float GridRowSpacing = 60f;
+
+        private void ApplyStartingGrid()
+        {
+            if (!rules.Lateral.Enabled) return;
+            for (int i = 0; i < racers.Length; i++)
+            {
+                racers[i].Lateral = (i % 2 == 0 ? -1f : 1f) * rules.Lateral.MaximumOffset;
+                racers[i].GridStart = -(i / 2) * GridRowSpacing;
+                racers[i].Distance = racers[i].GridStart;
             }
         }
 
@@ -414,18 +663,9 @@ namespace BoardRacing.Domain
             var ordered = racers.OrderBy(x => x.Finished ? 0 : 1)
                 .ThenBy(x => x.Finished ? x.FinishTime : -x.Distance)
                 .ThenBy(x => Array.IndexOf(racers, x)).ToArray();
-            var candidates = racers.Select((racer, index) =>
-                    new RacingLineCandidate(racer.Id, index, racer.Distance))
-                .Where((candidate, index) => !racers[index].Finished &&
-                    (racers[index].PitPhase == PitPhase.OnTrack ||
-                     racers[index].PitPhase == PitPhase.Requested))
-                .ToArray();
-            RacingLinePlacement[] placements = RacingLineAllocator.Allocate(candidates,
-                track.Length, rules.PassingDistance, rules.PassingOffset);
             var result = racers.Select(racer =>
             {
                 int place = Array.IndexOf(ordered, racer) + 1;
-                RacingLinePlacement placement = placements.FirstOrDefault(x => x.PlayerId == racer.Id);
                 var condition = new RacerConditionSnapshot(racer.FuelUsed, racer.TireWear,
                     FuelPenaltyActive(racer), TirePenaltyActive(racer));
                 float phaseProgress = racer.PitPhase == PitPhase.Entering
@@ -436,8 +676,8 @@ namespace BoardRacing.Domain
                     racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount, phaseProgress);
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
                     Math.Min(rules.Laps, (int)(racer.Distance / track.Length)), place, racer.Finished, racer.FinishTime,
-                    track.Sample(racer.Distance), placement.LateralOffset, racer.IncidentThisStep,
-                    racer.Recovery, racer.Incidents, condition, pit, placement.LongitudinalOffset);
+                    track.Sample(racer.Distance), racer.Finished ? 0f : racer.Lateral, racer.IncidentThisStep,
+                    racer.Recovery, racer.Incidents, condition, pit);
             }).ToArray();
             float progress = rules.RematchHoldSeconds <= 0f ? 1f : Math.Min(1f, rematchHeld / rules.RematchHoldSeconds);
             return new RaceSnapshot(phase, countdown, elapsed, result, progress, awaitingRematchRelease);

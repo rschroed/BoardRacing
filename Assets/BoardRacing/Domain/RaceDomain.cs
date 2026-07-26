@@ -38,142 +38,6 @@ namespace BoardRacing.Domain
         }
     }
 
-    public readonly struct RacingLineCandidate
-    {
-        public RacingLineCandidate(PlayerId playerId, int rosterIndex, float distance)
-        {
-            if (!Enum.IsDefined(typeof(PlayerId), playerId) || rosterIndex < 0 ||
-                float.IsNaN(distance) || float.IsInfinity(distance))
-                throw new ArgumentException("Racing-line candidate contains invalid values.");
-            PlayerId = playerId; RosterIndex = rosterIndex; Distance = distance;
-        }
-        public PlayerId PlayerId { get; }
-        public int RosterIndex { get; }
-        public float Distance { get; }
-    }
-
-    public readonly struct RacingLinePlacement
-    {
-        public RacingLinePlacement(PlayerId playerId, float longitudinalOffset, float lateralOffset)
-        {
-            PlayerId = playerId; LongitudinalOffset = longitudinalOffset;
-            LateralOffset = lateralOffset;
-        }
-        public PlayerId PlayerId { get; }
-        // Presentation-only distance along the racing line. Classification,
-        // laps, pit diversion, and finish truth continue to use TotalDistance.
-        public float LongitudinalOffset { get; }
-        public float LateralOffset { get; }
-    }
-
-    // Pure N-car formation allocator. Close cars use exactly two lateral lanes;
-    // any third or fourth body sharing a lane is pushed only far enough along
-    // the ribbon to maintain the proven 60 px nose-to-tail spacing. Lateral
-    // side follows explicit roster order, not enum value or race place, so an
-    // overtake cannot make cars swap sides.
-    public static class RacingLineAllocator
-    {
-        public const float NoseToTailSpacing = 60f;
-
-        public static RacingLinePlacement[] Allocate(
-            IReadOnlyList<RacingLineCandidate> candidates, float trackLength,
-            float clusterDistance, float lateralOffset)
-        {
-            if (candidates == null) throw new ArgumentNullException(nameof(candidates));
-            if (trackLength <= 0f || float.IsNaN(trackLength) || float.IsInfinity(trackLength) ||
-                clusterDistance < 0f || float.IsNaN(clusterDistance) || float.IsInfinity(clusterDistance) ||
-                lateralOffset < 0f || float.IsNaN(lateralOffset) || float.IsInfinity(lateralOffset))
-                throw new ArgumentException("Racing-line geometry contains invalid values.");
-            if (candidates.Count > 4)
-                throw new ArgumentException("The racing-line allocator supports at most four racers.");
-            var result = candidates.Select(x =>
-                new RacingLinePlacement(x.PlayerId, 0f, 0f)).ToArray();
-            if (candidates.Count < 2) return result;
-            if (candidates.Select(x => x.PlayerId).Distinct().Count() != candidates.Count ||
-                candidates.Select(x => x.RosterIndex).Distinct().Count() != candidates.Count)
-                throw new ArgumentException("Racing-line candidates must have unique identities and roster slots.");
-
-            int[] circularOrder = Enumerable.Range(0, candidates.Count)
-                .OrderBy(i => Wrap(candidates[i].Distance, trackLength))
-                .ThenBy(i => candidates[i].RosterIndex).ToArray();
-            int start = StartAfterWidestGap(candidates, circularOrder, trackLength);
-            var cluster = new List<int>();
-            var positions = new List<float>();
-            for (int step = 0; step < candidates.Count; step++)
-            {
-                int index = circularOrder[(start + step) % candidates.Count];
-                float wrapped = Wrap(candidates[index].Distance, trackLength);
-                float position = positions.Count == 0
-                    ? wrapped
-                    : positions[positions.Count - 1] +
-                      Wrap(wrapped - positions[positions.Count - 1], trackLength);
-                if (positions.Count > 0 && position - positions[positions.Count - 1] > clusterDistance)
-                {
-                    ApplyCluster(candidates, cluster, positions, lateralOffset, result);
-                    cluster.Clear(); positions.Clear();
-                    position = wrapped;
-                }
-                cluster.Add(index); positions.Add(position);
-            }
-            ApplyCluster(candidates, cluster, positions, lateralOffset, result);
-            return result;
-        }
-
-        private static int StartAfterWidestGap(IReadOnlyList<RacingLineCandidate> candidates,
-            int[] order, float trackLength)
-        {
-            int start = 0;
-            float widest = -1f;
-            for (int i = 0; i < order.Length; i++)
-            {
-                float here = Wrap(candidates[order[i]].Distance, trackLength);
-                float next = Wrap(candidates[order[(i + 1) % order.Length]].Distance, trackLength);
-                float gap = i == order.Length - 1 ? next - here + trackLength : next - here;
-                if (gap > widest) { widest = gap; start = (i + 1) % order.Length; }
-            }
-            return start;
-        }
-
-        private static void ApplyCluster(IReadOnlyList<RacingLineCandidate> candidates,
-            List<int> indices, List<float> positions, float lateralOffset,
-            RacingLinePlacement[] result)
-        {
-            if (indices.Count < 2) return;
-            int[] byRoster = Enumerable.Range(0, indices.Count)
-                .OrderBy(i => candidates[indices[i]].RosterIndex).ToArray();
-            var lane = new int[indices.Count];
-            for (int rank = 0; rank < byRoster.Length; rank++)
-                lane[byRoster[rank]] = rank % 2;
-
-            var drawn = positions.ToArray();
-            for (int side = 0; side < 2; side++)
-            {
-                int[] laneOrder = Enumerable.Range(0, indices.Count).Where(i => lane[i] == side)
-                    .OrderBy(i => positions[i]).ThenBy(i => candidates[indices[i]].RosterIndex).ToArray();
-                for (int i = 1; i < laneOrder.Length; i++)
-                {
-                    int prior = laneOrder[i - 1], current = laneOrder[i];
-                    drawn[current] = Math.Max(drawn[current], drawn[prior] + NoseToTailSpacing);
-                }
-            }
-            float shift = (positions.Sum() - drawn.Sum()) / indices.Count;
-            for (int i = 0; i < indices.Count; i++)
-            {
-                int candidateIndex = indices[i];
-                result[candidateIndex] = new RacingLinePlacement(
-                    candidates[candidateIndex].PlayerId,
-                    drawn[i] + shift - positions[i],
-                    lane[i] == 0 ? -lateralOffset : lateralOffset);
-            }
-        }
-
-        private static float Wrap(float value, float length)
-        {
-            value %= length;
-            return value < 0f ? value + length : value;
-        }
-    }
-
     public readonly struct TrackSegment
     {
         public TrackSegment(Vec2 start, Vec2 end, TrackSectionKind kind, float safeSpeed)
@@ -259,13 +123,86 @@ namespace BoardRacing.Domain
         }
     }
 
+    // Lateral position as a modeled quantity (issue #147). The game always
+    // races with it — there is no setting, and the presentation-only formation
+    // it replaced has been deleted. It stays optional at the RULES level for
+    // the same reason ConditionRules and PitRules are: a unit test pinning pit
+    // pacing or slipstream geometry on a synthetic two-segment track wants one
+    // mechanic in isolation, and those tracks have no meaningful curvature for
+    // a racing line to mean anything on.
+    //
+    // The model is deliberately small. A car holds a signed offset from the
+    // racing line, and that offset costs or saves real distance against the
+    // local curvature — the inside of a corner IS shorter, which is the whole
+    // point. Cars cannot drive through each other, expressed as a speed cap on
+    // the follower rather than as a shove, so position stays a consequence of
+    // integrating speed and never jumps. Line choice is automatic and blind to
+    // PlayerId: take the inside unless someone is already there.
+    public readonly struct LateralRules
+    {
+        public LateralRules(float maximumOffset, float moveRate, float minimumGap,
+            float lookAhead, float sameLineWidth, float pathCostScale)
+        {
+            var values = new[] { maximumOffset, moveRate, minimumGap, lookAhead,
+                sameLineWidth, pathCostScale };
+            if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x) || x <= 0f))
+                throw new ArgumentException("Lateral rules must contain finite positive values.");
+            if (pathCostScale > 1f)
+                throw new ArgumentException("The path cost cannot exceed the real geometry.");
+            Enabled = true; MaximumOffset = maximumOffset; MoveRate = moveRate;
+            MinimumGap = minimumGap; LookAhead = lookAhead; SameLineWidth = sameLineWidth;
+            PathCostScale = pathCostScale;
+        }
+        public bool Enabled { get; }
+        // How far off the racing line a car may run, each way.
+        public float MaximumOffset { get; }
+        // px of lateral travel per second. The drawn body slides at this rate
+        // because the car does, so there is nothing left to smooth.
+        public float MoveRate { get; }
+        // Centerline gap a follower is held to behind a car on its line.
+        // A body length plus margin: the cap reads the leader's speed at the
+        // top of the step, and a leader that scrubs into a corner after that
+        // sheds speed the follower did not plan for, so the gap has to absorb
+        // one step of it.
+        public float MinimumGap { get; }
+        // How far ahead a car looks when choosing its line.
+        public float LookAhead { get; }
+        // Lateral distance within which two cars count as sharing a line, so
+        // one blocks the other: a body width.
+        public float SameLineWidth { get; }
+        // How much of the true geometric cost of the wider arc to charge
+        // (owner report from hardware: being caught outside a big corner is
+        // still a significant penalty). The full price is too much here, and
+        // the reason is that the offsets are not racing-line offsets — the
+        // ±16 exists so two 26 px bodies fit side by side on a 64 px ribbon.
+        // Against a 72 px hairpin that is a 22% difference in radius, where a
+        // real racing line differs by two or three percent, so charging the
+        // literal geometry over-taxes an offset that is really there for
+        // legibility. Half price keeps the inside genuinely better without
+        // making the outside a sentence.
+        //
+        // Note this is only half the story: the wider arc's reward — a higher
+        // cornering limit — cannot pay at all while the cars are under that
+        // limit, and at Drive (180) they are, since corners clear at 190. The
+        // outside only earns anything back under Boost. Making corners
+        // genuinely grip-limited at Drive is a pace-dial question, not one for
+        // this rule.
+        public float PathCostScale { get; }
+
+        // A body length ahead, a body width across, and a lateral move that
+        // crosses the 32 px between the two lanes in about a second.
+        public static LateralRules Defaults => new LateralRules(
+            maximumOffset: 16f, moveRate: 34f, minimumGap: 62f,
+            lookAhead: 150f, sameLineWidth: 27f, pathCostScale: .5f);
+    }
+
     public readonly struct RaceRules
     {
         public RaceRules(int laps, float countdownSeconds, float maxSpeed, float acceleration, float drag,
             float braking, float cornerSpeedScrub, float cornerRecoverySeconds, float recoveryAccelerationScale,
             float passingDistance, float passingOffset, float rematchHoldSeconds, int requiredServiceCount = 0,
             ConditionRules conditionRules = default, PitRules pitRules = default, float pauseClearSeconds = 2f,
-            float slipstreamBonus = 0f, float slipstreamWindow = 0f)
+            float slipstreamBonus = 0f, float slipstreamWindow = 0f, LateralRules lateralRules = default)
         {
             var scalarValues = new[] { countdownSeconds, maxSpeed, acceleration, drag, braking, cornerSpeedScrub,
                 cornerRecoverySeconds, recoveryAccelerationScale, passingDistance, passingOffset, rematchHoldSeconds,
@@ -288,7 +225,9 @@ namespace BoardRacing.Domain
             RequiredServiceCount = requiredServiceCount; Conditions = conditionRules; Pit = pitRules;
             PauseClearSeconds = pauseClearSeconds;
             SlipstreamBonus = slipstreamBonus; SlipstreamWindow = slipstreamWindow;
+            Lateral = lateralRules;
         }
+        public LateralRules Lateral { get; }
         public int Laps { get; }
         public float CountdownSeconds { get; }
         public float MaxSpeed { get; }
@@ -325,6 +264,15 @@ namespace BoardRacing.Domain
         // pace: it reaches beyond the passing split so the reel-in starts
         // before the cars go two-wide.
         public const float DefaultSlipstreamWindow = 150f;
+        // The same rules, racing with a modeled lateral position. Tests that
+        // pin a mechanic in isolation take the defaults; tests about how cars
+        // sit on the road ask for this.
+        public RaceRules WithLateral(LateralRules lateral) => new RaceRules(
+            Laps, CountdownSeconds, MaxSpeed, Acceleration, Drag, Braking, CornerSpeedScrub,
+            CornerRecoverySeconds, RecoveryAccelerationScale, PassingDistance, PassingOffset,
+            RematchHoldSeconds, RequiredServiceCount, Conditions, Pit, PauseClearSeconds,
+            SlipstreamBonus, SlipstreamWindow, lateral);
+
         public static RaceRules Defaults => new RaceRules(5, 3f, Pace.BasePace, Pace.Acceleration,
             Pace.Drag, Pace.Braking, .55f, 1f, .35f, 180f, 16f, 1f,
             slipstreamBonus: Pace.SlipstreamBonus, slipstreamWindow: DefaultSlipstreamWindow);
@@ -531,7 +479,7 @@ namespace BoardRacing.Domain
             PlayerId = playerId; Speed = speed; TotalDistance = totalDistance; CompletedLaps = completedLaps;
             Place = place; Finished = finished; FinishTime = finishTime; Track = track; LateralOffset = lateralOffset;
             IncidentThisStep = incidentThisStep; RecoveryRemaining = recoveryRemaining; IncidentCount = incidentCount;
-            Condition = condition; Pit = pit; LongitudinalOffset = longitudinalOffset;
+            Condition = condition; Pit = pit;
         }
         public PlayerId PlayerId { get; }
         public float Speed { get; }
@@ -542,7 +490,6 @@ namespace BoardRacing.Domain
         public float FinishTime { get; }
         public TrackSample Track { get; }
         public float LateralOffset { get; }
-        public float LongitudinalOffset { get; }
         public bool IncidentThisStep { get; }
         public float RecoveryRemaining { get; }
         public int IncidentCount { get; }
