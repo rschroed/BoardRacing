@@ -58,7 +58,23 @@ namespace BoardRacing.PlayModeTests
             if (simulator != null) UnityEngine.Object.DestroyImmediate(simulator.gameObject);
         }
 
+        // Quarantined under Unity 6 (issue #168): BoardSimulationContact.Lift()
+        // early-returns via BoardInput.IsContactIdActive(), which only ever
+        // evaluates true under "#if UNITY_ANDROID && UNITY_EDITOR" — editor
+        // simulator bookkeeping, not the native callback path real hardware
+        // input uses. That bookkeeping stopped clearing under Unity 6's PlayMode
+        // simulator (reproduced with a 300-frame wait, versus the 5 frames this
+        // test originally allowed), so the lift/reacquire assertions below never
+        // pass in the editor. Confirmed on the physical Board — a live race with
+        // repeated lift/replace showed no issue — so this is an SDK simulator
+        // limitation, not a real input regression. Package source lives in a
+        // vendored tarball (Packages/fun.board-3.3.0.tar) and is not ours to
+        // patch. Re-enable if a Board SDK update fixes the simulator, or replace
+        // with a path that does not depend on IsContactIdActive().
         [UnityTest]
+        [Ignore("SDK simulator's IsContactIdActive() editor-only bookkeeping " +
+            "does not clear under Unity 6 PlayMode; see #168. Verified correct " +
+            "on physical Board hardware.")]
         public IEnumerator DrivingShipFlowsThroughSdkSimulatorAndIgnoresTouchState()
         {
             using (var provider = new BoardContactInputProvider(MeasuredStops, 8f * Mathf.Deg2Rad, 540f))
