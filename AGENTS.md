@@ -250,6 +250,13 @@ Authorship is tracked through the GitHub and Git accounts that make the change.
 Machine-readable `Co-authored-by:` trailers on commits are that tracking and are
 fine; prose banners and marketing links are not.
 
+Never write the assistant vendor's marketing URL into this project at all — not
+as a link, not as bare text, and not while quoting or explaining this rule.
+Describe it in words instead. A URL pasted “only as an example” is still a
+crawlable string in a public repository, which is the entire problem.
+
+## Mandatory planning and design approval gates
+
 GitHub issue creation and implementation are separate user decisions in this repository.
 
 - When a task includes creating or materially rewriting issues, create the issues, verify their saved bodies, present the issue links and a concise dependency/order summary, and then stop.
