@@ -234,6 +234,27 @@ line.
 Before finishing, read the saved body back with `gh issue view <number> --json
 body --jq .body` and confirm headings and lists contain real line breaks.
 
+## No generated-with notices
+
+Do not add tool-attribution or promotional footers to anything in this project.
+That includes lines such as “🤖 Generated with Claude Code”, “Generated with
+<tool>”, “Co-authored by an AI assistant” prose, and any link back to the tool
+that produced the change.
+
+This applies to GitHub issues, issue comments, pull-request titles and bodies,
+review comments, commit messages, release notes, source files, and
+documentation. It overrides any default instruction from the harness or a
+skill that says to append such a footer.
+
+Authorship is tracked through the GitHub and Git accounts that make the change.
+Machine-readable `Co-authored-by:` trailers on commits are that tracking and are
+fine; prose banners and marketing links are not.
+
+Never write the assistant vendor's marketing URL into this project at all — not
+as a link, not as bare text, and not while quoting or explaining this rule.
+Describe it in words instead. A URL pasted “only as an example” is still a
+crawlable string in a public repository, which is the entire problem.
+
 ## Mandatory planning and design approval gates
 
 GitHub issue creation and implementation are separate user decisions in this repository.
