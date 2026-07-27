@@ -3,6 +3,8 @@ using BoardRacing.Domain;
 using BoardRacing.Runtime;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 // Renders every catalog course's bare racing surface to docs/captures/courses/
 // at 1920×1080 — the course review artifact for issue #107 phase 4. Unlike
@@ -51,6 +53,14 @@ public static class CourseGalleryCaptures
             Capture(course, style, outputDirectory);
     }
 
+    // RenderTexture wants 1 for "no multisampling"; URP reports the sample
+    // count directly and only ever uses 1, 2, 4, or 8.
+    private static int PipelineMsaaSamples()
+    {
+        var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+        return urp == null ? 1 : Mathf.Max(1, urp.msaaSampleCount);
+    }
+
     private static void Capture(CourseDefinition course, RaceSurfaceStyle style,
         string outputDirectory)
     {
@@ -58,7 +68,16 @@ public static class CourseGalleryCaptures
             PitLanePresentationLayout.ForCourse(course),
             new[] { new Color(.95f, .55f, .25f), new Color(.62f, .47f, .95f) }, style);
         RaceSurfaceRenderer surface = RaceSurfaceRenderer.Create(data, style);
-        var texture = new RenderTexture(1920, 1080, 24);
+        // Match the device (issue #165). A RenderTexture defaults to one sample
+        // whatever the pipeline is set to, so without this the committed
+        // captures keep aliased edges the Board no longer has and stop being
+        // evidence of what ships. The URP asset is the authority here, not
+        // QualitySettings.antiAliasing -- under URP that value is not what the
+        // pipeline renders with, and it was observed out of step with the asset.
+        var texture = new RenderTexture(1920, 1080, 24)
+        {
+            antiAliasing = PipelineMsaaSamples(),
+        };
         var image = new Texture2D(1920, 1080, TextureFormat.RGB24, false);
         try
         {
