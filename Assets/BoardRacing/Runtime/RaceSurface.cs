@@ -35,9 +35,13 @@ namespace BoardRacing.Runtime
         public static readonly SurfaceDetail Ground = new SurfaceDetail(0f, 0f, 1f);
         public static readonly SurfaceDetail Road = new SurfaceDetail(1f, 0f, 1f);
 
-        // Recorded mapping compromise (#161): the pit surface samples the road
-        // detail texture and is distinguished by its own tint, rather than
-        // spending a fourth sampler on a surface that is asphalt either way.
+        // The pit surface shares the road tile ungraded, so it is currently
+        // indistinguishable from the roadway while textured — a deliberate flat
+        // baseline for judging the raw assets (#161). Sharing a tile also keeps
+        // the grain flowing across the boundary, which reads as wear; giving
+        // pit its own tile would break the pattern there and read as a
+        // different material instead. Which of those is wanted is a call for
+        // the Board review.
         public static readonly SurfaceDetail PitSurface = Road;
 
         public static SurfaceDetail Shoulder(float weight) =>
@@ -211,7 +215,13 @@ namespace BoardRacing.Runtime
         [Min(1f)] public float GroundDetailTile;
         [Min(1f)] public float RoadDetailTile;
         [Min(1f)] public float ShoulderDetailTile;
-        [Range(0f, 2f)] public float DetailStrength;
+        // Grades on top of the authored tile color, not the color source.
+        // White is the baseline; pit lane and corners currently share the road
+        // tile ungraded so every road-family surface reads identically.
+        public Color GroundDetailTint;
+        public Color RoadDetailTint;
+        public Color ShoulderDetailTint;
+        [Range(0f, 1f)] public float DetailStrength;
 
         public static RaceSurfaceStyle Default => new RaceSurfaceStyle
         {
@@ -233,9 +243,15 @@ namespace BoardRacing.Runtime
             StripeVisible = true,
             PitSurfaceVisible = true,
             DebugView = RaceSurfaceDebugView.Composed,
-            GroundDetailTile = 130f,
-            RoadDetailTile = 88f,
-            ShoulderDetailTile = 110f,
+            // 1:1 with the 128 px source tiles. A tile shown smaller than its
+            // source is a downscale, and the mip that results averages the
+            // authored grain away — see Presentation/PROVENANCE.md.
+            GroundDetailTile = 128f,
+            RoadDetailTile = 128f,
+            ShoulderDetailTile = 128f,
+            GroundDetailTint = Color.white,
+            RoadDetailTint = Color.white,
+            ShoulderDetailTint = Color.white,
             // The committed default stays flat and textureless: the theme asset
             // is what opts a build into detail, so Default remains the
             // deterministic fallback the gallery captures compare against.
@@ -834,6 +850,12 @@ namespace BoardRacing.Runtime
         private static readonly int GroundTileId = Shader.PropertyToID("_GroundTile");
         private static readonly int RoadTileId = Shader.PropertyToID("_RoadTile");
         private static readonly int ShoulderTileId = Shader.PropertyToID("_ShoulderTile");
+        private static readonly int GroundTintId = Shader.PropertyToID("_GroundTint");
+        private static readonly int RoadTintId = Shader.PropertyToID("_RoadTint");
+        private static readonly int ShoulderTintId = Shader.PropertyToID("_ShoulderTint");
+        private static readonly int GroundOnId = Shader.PropertyToID("_GroundOn");
+        private static readonly int RoadOnId = Shader.PropertyToID("_RoadOn");
+        private static readonly int ShoulderOnId = Shader.PropertyToID("_ShoulderOn");
         private static readonly int DetailStrengthId = Shader.PropertyToID("_DetailStrength");
 
         private Material material;
@@ -922,16 +944,23 @@ namespace BoardRacing.Runtime
         {
             surfaceCamera.backgroundColor = style.GroundColor;
             if (material == null || !material.HasProperty(DetailStrengthId)) return;
-            // Mid grey, not the default white, for an unbound slot: the shader
-            // modulates by detail * 2, so grey is the identity and an unassigned
-            // texture leaves its surface exactly as flat as before.
-            material.SetTexture(GroundTexId, style.GroundDetail ?? Texture2D.grayTexture);
-            material.SetTexture(RoadTexId, style.RoadDetail ?? Texture2D.grayTexture);
-            material.SetTexture(ShoulderTexId, style.ShoulderDetail ?? Texture2D.grayTexture);
+            // The tiles carry color now, so an unbound slot cannot be made a
+            // no-op by binding a neutral texture: the shader is told per surface
+            // whether a tile exists and falls back to flat vertex color where
+            // one does not.
+            material.SetTexture(GroundTexId, style.GroundDetail ?? Texture2D.whiteTexture);
+            material.SetTexture(RoadTexId, style.RoadDetail ?? Texture2D.whiteTexture);
+            material.SetTexture(ShoulderTexId, style.ShoulderDetail ?? Texture2D.whiteTexture);
+            material.SetFloat(GroundOnId, style.GroundDetail != null ? 1f : 0f);
+            material.SetFloat(RoadOnId, style.RoadDetail != null ? 1f : 0f);
+            material.SetFloat(ShoulderOnId, style.ShoulderDetail != null ? 1f : 0f);
+            material.SetColor(GroundTintId, style.GroundDetailTint);
+            material.SetColor(RoadTintId, style.RoadDetailTint);
+            material.SetColor(ShoulderTintId, style.ShoulderDetailTint);
             material.SetFloat(GroundTileId, Mathf.Max(1f, style.GroundDetailTile));
             material.SetFloat(RoadTileId, Mathf.Max(1f, style.RoadDetailTile));
             material.SetFloat(ShoulderTileId, Mathf.Max(1f, style.ShoulderDetailTile));
-            material.SetFloat(DetailStrengthId, Mathf.Max(0f, style.DetailStrength));
+            material.SetFloat(DetailStrengthId, Mathf.Clamp01(style.DetailStrength));
         }
 
         public void AttachCar(PlayerId playerId, SurfaceMeshData body)

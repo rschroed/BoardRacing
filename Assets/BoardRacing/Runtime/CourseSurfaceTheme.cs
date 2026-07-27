@@ -30,13 +30,13 @@ namespace BoardRacing.Runtime
         [Header("Ground")]
         public Color groundColor = RaceSurfaceGeometry.BackgroundColor;
         public Texture2D groundDetail;
-        [Min(1f)] public float groundDetailTile = 130f;
+        [Min(1f)] public float groundDetailTile = 128f;
 
         [Header("Road")]
         public Color straightRoadColor = RaceSurfaceGeometry.StraightColor;
         public Color cornerRoadColor = RaceSurfaceGeometry.CornerColor;
         public Texture2D roadDetail;
-        [Min(1f)] public float roadDetailTile = 88f;
+        [Min(1f)] public float roadDetailTile = 128f;
 
         [Header("Shoulder")]
         public Color shoulderColor = new Color(.28f, .24f, .18f, 1f);
@@ -44,7 +44,7 @@ namespace BoardRacing.Runtime
         [Min(0f)] public float shoulderSolidWidth = 12f;
         [Min(0f)] public float shoulderFeatherWidth = 24f;
         public Texture2D shoulderDetail;
-        [Min(1f)] public float shoulderDetailTile = 110f;
+        [Min(1f)] public float shoulderDetailTile = 128f;
 
         // The pit surface samples the road detail texture and is separated by
         // tint alone — a recorded mapping compromise (#161) rather than a
@@ -58,8 +58,14 @@ namespace BoardRacing.Runtime
         public Color stripeColor = RaceSurfaceGeometry.StripeColor;
         public Color crossingShadowColor = RaceSurfaceGeometry.CrossingShadowColor;
 
+        // Grades on top of the authored tile colors. White is the baseline —
+        // pit lane and corners share the road tile ungraded for now, so the raw
+        // assets can be judged before any grading is layered on.
         [Header("Detail")]
-        [Range(0f, 2f)] public float detailStrength = 1f;
+        public Color groundDetailTint = Color.white;
+        public Color roadDetailTint = Color.white;
+        public Color shoulderDetailTint = Color.white;
+        [Range(0f, 1f)] public float detailStrength = 1f;
 
         public static CourseSurfaceTheme Load() =>
             Resources.Load<CourseSurfaceTheme>(ResourcePath);
@@ -90,6 +96,9 @@ namespace BoardRacing.Runtime
             style.GroundDetailTile = groundDetailTile;
             style.RoadDetailTile = roadDetailTile;
             style.ShoulderDetailTile = shoulderDetailTile;
+            style.GroundDetailTint = groundDetailTint;
+            style.RoadDetailTint = roadDetailTint;
+            style.ShoulderDetailTint = shoulderDetailTint;
             style.DetailStrength = detailStrength;
             return style;
         }

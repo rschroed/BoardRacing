@@ -38,8 +38,14 @@ Material:
     m_Ints: []
     m_Floats:
     - _DetailStrength: 1
-    - _GroundTile: 130
-    - _RoadTile: 88
-    - _ShoulderTile: 110
-    m_Colors: []
+    - _GroundOn: 0
+    - _GroundTile: 128
+    - _RoadOn: 0
+    - _RoadTile: 128
+    - _ShoulderOn: 0
+    - _ShoulderTile: 128
+    m_Colors:
+    - _GroundTint: {r: 1, g: 1, b: 1, a: 1}
+    - _RoadTint: {r: 1, g: 1, b: 1, a: 1}
+    - _ShoulderTint: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []

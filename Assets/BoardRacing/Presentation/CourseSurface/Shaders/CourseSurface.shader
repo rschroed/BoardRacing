@@ -19,6 +19,19 @@
 // three samplers cover four surfaces. detailStrength 0 falls back to flat
 // vertex color, which is how markings -- stripes, start line, pit boxes,
 // crossing shadow and parapets -- stay crisp over a textured road.
+//
+// The tiles carry their own color. An earlier revision kept them neutral and
+// modulated the vertex color by detail * 2, which coupled absolute grain to
+// base brightness: the road at 0.29 luminance received a tenth of the ground's
+// variation from a tile authored with more amplitude, and read as flat. Color
+// therefore lives in the art, where a dark asphalt can be authored with the
+// contrast it actually needs, and where hue can vary at all -- greyscale times
+// a color can only ever vary value.
+//
+// The per-surface tint is a grade on top, not the color source, and defaults to
+// white. Pit lane and corners currently share the road tile ungraded, so every
+// road-family surface renders identically: a flat baseline for judging the raw
+// assets before any grading is layered on.
 Shader "BoardRacing/CourseSurface"
 {
     Properties
@@ -27,13 +40,23 @@ Shader "BoardRacing/CourseSurface"
         _GroundTex ("Ground detail", 2D) = "white" {}
         _RoadTex ("Road detail", 2D) = "white" {}
         _ShoulderTex ("Shoulder detail", 2D) = "white" {}
-        _GroundTile ("Ground tile size (reference px)", Float) = 130
-        _RoadTile ("Road tile size (reference px)", Float) = 88
-        _ShoulderTile ("Shoulder tile size (reference px)", Float) = 110
-        // Detail modulates the vertex color around mid grey, so a flat 0.5
-        // texture is a no-op and the committed flat treatment is recoverable
-        // by setting this to 0.
-        _DetailStrength ("Detail strength", Range(0, 2)) = 1
+        _GroundTile ("Ground tile size (reference px)", Float) = 128
+        _RoadTile ("Road tile size (reference px)", Float) = 128
+        _ShoulderTile ("Shoulder tile size (reference px)", Float) = 128
+        // Grades on top of the authored tile color. White is the baseline.
+        _GroundTint ("Ground tint", Color) = (1, 1, 1, 1)
+        _RoadTint ("Road tint", Color) = (1, 1, 1, 1)
+        _ShoulderTint ("Shoulder tint", Color) = (1, 1, 1, 1)
+        // Per-surface enables. An unbound sampler reads white, so a surface
+        // without a tile has to fall back to flat vertex color rather than
+        // blowing out -- that is what lets a partial theme (say ground and road
+        // but no shoulder tile) render correctly instead of catastrophically.
+        _GroundOn ("Ground detail enabled", Range(0, 1)) = 0
+        _RoadOn ("Road detail enabled", Range(0, 1)) = 0
+        _ShoulderOn ("Shoulder detail enabled", Range(0, 1)) = 0
+        // 0 falls back to flat vertex color, which is both how markings stay
+        // crisp and how the committed pre-texture treatment stays reachable.
+        _DetailStrength ("Detail strength", Range(0, 1)) = 1
     }
 
     SubShader
@@ -83,6 +106,12 @@ Shader "BoardRacing/CourseSurface"
                 float _GroundTile;
                 float _RoadTile;
                 float _ShoulderTile;
+                half4 _GroundTint;
+                half4 _RoadTint;
+                half4 _ShoulderTint;
+                float _GroundOn;
+                float _RoadOn;
+                float _ShoulderOn;
                 float _DetailStrength;
             CBUFFER_END
 
@@ -103,12 +132,13 @@ Shader "BoardRacing/CourseSurface"
                 float shoulderWeight = saturate(input.detail.y);
                 float strength = saturate(input.detail.z) * _DetailStrength;
 
-                half3 ground = SAMPLE_TEXTURE2D(_GroundTex, sampler_GroundTex,
-                    input.worldXY / max(_GroundTile, 1e-3)).rgb;
-                half3 road = SAMPLE_TEXTURE2D(_RoadTex, sampler_RoadTex,
-                    input.worldXY / max(_RoadTile, 1e-3)).rgb;
-                half3 shoulder = SAMPLE_TEXTURE2D(_ShoulderTex, sampler_ShoulderTex,
-                    input.worldXY / max(_ShoulderTile, 1e-3)).rgb;
+                half3 flat3 = input.color.rgb;
+                half3 ground = lerp(flat3, SAMPLE_TEXTURE2D(_GroundTex, sampler_GroundTex,
+                    input.worldXY / max(_GroundTile, 1e-3)).rgb * _GroundTint.rgb, _GroundOn);
+                half3 road = lerp(flat3, SAMPLE_TEXTURE2D(_RoadTex, sampler_RoadTex,
+                    input.worldXY / max(_RoadTile, 1e-3)).rgb * _RoadTint.rgb, _RoadOn);
+                half3 shoulder = lerp(flat3, SAMPLE_TEXTURE2D(_ShoulderTex, sampler_ShoulderTex,
+                    input.worldXY / max(_ShoulderTile, 1e-3)).rgb * _ShoulderTint.rgb, _ShoulderOn);
 
                 // Ground is what is left after road and shoulder claim their
                 // share, so a vertex with neither weight samples ground.
@@ -116,11 +146,10 @@ Shader "BoardRacing/CourseSurface"
                 half3 detail = ground * groundWeight + road * roadWeight
                     + shoulder * shoulderWeight;
 
-                // Modulate around mid grey: detail lightens and darkens the
-                // authored color rather than replacing it, so the style value
-                // stays the thing that decides what a surface looks like.
-                half3 modulated = input.color.rgb * (detail * 2.0h);
-                half3 rgb = lerp(input.color.rgb, modulated, strength);
+                // The tile supplies the color outright; vertex color is the
+                // flat fallback the surface returns to as strength drops, and
+                // is what markings (strength 0) keep.
+                half3 rgb = lerp(flat3, detail, strength);
                 return half4(rgb, input.color.a);
             }
             ENDHLSL

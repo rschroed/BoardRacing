@@ -41,10 +41,11 @@ namespace BoardRacing.Tests
             Assert.That(style.ShoulderOpacity, Is.EqualTo(.1f).Within(.001f));
             Assert.That(style.ShoulderSolidWidth, Is.EqualTo(16f));
             Assert.That(style.ShoulderFeatherWidth, Is.EqualTo(28f));
-            // Tile sizes are reference pixels: 130/88/110 committed, stepped 16.
-            Assert.That(style.GroundDetailTile, Is.EqualTo(146f));
-            Assert.That(style.RoadDetailTile, Is.EqualTo(72f));
-            Assert.That(style.ShoulderDetailTile, Is.EqualTo(126f));
+            // Tile sizes are reference pixels. The committed baseline is 128
+            // for all three — 1:1 with the 128 px source tiles — stepped by 16.
+            Assert.That(style.GroundDetailTile, Is.EqualTo(144f));
+            Assert.That(style.RoadDetailTile, Is.EqualTo(112f));
+            Assert.That(style.ShoulderDetailTile, Is.EqualTo(144f));
             Assert.That(style.StripeVisible, Is.False);
             Assert.That(style.PitSurfaceVisible, Is.False);
             Assert.That(style.DebugView, Is.EqualTo(RaceSurfaceDebugView.ShoulderOnly));
@@ -137,7 +138,7 @@ namespace BoardRacing.Tests
             committed.GroundDetail = Texture2D.grayTexture;
             committed.RoadDetail = Texture2D.grayTexture;
             committed.DetailStrength = 1f;
-            committed.GroundDetailTile = 130f;
+            committed.GroundDetailTile = 128f;
             committed.ShoulderOpacity = 1f;
 
             RaceSurfaceStyle last = default;
@@ -148,11 +149,11 @@ namespace BoardRacing.Tests
             panel.CreateContent(holder.GetComponent<RectTransform>());
 
             panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(4).center);
-            Assert.That(last.GroundDetailTile, Is.EqualTo(146f), "tile step should apply");
+            Assert.That(last.GroundDetailTile, Is.EqualTo(144f), "tile step should apply");
 
             panel.HandlePress(CourseSurfaceComposerPanel.ReferenceResetBounds.center);
 
-            Assert.That(last.GroundDetailTile, Is.EqualTo(130f));
+            Assert.That(last.GroundDetailTile, Is.EqualTo(128f));
             Assert.That(last.DetailStrength, Is.EqualTo(1f));
             Assert.That(last.ShoulderOpacity, Is.EqualTo(1f));
             Assert.That(last.GroundDetail, Is.Not.Null,

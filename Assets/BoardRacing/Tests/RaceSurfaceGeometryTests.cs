@@ -622,9 +622,9 @@ namespace BoardRacing.Tests
         private static RaceSurfaceStyle TexturedStyle()
         {
             RaceSurfaceStyle style = RaceSurfaceStyle.Default;
-            style.GroundDetail = Texture2D.grayTexture;
-            style.RoadDetail = Texture2D.grayTexture;
-            style.ShoulderDetail = Texture2D.grayTexture;
+            style.GroundDetail = Texture2D.whiteTexture;
+            style.RoadDetail = Texture2D.whiteTexture;
+            style.ShoulderDetail = Texture2D.whiteTexture;
             style.DetailStrength = 1f;
             return style;
         }
@@ -739,7 +739,7 @@ namespace BoardRacing.Tests
         {
             RaceSurfaceStyle before = TexturedStyle();
             RaceSurfaceStyle after = TexturedStyle();
-            after.RoadDetail = Texture2D.whiteTexture;
+            after.RoadDetail = Texture2D.blackTexture;
             after.RoadDetailTile = before.RoadDetailTile * 2f;
 
             SurfaceMeshData a = RaceSurfaceGeometry.Build(
@@ -748,8 +748,10 @@ namespace BoardRacing.Tests
                 Track, PitLayout(), new[] { Color.red, Color.blue }, after);
 
             // The swap test #161 asks for: a texture reference changes what the
-            // course looks like without moving a vertex or altering a colour,
-            // because tiling is resolved in the shader from world position.
+            // course looks like without moving a vertex or altering a vertex
+            // colour, because both tiling and the surface colour are resolved in
+            // the shader. Since #161's coloured-tile revision the swap changes
+            // colour too, so this pins the mesh, not the appearance.
             Assert.That(b.Vertices, Is.EqualTo(a.Vertices));
             Assert.That(b.Colors, Is.EqualTo(a.Colors));
             Assert.That(b.Details, Is.EqualTo(a.Details));
@@ -766,6 +768,11 @@ namespace BoardRacing.Tests
             Assert.That(flat.RoadDetail, Is.Null);
             Assert.That(flat.ShoulderDetail, Is.Null);
             Assert.That(flat.DetailStrength, Is.EqualTo(0f));
+            // Tints are grades on top of authored tile colour, so the baseline
+            // is white: pit lane and corners share the road tile ungraded.
+            Assert.That(flat.GroundDetailTint, Is.EqualTo(Color.white));
+            Assert.That(flat.RoadDetailTint, Is.EqualTo(Color.white));
+            Assert.That(flat.ShoulderDetailTint, Is.EqualTo(Color.white));
 
             SurfaceMeshData mesh = RaceSurfaceGeometry.Build(
                 Track, PitLayout(), new[] { Color.red, Color.blue }, flat);

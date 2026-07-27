@@ -34,16 +34,28 @@ so every tile is reproducible from the repository alone:
 python3 tools/generate_course_fpo_textures.py
 ```
 
-## Why the tiles are grey
+## Why the tiles carry their own colour
 
-They are neutral grain maps centred on mid grey, not coloured surfaces. The
-shader modulates the authored vertex colour by `detail * 2`, so a flat 0.5 tile
-is a no-op and the theme's colours stay the thing that decides what a surface
-looks like.
+An earlier revision kept them neutral and let the shader modulate a theme colour
+by them. Measured on the themed capture, that delivered 10.3 levels of variation
+to the ground and **1.0 level** to the road — invisible — because the combine was
+multiplicative and absolute grain therefore scaled with base brightness. The road
+tile was authored with *more* amplitude than the ground tile and still lost by
+10×.
 
-This is what makes the swap test in #161 meaningful: changing a texture
-reference on the theme changes the surface without touching mesh generation,
-shader, or gameplay code, and without disturbing the palette.
+Colour now lives in the art. A dark asphalt can be authored with the contrast it
+actually needs, and hue can vary at all: greyscale times a colour can only ever
+vary value, while real aggregate varies in hue too.
+
+The per-surface tint in the theme is a grade on top, not the colour source, and
+defaults to white. Pit lane and corners currently share the road tile ungraded,
+so every road-family surface renders identically — a deliberate flat baseline
+for judging the raw assets before any grading is layered on.
+
+One consequence, recorded rather than left to erode: the swap test in #161 is
+still literally true — a texture reference can be replaced without touching
+mesh, shader, or gameplay code — but weaker in spirit, because swapping a tile
+now changes colour as well as grain.
 
 ## Import settings (pinned, not editor defaults)
 
