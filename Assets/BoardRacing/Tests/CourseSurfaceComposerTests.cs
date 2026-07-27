@@ -28,16 +28,23 @@ namespace BoardRacing.Tests
             panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(1).center);
             panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(2).center);
             panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(3).center);
-            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(4).center);
-            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(5).center);
-            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(6).center);
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(4).center);
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceMinusBounds(5).center);
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(6).center);
             panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(7).center);
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(8).center);
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(9).center);
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(10).center);
 
-            Assert.That(applied.Count, Is.EqualTo(6));
+            Assert.That(applied.Count, Is.EqualTo(9));
             RaceSurfaceStyle style = applied[applied.Count - 1];
             Assert.That(style.ShoulderOpacity, Is.EqualTo(.1f).Within(.001f));
             Assert.That(style.ShoulderSolidWidth, Is.EqualTo(16f));
             Assert.That(style.ShoulderFeatherWidth, Is.EqualTo(28f));
+            // Tile sizes are reference pixels: 130/88/110 committed, stepped 16.
+            Assert.That(style.GroundDetailTile, Is.EqualTo(146f));
+            Assert.That(style.RoadDetailTile, Is.EqualTo(72f));
+            Assert.That(style.ShoulderDetailTile, Is.EqualTo(126f));
             Assert.That(style.StripeVisible, Is.False);
             Assert.That(style.PitSurfaceVisible, Is.False);
             Assert.That(style.DebugView, Is.EqualTo(RaceSurfaceDebugView.ShoulderOnly));
@@ -52,7 +59,8 @@ namespace BoardRacing.Tests
             Text[] labels = spawned[0].GetComponentsInChildren<Text>();
             foreach (string expected in new[]
             {
-                "COURSE", "SHOULDER OPACITY", "SOLID WIDTH", "FEATHER", "STRIPES",
+                "COURSE", "SHOULDER OPACITY", "SOLID WIDTH", "FEATHER",
+                "GROUND TILE", "ROAD TILE", "SHOULDER TILE", "STRIPES",
                 "PIT SURFACE", "VIEW", "MESH WIREFRAME"
             })
                 Assert.That(System.Array.Exists(labels, label => label.text == expected),
@@ -87,13 +95,16 @@ namespace BoardRacing.Tests
                 wireframeStates.Add);
             panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(1).center);
             panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(2).center);
-            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(7).center);
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(4).center);
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceActionBounds(10).center);
             panel.HandlePress(CourseSurfaceComposerPanel.ReferenceResetBounds.center);
 
             Assert.That(last.GroundColor, Is.EqualTo(RaceSurfaceStyle.Default.GroundColor));
             Assert.That(last.ShoulderOpacity, Is.EqualTo(0f));
             Assert.That(last.ShoulderSolidWidth, Is.EqualTo(12f));
             Assert.That(last.ShoulderFeatherWidth, Is.EqualTo(24f));
+            // Reset restores what the build committed, not the flat fallback.
+            Assert.That(last.GroundDetailTile, Is.EqualTo(RaceSurfaceStyle.Default.GroundDetailTile));
             Assert.That(panel.WireframeVisible, Is.False);
             Assert.That(wireframeStates, Is.EqualTo(new[] { true, false }));
             string record = panel.CurrentLogRecord();
@@ -109,6 +120,43 @@ namespace BoardRacing.Tests
             StringAssert.Contains("pitSurface=", record);
             StringAssert.Contains("view=", record);
             StringAssert.Contains("wireframe=False", record);
+            StringAssert.Contains("detailStrength=", record);
+            StringAssert.Contains("groundTile=", record);
+            StringAssert.Contains("roadTile=", record);
+            StringAssert.Contains("shoulderTile=", record);
+        }
+
+        [Test]
+        public void ResetRestoresTheCommittedThemeRatherThanTheFlatFallback()
+        {
+            // The committed treatment is the theme the build shipped, not
+            // RaceSurfaceStyle.Default — which since #161 is the textureless
+            // fallback. Resetting to Default would silently strip the course
+            // theme out of a Visual Lab session.
+            RaceSurfaceStyle committed = RaceSurfaceStyle.Default;
+            committed.GroundDetail = Texture2D.grayTexture;
+            committed.RoadDetail = Texture2D.grayTexture;
+            committed.DetailStrength = 1f;
+            committed.GroundDetailTile = 130f;
+            committed.ShoulderOpacity = 1f;
+
+            RaceSurfaceStyle last = default;
+            var holder = new GameObject("Course Surface Reset Test", typeof(RectTransform));
+            spawned.Add(holder);
+            var panel = new CourseSurfaceComposerPanel(
+                () => "Wedge", () => true, () => { }, committed, style => last = style, _ => { });
+            panel.CreateContent(holder.GetComponent<RectTransform>());
+
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferencePlusBounds(4).center);
+            Assert.That(last.GroundDetailTile, Is.EqualTo(146f), "tile step should apply");
+
+            panel.HandlePress(CourseSurfaceComposerPanel.ReferenceResetBounds.center);
+
+            Assert.That(last.GroundDetailTile, Is.EqualTo(130f));
+            Assert.That(last.DetailStrength, Is.EqualTo(1f));
+            Assert.That(last.ShoulderOpacity, Is.EqualTo(1f));
+            Assert.That(last.GroundDetail, Is.Not.Null,
+                "reset must not drop the committed detail textures");
         }
 
         private CourseSurfaceComposerPanel CreatePanel(
