@@ -27,6 +27,7 @@ The first prototype will use Unity and the Board Unity SDK. Unity currently prov
 - [Roadmap](docs/roadmap.md)
 - [Technical direction](docs/technical-direction.md)
 - [Development setup](docs/development-setup.md)
+- [Building a course surface theme](docs/course-surface-theme.md)
 - [Tranche 1 control lab](docs/testing/tranche-1-control-lab.md)
 - [Tranche 1 validation record](docs/testing/tranche-1-validation.md)
 - [Tranche 2 racing-proof gate](docs/testing/tranche-2-racing-proof.md)

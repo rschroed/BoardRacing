@@ -34,51 +34,35 @@ so every tile is reproducible from the repository alone:
 python3 tools/generate_course_fpo_textures.py
 ```
 
-## Why the tiles carry their own colour
+## How the theme works
 
-An earlier revision kept them neutral and let the shader modulate a theme colour
-by them. Measured on the themed capture, that delivered 10.3 levels of variation
-to the ground and **1.0 level** to the road — invisible — because the combine was
-multiplicative and absolute grain therefore scaled with base brightness. The road
-tile was authored with *more* amplitude than the ground tile and still lost by
-10×.
+The mechanism — the blend model, world-space mapping, the tile-size/source-
+resolution coupling, and what to touch to change a slot — is documented once in
+[docs/course-surface-theme.md](../../../docs/course-surface-theme.md). This file
+stays about where these particular assets came from.
 
-Colour now lives in the art. A dark asphalt can be authored with the contrast it
-actually needs, and hue can vary at all: greyscale times a colour can only ever
-vary value, while real aggregate varies in hue too.
+Two things about the assets follow from it and are worth repeating here:
 
-The per-surface tint in the theme is a grade on top, not the colour source, and
-defaults to white. Pit lane and corners currently share the road tile ungraded,
-so every road-family surface renders identically — a deliberate flat baseline
-for judging the raw assets before any grading is layered on.
-
-One consequence, recorded rather than left to erode: the swap test in #161 is
-still literally true — a texture reference can be replaced without touching
-mesh, shader, or gameplay code — but weaker in spirit, because swapping a tile
-now changes colour as well as grain.
+- The tiles **carry their own colour**, so replacing one changes colour as well
+  as grain. The per-surface tint in the theme is a grade on top, not the colour
+  source, and defaults to white.
+- Their **128 px source resolution is not arbitrary** — it matches the 128 px
+  tile size so the mapping is 1:1. A tile shown smaller than its source gets
+  mipped and loses the authored grain. Regenerate at a matching resolution
+  rather than reusing these at a very different tile size.
 
 ## Import settings (pinned, not editor defaults)
 
 Committed in each `.png.meta` rather than left to whatever the editor picks:
 
 - Texture type Default, shape 2D
-- Wrap **Repeat** — required; world-space tiling depends on it
+- Wrap **Repeat** — required, not preferred; world-space mapping produces UVs
+  far outside 0-1 and clamp would stretch one copy across the board
 - Filter **Bilinear**, aniso 1
-- **Mipmaps on** — see the mip note below
+- **Mipmaps on**, streaming off — the mesh carries no per-vertex tiling UVs for
+  streaming to key off, so mips ship in the texture
 - sRGB on (the project is Gamma colour space, retained by #153)
-- Max size 256, Android override on with normal compression
-
-### Mip selection
-
-The surface uses world-space mapping computed in the fragment shader, so the
-mesh carries no per-vertex tiling UVs — UV0 is repurposed as the detail-weight
-channel. Mip level therefore comes from the screen-space derivatives of the
-shader-computed UV, which `SAMPLE_TEXTURE2D` handles automatically.
-
-There is consequently no vertex UV distribution for Unity's mipmap streaming to
-key off. That is why mips are **built into the textures** and streaming is left
-off, rather than relying on runtime-mesh UV metadata that this mapping does not
-produce.
+- Max size 128, Android override on with normal compression
 
 ## Theme composition
 
