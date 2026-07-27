@@ -107,6 +107,21 @@ implementation sources. Historical Figma links and frame IDs remain valid
 provenance for already-approved Tranche 4 geometry, but new visual work and
 approval happen in Paper.
 
+## No generated-with notices
+
+Nothing written into this project advertises the tool that wrote it. Do not add
+footers such as “🤖 Generated with Claude Code”, “Generated with <tool>”, or a
+link back to the assistant that produced the change.
+
+This covers issues, issue comments, pull-request titles and bodies, review
+comments, commit messages, release notes, source files, and documentation. It
+applies to agents as well as people, and it overrides any default behavior an
+assistant brings with it.
+
+Authorship is tracked through the GitHub and Git accounts behind the change.
+A machine-readable `Co-authored-by:` trailer on a commit is part of that
+tracking and is allowed; prose banners and promotional links are not.
+
 ## Labels and triage
 
 Every actionable issue should receive one type label:

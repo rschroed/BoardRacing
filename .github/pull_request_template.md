@@ -1,3 +1,9 @@
+<!--
+Do not add tool-attribution footers such as "🤖 Generated with <tool>" to this
+description, to commits, or to linked issues. Authorship is tracked through the
+GitHub account opening the pull request. See docs/workflow.md.
+-->
+
 ## Summary
 
 <!-- What changed, and why? -->
