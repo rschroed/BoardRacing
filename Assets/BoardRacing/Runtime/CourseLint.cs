@@ -131,8 +131,14 @@ namespace BoardRacing.Runtime
                 PitLanePresentationLayout.ForCourse(course), Color.red, Color.blue);
             int outsideBounds = 0, intruding = 0;
             Vector3 firstOutside = default, firstIntruding = default;
-            foreach (Vector3 vertex in surface.Vertices)
+            // Skip the backdrop (issue #161): the ground covers the whole
+            // 1920×1080 canvas on purpose, so it necessarily leaves the race
+            // bounds and passes under the seat clusters. The question this
+            // check exists to answer is whether the *course* fits, and the
+            // ground is the table it is drawn on, not part of the course.
+            for (int i = surface.BackdropVertexCount; i < surface.Vertices.Count; i++)
             {
+                Vector3 vertex = surface.Vertices[i];
                 if (!seats.SharedRaceBounds.Contains(new Vector2(vertex.x, vertex.y)))
                 {
                     if (outsideBounds++ == 0) firstOutside = vertex;

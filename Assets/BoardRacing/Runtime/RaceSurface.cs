@@ -7,6 +7,50 @@ using UnityEngine;
 namespace BoardRacing.Runtime
 {
     /// <summary>
+    /// Which world-space detail texture a vertex samples, and how strongly
+    /// (issue #161). The surface stays one mesh with one material: rather than
+    /// splitting into per-material submeshes — which would trade the painter
+    /// order for renderer sorting — every vertex carries the blend itself.
+    /// Ground/road/shoulder weights select among the theme's detail textures;
+    /// Strength fades the whole sample back to flat vertex color, which is how
+    /// markings (stripes, start line, boxes, crossing dressing) stay crisp.
+    /// </summary>
+    internal readonly struct SurfaceDetail
+    {
+        private SurfaceDetail(float roadWeight, float shoulderWeight, float strength)
+        {
+            RoadWeight = roadWeight;
+            ShoulderWeight = shoulderWeight;
+            Strength = strength;
+        }
+
+        public float RoadWeight { get; }
+        public float ShoulderWeight { get; }
+        public float Strength { get; }
+
+        // The ground texture is the complement: a vertex with no road and no
+        // shoulder weight samples ground, so the shader needs only three
+        // samplers for four surfaces.
+        public static readonly SurfaceDetail Flat = new SurfaceDetail(0f, 0f, 0f);
+        public static readonly SurfaceDetail Ground = new SurfaceDetail(0f, 0f, 1f);
+        public static readonly SurfaceDetail Road = new SurfaceDetail(1f, 0f, 1f);
+
+        // The pit surface shares the road tile ungraded, so it is currently
+        // indistinguishable from the roadway while textured — a deliberate flat
+        // baseline for judging the raw assets (#161). Sharing a tile also keeps
+        // the grain flowing across the boundary, which reads as wear; giving
+        // pit its own tile would break the pattern there and read as a
+        // different material instead. Which of those is wanted is a call for
+        // the Board review.
+        public static readonly SurfaceDetail PitSurface = Road;
+
+        public static SurfaceDetail Shoulder(float weight) =>
+            new SurfaceDetail(0f, Mathf.Clamp01(weight), 1f);
+
+        public Vector4 ToUv() => new Vector4(RoadWeight, ShoulderWeight, Strength, 0f);
+    }
+
+    /// <summary>
     /// The static racing surface as a world-space mesh (issue #86, round 1):
     /// track ribbon, start/finish line, pit lane, and pit boxes leave IMGUI and
     /// become one vertex-colored mesh drawn by an orthographic camera whose
@@ -20,26 +64,46 @@ namespace BoardRacing.Runtime
     {
         public readonly List<Vector3> Vertices = new List<Vector3>();
         public readonly List<Color> Colors = new List<Color>();
+        public readonly List<Vector4> Details = new List<Vector4>();
         public readonly List<int> Triangles = new List<int>();
+
+        /// <summary>
+        /// How many leading vertices are backdrop rather than course geometry
+        /// (issue #161). The ground quad is appended first and covers the whole
+        /// reference canvas by definition, so callers that ask "does the course
+        /// fit?" — CourseLint above all — skip this prefix. Nothing else about
+        /// the mesh distinguishes them: the backdrop is ordinary paint-ordered
+        /// geometry, it just is not part of the course footprint.
+        /// </summary>
+        public int BackdropVertexCount { get; private set; }
+
+        public void MarkBackdropComplete() => BackdropVertexCount = Vertices.Count;
 
         // Corners a→b→c→d in screen order (any winding — the sprite material
         // does not cull); each quad owns its four vertices so per-quad color
         // stays hard-edged instead of interpolating across shared vertices.
-        public void AddQuad(Vector2 a, Vector2 b, Vector2 c, Vector2 d, Color color)
+        public void AddQuad(Vector2 a, Vector2 b, Vector2 c, Vector2 d, Color color) =>
+            AddQuad(a, b, c, d, color, SurfaceDetail.Flat);
+
+        public void AddQuad(Vector2 a, Vector2 b, Vector2 c, Vector2 d, Color color,
+            SurfaceDetail detail)
         {
             int baseIndex = Vertices.Count;
             Vertices.Add(new Vector3(a.x, a.y, 0f));
             Vertices.Add(new Vector3(b.x, b.y, 0f));
             Vertices.Add(new Vector3(c.x, c.y, 0f));
             Vertices.Add(new Vector3(d.x, d.y, 0f));
-            for (int i = 0; i < 4; i++) Colors.Add(color);
+            Vector4 uv = detail.ToUv();
+            for (int i = 0; i < 4; i++) { Colors.Add(color); Details.Add(uv); }
             Triangles.Add(baseIndex); Triangles.Add(baseIndex + 1); Triangles.Add(baseIndex + 2);
             Triangles.Add(baseIndex); Triangles.Add(baseIndex + 2); Triangles.Add(baseIndex + 3);
         }
 
-        public void AddRect(Rect rect, Color color) => AddQuad(
+        public void AddRect(Rect rect, Color color) => AddRect(rect, color, SurfaceDetail.Flat);
+
+        public void AddRect(Rect rect, Color color, SurfaceDetail detail) => AddQuad(
             new Vector2(rect.xMin, rect.yMin), new Vector2(rect.xMax, rect.yMin),
-            new Vector2(rect.xMax, rect.yMax), new Vector2(rect.xMin, rect.yMax), color);
+            new Vector2(rect.xMax, rect.yMax), new Vector2(rect.xMin, rect.yMax), color, detail);
 
         public void AddRectOutline(Rect rect, float width, Color color)
         {
@@ -53,14 +117,17 @@ namespace BoardRacing.Runtime
         // connects back to the first).
         public void AddFan(Vector2 center, IReadOnlyList<Vector2> perimeter, Color color)
         {
+            Vector4 uv = SurfaceDetail.Flat.ToUv();
             int centerIndex = Vertices.Count;
             Vertices.Add(new Vector3(center.x, center.y, 0f));
             Colors.Add(color);
+            Details.Add(uv);
             int first = Vertices.Count;
             for (int i = 0; i < perimeter.Count; i++)
             {
                 Vertices.Add(new Vector3(perimeter[i].x, perimeter[i].y, 0f));
                 Colors.Add(color);
+                Details.Add(uv);
             }
             for (int i = 0; i < perimeter.Count; i++)
             {
@@ -133,6 +200,28 @@ namespace BoardRacing.Runtime
         public bool StripeVisible;
         public bool PitSurfaceVisible;
         public RaceSurfaceDebugView DebugView;
+        // World-space detail (issue #161). Tile sizes are in reference pixels,
+        // the same units as TrackWidth, so "88" reads directly as "about two
+        // repeats across the 64 px road". Null textures and zero strength both
+        // fall back to the committed flat treatment, which is what keeps the
+        // pre-#161 look available as a deterministic comparison baseline.
+        // Referenced rather than found by name: a shader reached only
+        // through Shader.Find is stripped from a player build, so the
+        // committed material is what keeps detail alive on Android.
+        public Material SurfaceMaterial;
+        public Texture2D GroundDetail;
+        public Texture2D RoadDetail;
+        public Texture2D ShoulderDetail;
+        [Min(1f)] public float GroundDetailTile;
+        [Min(1f)] public float RoadDetailTile;
+        [Min(1f)] public float ShoulderDetailTile;
+        // Grades on top of the authored tile color, not the color source.
+        // White is the baseline; pit lane and corners currently share the road
+        // tile ungraded so every road-family surface reads identically.
+        public Color GroundDetailTint;
+        public Color RoadDetailTint;
+        public Color ShoulderDetailTint;
+        [Range(0f, 1f)] public float DetailStrength;
 
         public static RaceSurfaceStyle Default => new RaceSurfaceStyle
         {
@@ -154,6 +243,19 @@ namespace BoardRacing.Runtime
             StripeVisible = true,
             PitSurfaceVisible = true,
             DebugView = RaceSurfaceDebugView.Composed,
+            // 1:1 with the 128 px source tiles. A tile shown smaller than its
+            // source is a downscale, and the mip that results averages the
+            // authored grain away — see Presentation/PROVENANCE.md.
+            GroundDetailTile = 128f,
+            RoadDetailTile = 128f,
+            ShoulderDetailTile = 128f,
+            GroundDetailTint = Color.white,
+            RoadDetailTint = Color.white,
+            ShoulderDetailTint = Color.white,
+            // The committed default stays flat and textureless: the theme asset
+            // is what opts a build into detail, so Default remains the
+            // deterministic fallback the gallery captures compare against.
+            DetailStrength = 0f,
         };
     }
 
@@ -218,6 +320,12 @@ namespace BoardRacing.Runtime
         {
             if (playerAccents == null) throw new ArgumentNullException(nameof(playerAccents));
             var mesh = new SurfaceMeshData();
+            // The ground is explicit geometry now that it carries world-space
+            // texture detail (issue #161). It is still the first thing painted,
+            // so everything below keeps the order it had when the camera clear
+            // color supplied this pixel — the clear color stays matched as a
+            // belt-and-braces guard against a gap at an unexpected aspect.
+            AppendGround(mesh, style);
             List<CenterlineSample> centerline = SmoothCenterline(track, SamplesPerChord);
             AppendShoulder(mesh, centerline, style);
             if (style.DebugView == RaceSurfaceDebugView.ShoulderOnly)
@@ -225,7 +333,7 @@ namespace BoardRacing.Runtime
                 AppendClosedRibbon(mesh, centerline, TrackWidth + 4f,
                     style.RoadBoundaryColor, style.RoadBoundaryColor);
                 AppendClosedRibbon(mesh, centerline, TrackWidth,
-                    Opaque(style.GroundColor), Opaque(style.GroundColor));
+                    Opaque(style.GroundColor), Opaque(style.GroundColor), SurfaceDetail.Ground);
                 return mesh;
             }
 
@@ -242,9 +350,12 @@ namespace BoardRacing.Runtime
                 var serviceRow = new List<Vector2>(pitLayout.Boxes.Count);
                 foreach (Vec2 box in pitLayout.Boxes) serviceRow.Add(ToVector(box));
                 List<Vector2> merge = MergeLanePoints(pitLayout);
-                AppendJunctionRibbon(mesh, entry, PitLaneWidth, style.PitSurfaceColor, track);
-                AppendOpenRibbon(mesh, serviceRow, PitLaneWidth, style.PitSurfaceColor);
-                AppendJunctionRibbon(mesh, merge, PitLaneWidth, style.PitSurfaceColor, track);
+                AppendJunctionRibbon(mesh, entry, PitLaneWidth, style.PitSurfaceColor, track,
+                    SurfaceDetail.PitSurface);
+                AppendOpenRibbon(mesh, serviceRow, PitLaneWidth, style.PitSurfaceColor,
+                    SurfaceDetail.PitSurface);
+                AppendJunctionRibbon(mesh, merge, PitLaneWidth, style.PitSurfaceColor, track,
+                    SurfaceDetail.PitSurface);
                 if (style.StripeVisible)
                 {
                     AppendJunctionRibbon(mesh, entry, PitStripeWidth, style.PitStripeColor, track);
@@ -257,7 +368,7 @@ namespace BoardRacing.Runtime
                 AppendClosedRibbon(mesh, centerline, TrackWidth + 4f,
                     style.RoadBoundaryColor, style.RoadBoundaryColor);
             AppendClosedRibbon(mesh, centerline, TrackWidth,
-                style.CornerRoadColor, style.StraightRoadColor);
+                style.CornerRoadColor, style.StraightRoadColor, SurfaceDetail.Road);
             if (style.StripeVisible)
                 AppendClosedRibbon(mesh, centerline, TrackStripeWidth,
                     style.StripeColor, style.StripeColor);
@@ -286,6 +397,15 @@ namespace BoardRacing.Runtime
             return mesh;
         }
 
+        // The whole reference canvas, sampling the ground detail texture.
+        private static void AppendGround(SurfaceMeshData mesh, RaceSurfaceStyle style)
+        {
+            mesh.AddRect(
+                new Rect(0f, 0f, RaceLayout.ReferenceWidth, RaceLayout.ReferenceHeight),
+                Opaque(style.GroundColor), SurfaceDetail.Ground);
+            mesh.MarkBackdropComplete();
+        }
+
         private static void AppendShoulder(SurfaceMeshData mesh,
             IReadOnlyList<CenterlineSample> centerline, RaceSurfaceStyle style)
         {
@@ -294,20 +414,30 @@ namespace BoardRacing.Runtime
             float feather = Mathf.Max(0f, style.ShoulderFeatherWidth);
             if (opacity <= 0f || solid + feather <= 0f) return;
 
-            // Wide-to-narrow opaque ribbons pre-compose the fade against the
-            // ground. Their overlap therefore selects the closest/strongest
-            // shoulder sample instead of accumulating alpha at self-crossings.
+            // Wide-to-narrow ribbons, every one of them opaque, so an overlap
+            // selects the strongest shoulder sample by paint order instead of
+            // accumulating alpha into a knot at the Hourglass/Infinity
+            // self-crossings and along the pit-adjacent runs.
+            //
+            // Before #161 the fade was pre-composed here, lerping each ribbon's
+            // color toward the single flat GroundColor. A textured ground has no
+            // single value to pre-compose against, so the fade moved into the
+            // shader: each ribbon still paints opaquely, but carries a per-vertex
+            // shoulder weight and the fragment blends the shoulder detail against
+            // whatever the ground texture actually is underneath. Opaque geometry
+            // plus a per-vertex weight is what keeps the crossing behavior.
             int steps = Mathf.Max(1, Mathf.CeilToInt(feather / 2f));
+            Color shoulder = Opaque(style.ShoulderColor);
             Color ground = Opaque(style.GroundColor);
-            Color shoulder = Opaque(Color.Lerp(ground, Opaque(style.ShoulderColor), opacity));
             for (int i = 0; i <= steps; i++)
             {
                 float t = i / (float)steps;
                 float eased = t * t * (3f - 2f * t);
+                float weight = eased * opacity;
                 float outsideWidth = solid + feather * (1f - t);
-                Color color = Opaque(Color.Lerp(ground, shoulder, eased));
+                Color color = Opaque(Color.Lerp(ground, shoulder, weight));
                 AppendClosedRibbon(mesh, centerline, TrackWidth + 2f * outsideWidth,
-                    color, color);
+                    color, color, SurfaceDetail.Shoulder(weight));
             }
         }
 
@@ -343,6 +473,12 @@ namespace BoardRacing.Runtime
         public static void AppendClosedRibbon(SurfaceMeshData mesh,
             IReadOnlyList<CenterlineSample> samples, float width, Color cornerColor,
             Color straightColor)
+            => AppendClosedRibbon(mesh, samples, width, cornerColor, straightColor,
+                SurfaceDetail.Flat);
+
+        public static void AppendClosedRibbon(SurfaceMeshData mesh,
+            IReadOnlyList<CenterlineSample> samples, float width, Color cornerColor,
+            Color straightColor, SurfaceDetail detail)
         {
             int count = samples.Count;
             var left = new Vector2[count];
@@ -359,12 +495,16 @@ namespace BoardRacing.Runtime
             {
                 int next = (i + 1) % count;
                 mesh.AddQuad(left[i], left[next], right[next], right[i],
-                    samples[i].Corner ? cornerColor : straightColor);
+                    samples[i].Corner ? cornerColor : straightColor, detail);
             }
         }
 
         public static void AppendOpenRibbon(SurfaceMeshData mesh, IReadOnlyList<Vector2> points,
             float width, Color color)
+            => AppendOpenRibbon(mesh, points, width, color, SurfaceDetail.Flat);
+
+        public static void AppendOpenRibbon(SurfaceMeshData mesh, IReadOnlyList<Vector2> points,
+            float width, Color color, SurfaceDetail detail)
         {
             int count = points.Count;
             if (count < 2) return;
@@ -378,7 +518,7 @@ namespace BoardRacing.Runtime
                 right[i] = points[i] - offset;
             }
             for (int i = 0; i < count - 1; i++)
-                mesh.AddQuad(left[i], left[i + 1], right[i + 1], right[i], color);
+                mesh.AddQuad(left[i], left[i + 1], right[i + 1], right[i], color, detail);
         }
 
         // Perpendicular offset at a polyline point, averaging the adjacent
@@ -417,6 +557,10 @@ namespace BoardRacing.Runtime
         // geometry can overhang into the roadway whatever the spline does.
         public static void AppendJunctionRibbon(SurfaceMeshData mesh, IReadOnlyList<Vector2> points,
             float width, Color color, TrackDefinition track)
+            => AppendJunctionRibbon(mesh, points, width, color, track, SurfaceDetail.Flat);
+
+        public static void AppendJunctionRibbon(SurfaceMeshData mesh, IReadOnlyList<Vector2> points,
+            float width, Color color, TrackDefinition track, SurfaceDetail detail)
         {
             int count = points.Count;
             if (count < 2) return;
@@ -430,7 +574,7 @@ namespace BoardRacing.Runtime
                 right[i] = ClampOutsideRoadway(points[i] - offset, track);
             }
             for (int i = 0; i < count - 1; i++)
-                mesh.AddQuad(left[i], left[i + 1], right[i + 1], right[i], color);
+                mesh.AddQuad(left[i], left[i + 1], right[i + 1], right[i], color, detail);
         }
 
         // The drawn lane legs are the very splines the cars drive: entry along
@@ -698,6 +842,22 @@ namespace BoardRacing.Runtime
         // painter had.
         private const float CarDepth = -1f;
 
+        public const string CourseSurfaceShaderName = "BoardRacing/CourseSurface";
+
+        private static readonly int GroundTexId = Shader.PropertyToID("_GroundTex");
+        private static readonly int RoadTexId = Shader.PropertyToID("_RoadTex");
+        private static readonly int ShoulderTexId = Shader.PropertyToID("_ShoulderTex");
+        private static readonly int GroundTileId = Shader.PropertyToID("_GroundTile");
+        private static readonly int RoadTileId = Shader.PropertyToID("_RoadTile");
+        private static readonly int ShoulderTileId = Shader.PropertyToID("_ShoulderTile");
+        private static readonly int GroundTintId = Shader.PropertyToID("_GroundTint");
+        private static readonly int RoadTintId = Shader.PropertyToID("_RoadTint");
+        private static readonly int ShoulderTintId = Shader.PropertyToID("_ShoulderTint");
+        private static readonly int GroundOnId = Shader.PropertyToID("_GroundOn");
+        private static readonly int RoadOnId = Shader.PropertyToID("_RoadOn");
+        private static readonly int ShoulderOnId = Shader.PropertyToID("_ShoulderOn");
+        private static readonly int DetailStrengthId = Shader.PropertyToID("_DetailStrength");
+
         private Material material;
         private readonly List<Mesh> meshes = new List<Mesh>();
         private readonly Dictionary<PlayerId, Transform> cars =
@@ -710,10 +870,18 @@ namespace BoardRacing.Runtime
         private bool carsVisible = true;
 
         public static RaceSurfaceRenderer Create(SurfaceMeshData data)
-            => Create(data, RaceSurfaceStyle.Default.GroundColor);
+            => Create(data, RaceSurfaceStyle.Default);
 
         public static RaceSurfaceRenderer Create(SurfaceMeshData data, Color groundColor)
         {
+            RaceSurfaceStyle style = RaceSurfaceStyle.Default;
+            style.GroundColor = groundColor;
+            return Create(data, style);
+        }
+
+        public static RaceSurfaceRenderer Create(SurfaceMeshData data, RaceSurfaceStyle style)
+        {
+            Color groundColor = style.GroundColor;
             var root = new GameObject("Board Racing Race Surface");
             var surface = root.AddComponent<RaceSurfaceRenderer>();
 
@@ -734,7 +902,15 @@ namespace BoardRacing.Runtime
             surface.surfaceCamera.projectionMatrix = Matrix4x4.Ortho(
                 0f, RaceLayout.ReferenceWidth, RaceLayout.ReferenceHeight, 0f, .3f, 50f);
 
-            surface.material = new Material(Shader.Find("Sprites/Default"));
+            // An instance of the committed material when the theme supplies
+            // one; otherwise the sprite material this replaced, so a project
+            // without the presentation assets still renders the flat treatment
+            // instead of magenta.
+            surface.material = style.SurfaceMaterial != null
+                ? new Material(style.SurfaceMaterial)
+                : new Material(Shader.Find(CourseSurfaceShaderName)
+                    ?? Shader.Find("Sprites/Default"));
+            surface.ApplyStyle(style);
             Transform surfaceObject = surface.CreateMeshObject("Race Surface Mesh", data);
             surface.surfaceFilter = surfaceObject.GetComponent<MeshFilter>();
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
@@ -747,12 +923,44 @@ namespace BoardRacing.Runtime
 
         public void ReplaceSurface(SurfaceMeshData data, Color groundColor)
         {
+            RaceSurfaceStyle style = RaceSurfaceStyle.Default;
+            style.GroundColor = groundColor;
+            ReplaceSurface(data, style);
+        }
+
+        public void ReplaceSurface(SurfaceMeshData data, RaceSurfaceStyle style)
+        {
             if (data == null) throw new ArgumentNullException(nameof(data));
             ReplaceOwnedMesh(surfaceFilter, CreateMesh("Race Surface Mesh", data));
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             ReplaceOwnedMesh(wireframeFilter, CreateWireframeMesh(data));
 #endif
-            surfaceCamera.backgroundColor = groundColor;
+            ApplyStyle(style);
+        }
+
+        // Detail lives on a material instance owned by this renderer, so Visual
+        // Lab tuning never writes back into the committed theme asset.
+        private void ApplyStyle(RaceSurfaceStyle style)
+        {
+            surfaceCamera.backgroundColor = style.GroundColor;
+            if (material == null || !material.HasProperty(DetailStrengthId)) return;
+            // The tiles carry color now, so an unbound slot cannot be made a
+            // no-op by binding a neutral texture: the shader is told per surface
+            // whether a tile exists and falls back to flat vertex color where
+            // one does not.
+            material.SetTexture(GroundTexId, style.GroundDetail ?? Texture2D.whiteTexture);
+            material.SetTexture(RoadTexId, style.RoadDetail ?? Texture2D.whiteTexture);
+            material.SetTexture(ShoulderTexId, style.ShoulderDetail ?? Texture2D.whiteTexture);
+            material.SetFloat(GroundOnId, style.GroundDetail != null ? 1f : 0f);
+            material.SetFloat(RoadOnId, style.RoadDetail != null ? 1f : 0f);
+            material.SetFloat(ShoulderOnId, style.ShoulderDetail != null ? 1f : 0f);
+            material.SetColor(GroundTintId, style.GroundDetailTint);
+            material.SetColor(RoadTintId, style.RoadDetailTint);
+            material.SetColor(ShoulderTintId, style.ShoulderDetailTint);
+            material.SetFloat(GroundTileId, Mathf.Max(1f, style.GroundDetailTile));
+            material.SetFloat(RoadTileId, Mathf.Max(1f, style.RoadDetailTile));
+            material.SetFloat(ShoulderTileId, Mathf.Max(1f, style.ShoulderDetailTile));
+            material.SetFloat(DetailStrengthId, Mathf.Clamp01(style.DetailStrength));
         }
 
         public void AttachCar(PlayerId playerId, SurfaceMeshData body)
@@ -833,6 +1041,10 @@ namespace BoardRacing.Runtime
             var mesh = new Mesh { name = meshName };
             mesh.SetVertices(data.Vertices);
             mesh.SetColors(data.Colors);
+            // UV0 is the detail channel, not a texture coordinate: the shader
+            // derives its own world-space UVs from vertex position, so this
+            // carries (road, shoulder, strength) weights instead (issue #161).
+            mesh.SetUVs(0, data.Details);
             mesh.SetTriangles(data.Triangles, 0);
             mesh.RecalculateBounds();
             return mesh;

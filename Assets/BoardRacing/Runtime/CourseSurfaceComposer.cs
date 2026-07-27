@@ -15,6 +15,13 @@ namespace BoardRacing.Runtime
         private const float RowHeight = 50f;
         private const float ShoulderWidthStep = 4f;
         private const float MaxShoulderWidth = 64f;
+        // Tile sizes are reference pixels, the same units as the 64 px road,
+        // so a step of 16 is a visible change in grain frequency rather than
+        // a nudge — the hardware review is looking for whether detail reads
+        // at Board distance, not for a precise value (issue #161).
+        private const float TileStep = 16f;
+        private const float MinTile = 16f;
+        private const float MaxTile = 512f;
 
         private static readonly Rect ValueAction = new Rect(140f, 0f, 240f, RowHeight);
         private static readonly Rect MinusAction = new Rect(270f, 0f, 50f, RowHeight);
@@ -25,12 +32,18 @@ namespace BoardRacing.Runtime
         private readonly Action selectNextCourse;
         private readonly Action<RaceSurfaceStyle> applyStyle;
         private readonly Action<bool> setWireframeVisible;
+        // Reset returns to whatever the build committed — the course theme
+        // when one is present, not the flat textureless fallback.
+        private readonly RaceSurfaceStyle committedStyle;
         private RaceSurfaceStyle style;
         private bool wireframeVisible;
         private Text courseValue;
         private Text opacityValue;
         private Text solidWidthValue;
         private Text featherWidthValue;
+        private Text groundTileValue;
+        private Text roadTileValue;
+        private Text shoulderTileValue;
         private Text stripeValue;
         private Text pitValue;
         private Text debugValue;
@@ -53,6 +66,7 @@ namespace BoardRacing.Runtime
             this.setWireframeVisible = setWireframeVisible ??
                 throw new ArgumentNullException(nameof(setWireframeVisible));
             style = initialStyle;
+            committedStyle = initialStyle;
         }
 
         public string Id => "course-surface";
@@ -65,12 +79,15 @@ namespace BoardRacing.Runtime
             opacityValue = CreateStepperRow(parent, font, 1, "SHOULDER OPACITY");
             solidWidthValue = CreateStepperRow(parent, font, 2, "SOLID WIDTH");
             featherWidthValue = CreateStepperRow(parent, font, 3, "FEATHER");
-            CreateWideActionRow(parent, font, 4, "STRIPES", out stripeValue);
-            CreateWideActionRow(parent, font, 5, "PIT SURFACE", out pitValue);
-            CreateWideActionRow(parent, font, 6, "VIEW", out debugValue);
-            CreateWideActionRow(parent, font, 7, "MESH WIREFRAME", out wireframeValue);
+            groundTileValue = CreateStepperRow(parent, font, 4, "GROUND TILE");
+            roadTileValue = CreateStepperRow(parent, font, 5, "ROAD TILE");
+            shoulderTileValue = CreateStepperRow(parent, font, 6, "SHOULDER TILE");
+            CreateWideActionRow(parent, font, 7, "STRIPES", out stripeValue);
+            CreateWideActionRow(parent, font, 8, "PIT SURFACE", out pitValue);
+            CreateWideActionRow(parent, font, 9, "VIEW", out debugValue);
+            CreateWideActionRow(parent, font, 10, "MESH WIREFRAME", out wireframeValue);
 
-            Rect row = LocalRow(8);
+            Rect row = LocalRow(ActionRow);
             CreateButton(parent, font, "Reset", new Rect(10f, row.y, 180f, RowHeight), "RESET");
             CreateButton(parent, font, "Log", new Rect(210f, row.y, 180f, RowHeight), "LOG");
             RefreshLabels();
@@ -98,36 +115,48 @@ namespace BoardRacing.Runtime
                 () => style.ShoulderFeatherWidth,
                 value => style.ShoulderFeatherWidth = Mathf.Clamp(value, 0f, MaxShoulderWidth)))
                 return true;
-            if (ActionAt(4, ValueAction).Contains(local))
+            if (HandleFloatStepper(local, 4, -TileStep, TileStep,
+                () => style.GroundDetailTile,
+                value => style.GroundDetailTile = Mathf.Clamp(value, MinTile, MaxTile)))
+                return true;
+            if (HandleFloatStepper(local, 5, -TileStep, TileStep,
+                () => style.RoadDetailTile,
+                value => style.RoadDetailTile = Mathf.Clamp(value, MinTile, MaxTile)))
+                return true;
+            if (HandleFloatStepper(local, 6, -TileStep, TileStep,
+                () => style.ShoulderDetailTile,
+                value => style.ShoulderDetailTile = Mathf.Clamp(value, MinTile, MaxTile)))
+                return true;
+            if (ActionAt(7, ValueAction).Contains(local))
             {
                 style.StripeVisible = !style.StripeVisible;
                 Apply();
                 return true;
             }
-            if (ActionAt(5, ValueAction).Contains(local))
+            if (ActionAt(8, ValueAction).Contains(local))
             {
                 style.PitSurfaceVisible = !style.PitSurfaceVisible;
                 Apply();
                 return true;
             }
-            if (ActionAt(6, ValueAction).Contains(local))
+            if (ActionAt(9, ValueAction).Contains(local))
             {
                 style.DebugView = (RaceSurfaceDebugView)(((int)style.DebugView + 1) %
                     Enum.GetValues(typeof(RaceSurfaceDebugView)).Length);
                 Apply();
                 return true;
             }
-            if (ActionAt(7, ValueAction).Contains(local))
+            if (ActionAt(10, ValueAction).Contains(local))
             {
                 wireframeVisible = !wireframeVisible;
                 setWireframeVisible(wireframeVisible);
                 RefreshLabels();
                 return true;
             }
-            Rect actions = LocalRow(8);
+            Rect actions = LocalRow(ActionRow);
             if (new Rect(10f, actions.y, 180f, RowHeight).Contains(local))
             {
-                style = RaceSurfaceStyle.Default;
+                style = committedStyle;
                 wireframeVisible = false;
                 setWireframeVisible(false);
                 Apply();
@@ -152,10 +181,11 @@ namespace BoardRacing.Runtime
             OffsetToReference(ActionAt(row, MinusAction));
         internal static Rect ReferencePlusBounds(int row) =>
             OffsetToReference(ActionAt(row, PlusAction));
+        internal const int ActionRow = 11;
         internal static Rect ReferenceResetBounds =>
-            OffsetToReference(new Rect(10f, LocalRow(8).y, 180f, RowHeight));
+            OffsetToReference(new Rect(10f, LocalRow(ActionRow).y, 180f, RowHeight));
         internal static Rect ReferenceLogBounds =>
-            OffsetToReference(new Rect(210f, LocalRow(8).y, 180f, RowHeight));
+            OffsetToReference(new Rect(210f, LocalRow(ActionRow).y, 180f, RowHeight));
 
         internal string CurrentLogRecord()
         {
@@ -163,11 +193,16 @@ namespace BoardRacing.Runtime
                 "[CourseSurfaceComposer] course={0} ground={1} straight={2} corner={3} " +
                 "shoulder={4} shoulderOpacity={5:0.00} shoulderSolidWidth={6:0.0} " +
                 "shoulderFeatherWidth={7:0.0} stripes={8} pitSurface={9} view={10} " +
-                "wireframe={11}",
+                "wireframe={11} detailStrength={12:0.00} groundTile={13:0}/{14} " +
+                "roadTile={15:0}/{16} shoulderTile={17:0}/{18}",
                 courseName(), Hex(style.GroundColor), Hex(style.StraightRoadColor),
                 Hex(style.CornerRoadColor), Hex(style.ShoulderColor), style.ShoulderOpacity,
                 style.ShoulderSolidWidth, style.ShoulderFeatherWidth,
-                style.StripeVisible, style.PitSurfaceVisible, style.DebugView, wireframeVisible);
+                style.StripeVisible, style.PitSurfaceVisible, style.DebugView, wireframeVisible,
+                style.DetailStrength,
+                style.GroundDetailTile, TextureName(style.GroundDetail),
+                style.RoadDetailTile, TextureName(style.RoadDetail),
+                style.ShoulderDetailTile, TextureName(style.ShoulderDetail));
         }
 
         private bool HandleFloatStepper(Vector2 local, int row, float minus, float plus,
@@ -202,6 +237,9 @@ namespace BoardRacing.Runtime
                 style.ShoulderSolidWidth.ToString("0", CultureInfo.InvariantCulture) + " PX";
             featherWidthValue.text =
                 style.ShoulderFeatherWidth.ToString("0", CultureInfo.InvariantCulture) + " PX";
+            groundTileValue.text = TileLabel(style.GroundDetailTile, style.GroundDetail);
+            roadTileValue.text = TileLabel(style.RoadDetailTile, style.RoadDetail);
+            shoulderTileValue.text = TileLabel(style.ShoulderDetailTile, style.ShoulderDetail);
             stripeValue.text = style.StripeVisible ? "VISIBLE" : "HIDDEN";
             pitValue.text = style.PitSurfaceVisible ? "VISIBLE" : "HIDDEN";
             debugValue.text = DebugName(style.DebugView) + "  ›";
@@ -270,6 +308,17 @@ namespace BoardRacing.Runtime
             new Rect(local.position + VisualLabShell.ContentBounds.position, local.size);
 
         private static string Hex(Color color) => "#" + ColorUtility.ToHtmlStringRGBA(color);
+
+        // A tile size means nothing without knowing which texture it tiles, and
+        // an unassigned slot renders flat however small the number is.
+        private static string TileLabel(float tile, Texture2D texture) => texture == null
+            ? "NONE"
+            : tile.ToString("0", CultureInfo.InvariantCulture) + " PX";
+
+        // The asset name, never an instance id: the log record has to stay
+        // readable and reproducible (issue #161).
+        private static string TextureName(Texture2D texture) =>
+            texture == null ? "none" : texture.name;
 
         private static string DebugName(RaceSurfaceDebugView view) =>
             view == RaceSurfaceDebugView.ShoulderOnly ? "SHOULDER ONLY" :

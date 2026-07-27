@@ -616,5 +616,167 @@ namespace BoardRacing.Tests
             for (int i = 0; i < mesh.Vertices.Count; i++)
                 if (mesh.Colors[i] == color) yield return mesh.Vertices[i];
         }
+
+        // ---- World-space detail mapping (issue #161) --------------------------
+
+        private static RaceSurfaceStyle TexturedStyle()
+        {
+            RaceSurfaceStyle style = RaceSurfaceStyle.Default;
+            style.GroundDetail = Texture2D.whiteTexture;
+            style.RoadDetail = Texture2D.whiteTexture;
+            style.ShoulderDetail = Texture2D.whiteTexture;
+            style.DetailStrength = 1f;
+            return style;
+        }
+
+        [Test]
+        public void EveryVertexCarriesADetailWeightOnEveryCatalogCourse()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track,
+                    PitLanePresentationLayout.ForCourse(course),
+                    new[] { Color.red, Color.blue }, TexturedStyle());
+                Assert.That(mesh.Details.Count, Is.EqualTo(mesh.Vertices.Count),
+                    course.Name + " must carry one detail weight per vertex");
+            }
+        }
+
+        [Test]
+        public void GroundBackdropCoversTheWholeReferenceCanvasAndPaintsFirst()
+        {
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new[] { Color.red, Color.blue }, TexturedStyle());
+
+            Assert.That(mesh.BackdropVertexCount, Is.EqualTo(4),
+                "the backdrop is one quad, appended before any course geometry");
+            Vector3[] ground = mesh.Vertices.Take(mesh.BackdropVertexCount).ToArray();
+            Assert.That(ground.Min(v => v.x), Is.EqualTo(0f).Within(.001f));
+            Assert.That(ground.Min(v => v.y), Is.EqualTo(0f).Within(.001f));
+            Assert.That(ground.Max(v => v.x),
+                Is.EqualTo(RaceLayout.ReferenceWidth).Within(.001f));
+            Assert.That(ground.Max(v => v.y),
+                Is.EqualTo(RaceLayout.ReferenceHeight).Within(.001f));
+            // Ground is the complement of road and shoulder, so it claims
+            // neither weight while still asking for detail.
+            foreach (Vector4 detail in mesh.Details.Take(mesh.BackdropVertexCount))
+            {
+                Assert.That(detail.x, Is.EqualTo(0f).Within(.001f));
+                Assert.That(detail.y, Is.EqualTo(0f).Within(.001f));
+                Assert.That(detail.z, Is.EqualTo(1f).Within(.001f));
+            }
+        }
+
+        [Test]
+        public void RoadRibbonAsksForRoadDetailAndMarkingsStayFlat()
+        {
+            RaceSurfaceStyle style = TexturedStyle();
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new[] { Color.red, Color.blue }, style);
+
+            for (int i = 0; i < mesh.Vertices.Count; i++)
+            {
+                Color color = mesh.Colors[i];
+                bool road = color == style.StraightRoadColor || color == style.CornerRoadColor;
+                if (road)
+                    Assert.That(mesh.Details[i].x, Is.EqualTo(1f).Within(.001f),
+                        "the road ribbon must sample the road detail texture");
+            }
+
+            // Markings sit over textured surfaces and must not pick up their
+            // grain: stripes, the start line, and the pit boxes stay flat.
+            foreach (Color marking in new[]
+                { style.StripeColor, style.PitStripeColor, Color.white })
+            {
+                bool sawMarking = false;
+                for (int i = 0; i < mesh.Vertices.Count; i++)
+                {
+                    if (mesh.Colors[i] != marking) continue;
+                    sawMarking = true;
+                    Assert.That(mesh.Details[i].z, Is.EqualTo(0f).Within(.001f),
+                        $"marking {marking} must keep flat vertex color");
+                }
+                Assert.That(sawMarking, Is.True, $"expected marking {marking} in the mesh");
+            }
+        }
+
+        [Test]
+        public void ShoulderFeatherRampsWeightWhileStayingOpaque()
+        {
+            RaceSurfaceStyle style = TexturedStyle();
+            style.ShoulderOpacity = 1f;
+            style.ShoulderSolidWidth = 13f;
+            style.ShoulderFeatherWidth = 18f;
+
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track,
+                    PitLanePresentationLayout.ForCourse(course),
+                    new[] { Color.red, Color.blue }, style);
+
+                float[] weights = mesh.Details.Select(d => d.y)
+                    .Where(w => w > .001f).Distinct().ToArray();
+                Assert.That(weights.Length, Is.GreaterThan(1),
+                    course.Name + " feather must ramp, not step");
+                Assert.That(weights.Max(), Is.EqualTo(1f).Within(.001f),
+                    course.Name + " inner shoulder must reach full weight");
+                // The whole point of carrying coverage per-vertex instead of in
+                // alpha: overlapping shoulder ribbons at a self-crossing resolve
+                // by paint order rather than compounding into a dark knot. Only
+                // the shoulder is claimed here — stripes and the crossing shadow
+                // are deliberately translucent markings.
+                for (int i = 0; i < mesh.Vertices.Count; i++)
+                {
+                    if (mesh.Details[i].y <= .001f) continue;
+                    Assert.That(mesh.Colors[i].a, Is.EqualTo(1f).Within(.001f),
+                        course.Name + " shoulder must never introduce translucency");
+                }
+            }
+        }
+
+        [Test]
+        public void SwappingDetailTexturesLeavesGeometryAndColorUntouched()
+        {
+            RaceSurfaceStyle before = TexturedStyle();
+            RaceSurfaceStyle after = TexturedStyle();
+            after.RoadDetail = Texture2D.blackTexture;
+            after.RoadDetailTile = before.RoadDetailTile * 2f;
+
+            SurfaceMeshData a = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new[] { Color.red, Color.blue }, before);
+            SurfaceMeshData b = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new[] { Color.red, Color.blue }, after);
+
+            // The swap test #161 asks for: a texture reference changes what the
+            // course looks like without moving a vertex or altering a vertex
+            // colour, because both tiling and the surface colour are resolved in
+            // the shader. Since #161's coloured-tile revision the swap changes
+            // colour too, so this pins the mesh, not the appearance.
+            Assert.That(b.Vertices, Is.EqualTo(a.Vertices));
+            Assert.That(b.Colors, Is.EqualTo(a.Colors));
+            Assert.That(b.Details, Is.EqualTo(a.Details));
+            Assert.That(b.Triangles, Is.EqualTo(a.Triangles));
+        }
+
+        [Test]
+        public void FlatCommittedTreatmentRemainsAvailableAsAFallback()
+        {
+            // RaceSurfaceStyle.Default is still textureless, so the pre-#161
+            // look stays reachable as a deterministic comparison baseline.
+            RaceSurfaceStyle flat = RaceSurfaceStyle.Default;
+            Assert.That(flat.GroundDetail, Is.Null);
+            Assert.That(flat.RoadDetail, Is.Null);
+            Assert.That(flat.ShoulderDetail, Is.Null);
+            Assert.That(flat.DetailStrength, Is.EqualTo(0f));
+            // Tints are grades on top of authored tile colour, so the baseline
+            // is white: pit lane and corners share the road tile ungraded.
+            Assert.That(flat.GroundDetailTint, Is.EqualTo(Color.white));
+            Assert.That(flat.RoadDetailTint, Is.EqualTo(Color.white));
+            Assert.That(flat.ShoulderDetailTint, Is.EqualTo(Color.white));
+
+            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(
+                Track, PitLayout(), new[] { Color.red, Color.blue }, flat);
+            Assert.That(mesh.Details.Count, Is.EqualTo(mesh.Vertices.Count));
+        }
     }
 }

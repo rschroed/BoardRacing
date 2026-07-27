@@ -33,6 +33,17 @@ public static class CourseGalleryCaptures
         EditorApplication.Exit(0);
     }
 
+    // The committed theme (issue #161) rather than the flat fallback: the
+    // phase-one review artifact for the approved Quarry direction. Separate
+    // directory so the flat gallery stays the deterministic baseline.
+    //   Unity -batchmode -projectPath . -executeMethod CourseGalleryCaptures.RunThemeReview
+    public static void RunThemeReview()
+    {
+        CaptureAll(CourseSurfaceTheme.LoadStyleOrDefault(),
+            "docs/captures/course-theme");
+        EditorApplication.Exit(0);
+    }
+
     private static void CaptureAll(RaceSurfaceStyle style, string outputDirectory)
     {
         Directory.CreateDirectory(outputDirectory);
@@ -46,7 +57,7 @@ public static class CourseGalleryCaptures
         SurfaceMeshData data = RaceSurfaceGeometry.Build(course.Track,
             PitLanePresentationLayout.ForCourse(course),
             new[] { new Color(.95f, .55f, .25f), new Color(.62f, .47f, .95f) }, style);
-        RaceSurfaceRenderer surface = RaceSurfaceRenderer.Create(data, style.GroundColor);
+        RaceSurfaceRenderer surface = RaceSurfaceRenderer.Create(data, style);
         var texture = new RenderTexture(1920, 1080, 24);
         var image = new Texture2D(1920, 1080, TextureFormat.RGB24, false);
         try
