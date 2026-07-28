@@ -21,6 +21,8 @@ namespace BoardRacing.Runtime
             new Dictionary<PlayerId, Color>();
         private readonly Dictionary<PlayerId, string> playerIdentityLabels =
             new Dictionary<PlayerId, string>();
+        private readonly Dictionary<PlayerId, CarResponseState> carResponseStates =
+            new Dictionary<PlayerId, CarResponseState>();
         private RaceSimulation simulation;
         private IReadOnlyList<PlayerControlSnapshot> controls = Array.Empty<PlayerControlSnapshot>();
         private readonly Dictionary<PlayerId, CrewStrategyAdapter> crewAdapters =
@@ -177,6 +179,7 @@ namespace BoardRacing.Runtime
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(
                 BuildSurfaceData(simulation.Track, true), surfaceStyle);
+            carResponseStates.Clear();
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             surface.SetWireframeVisible(visualLabWireframeVisible);
 #endif
@@ -186,6 +189,7 @@ namespace BoardRacing.Runtime
                     ? seat.PieceIdentity.Value
                     : PhysicalPieceCatalog.All[(int)seat.PlayerId - 1];
                 surface.AttachCar(seat.PlayerId, identity);
+                carResponseStates[seat.PlayerId] = CarResponseState.Still;
             }
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             visualLab?.ReapplyStageComposition();
@@ -389,7 +393,7 @@ namespace BoardRacing.Runtime
                 simulation.Step(step, commands); accumulator -= step;
             }
             RefreshPresentation();
-            UpdateWorldCars();
+            UpdateWorldCars(unscaledDeltaTime);
         }
 
         private void RefreshPresentation()
@@ -456,22 +460,53 @@ namespace BoardRacing.Runtime
                 CenterMessageKind.None, null);
         }
 
-        private void UpdateWorldCars()
+        private void UpdateWorldCars(float deltaSeconds = 0f)
         {
             foreach (var racer in presentedRace.Racers)
             {
                 CarPose(racer, out Vector2 center, out Vector2 tangent);
+                float deceleration = Deceleration(racer.PlayerId);
                 // Corner character (issue #117) belongs to a car racing the
                 // track; the pit lane and the finished pose stay composed.
                 CarAttitude attitude = OnRacingLine(racer) && !racer.Finished
                     ? CornerCharacter.Attitude(simulation.Track, DrawnDistance(racer), racer.Speed,
-                        Deceleration(racer.PlayerId), simulation.Rules.Braking)
+                        deceleration, simulation.Rules.Braking)
                     : CarAttitude.Neutral;
                 surface.SetCarPose(racer.PlayerId, OffsetCenter(racer, center, tangent),
                     Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg + attitude.DriftDegrees +
                     LaunchTwitchFor(racer).YawDegrees,
                     new Vector2(attitude.SquashAlong, attitude.StretchAcross));
+
+                bool hasControl = TryControl(racer.PlayerId,
+                    out PlayerControlSnapshot control);
+                CarResponseState target = CarResponsePresentation.Targets(
+                    presentedRace.Phase, OnRacingLine(racer), racer.Finished,
+                    hasControl && control.Car.Present,
+                    hasControl ? control.Throttle : ThrottleStep.Brake,
+                    racer.Speed,
+                    CornerCharacter.BrakeDive(deceleration, simulation.Rules.Braking),
+                    attitude.DriftDegrees);
+                CarResponseState current = carResponseStates.TryGetValue(racer.PlayerId,
+                    out CarResponseState response) ? response : CarResponseState.Still;
+                CarResponseState next = CarResponsePresentation.Step(current, target,
+                    deltaSeconds);
+                carResponseStates[racer.PlayerId] = next;
+                surface.SetCarResponse(racer.PlayerId, next,
+                    CarResponsePresentation.Pulse(presentedRace.ElapsedSeconds,
+                        racer.PlayerId));
             }
+        }
+
+        private bool TryControl(PlayerId playerId, out PlayerControlSnapshot result)
+        {
+            for (int i = 0; i < controls.Count; i++)
+                if (controls[i].PlayerId == playerId)
+                {
+                    result = controls[i];
+                    return true;
+                }
+            result = default;
+            return false;
         }
 
         private float DrawnDistance(RacerSnapshot racer) =>
@@ -597,6 +632,8 @@ namespace BoardRacing.Runtime
         {
             courseSelection.KeepCurrentForNext();
             simulation.RequestNewRace();
+            foreach (PlayerId id in carResponseStates.Keys.ToArray())
+                carResponseStates[id] = CarResponseState.Still;
             accumulator = 0f;
             RefreshPresentation();
             UpdateWorldCars();
