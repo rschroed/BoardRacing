@@ -181,8 +181,12 @@ namespace BoardRacing.Runtime
             surface.SetWireframeVisible(visualLabWireframeVisible);
 #endif
             foreach (PlayerSeat seat in raceSeats)
-                surface.AttachCar(seat.PlayerId,
-                    RaceSurfaceGeometry.BuildCarBody(seat.PlayerId, PlayerAccent(seat.PlayerId)));
+            {
+                PieceIdentity identity = seat.PieceIdentity.HasValue
+                    ? seat.PieceIdentity.Value
+                    : PhysicalPieceCatalog.All[(int)seat.PlayerId - 1];
+                surface.AttachCar(seat.PlayerId, identity);
+            }
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             visualLab?.ReapplyStageComposition();
 #endif

@@ -214,45 +214,30 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void CarBodiesKeepTheDrawnFootprint()
+        public void DirectionEAssetsKeepTheDrawnFootprintAndPieceIdentity()
         {
-            // Both bodies are 54×26, nose along +X (issue #117 round 2, owner
-            // direction): car proportions make the heading rotation read, and
-            // a side-by-side pair fits the track ribbon. P1 the rounded
-            // rectangle, P2 the capsule; the darker cockpit wedge lives
-            // strictly inside the footprint.
-            foreach (PlayerId playerId in new[] { PlayerId.Player1, PlayerId.Player2 })
+            var resourcePaths = new HashSet<string>();
+            foreach (PieceIdentity identity in PhysicalPieceCatalog.All)
             {
-                Color accent = playerId == PlayerId.Player1 ? Color.red : Color.blue;
-                SurfaceMeshData body = RaceSurfaceGeometry.BuildCarBody(playerId, accent);
-                float maxAlong = 0f, maxAcross = 0f, maxDiagonal = 0f;
-                foreach (Vector3 vertex in body.Vertices)
-                {
-                    maxAlong = Mathf.Max(maxAlong, Mathf.Abs(vertex.x));
-                    maxAcross = Mathf.Max(maxAcross, Mathf.Abs(vertex.y));
-                    maxDiagonal = Mathf.Max(maxDiagonal, new Vector2(vertex.x, vertex.y).magnitude);
-                }
-                Assert.That(maxAlong, Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize).Within(.01f), playerId + " length");
-                Assert.That(maxAcross, Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfWidth).Within(.01f), playerId + " width");
-                // The corner rounding must actually cut the sharp corner.
-                float sharpCorner = new Vector2(RaceSurfaceGeometry.CarBodyHalfSize,
-                    RaceSurfaceGeometry.CarBodyHalfWidth).magnitude;
-                Assert.That(maxDiagonal, Is.LessThan(sharpCorner - 1f), playerId + " corner");
-                // Both bodies carry the darker nose wedge: rotation must be
-                // readable on each.
-                Assert.That(body.Colors, Has.Some.Not.EqualTo(accent), playerId + " wedge");
-                Assert.That(body.Colors, Has.Some.EqualTo(accent), playerId + " body");
+                string path = DirectionECarVisual.BodyResourcePath(identity);
+                Assert.That(resourcePaths.Add(path), Is.True,
+                    identity.VisualIdentity + " must own a distinct color/marker asset");
+                Texture2D body = DirectionECarVisual.LoadBody(identity);
+                Assert.That(body.width, Is.EqualTo(DirectionECarVisual.BodySourceWidth));
+                Assert.That(body.height, Is.EqualTo(DirectionECarVisual.BodySourceHeight));
+                Assert.That(body.width / DirectionECarVisual.BodyPixelsPerUnit,
+                    Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize * 2f));
+                Assert.That(body.height / DirectionECarVisual.BodyPixelsPerUnit,
+                    Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfWidth * 2f));
             }
-            // P2's capsule rounds the whole end; P1's rectangle keeps a
-            // shoulder outside the capsule's arc — the silhouettes differ.
-            float capsuleReach = 0f, rectangleReach = 0f;
-            foreach (Vector3 vertex in RaceSurfaceGeometry.BuildCarBody(PlayerId.Player2, Color.blue).Vertices)
-                if (Mathf.Abs(vertex.x) > RaceSurfaceGeometry.CarBodyHalfSize - 3f)
-                    capsuleReach = Mathf.Max(capsuleReach, Mathf.Abs(vertex.y));
-            foreach (Vector3 vertex in RaceSurfaceGeometry.BuildCarBody(PlayerId.Player1, Color.red).Vertices)
-                if (Mathf.Abs(vertex.x) > RaceSurfaceGeometry.CarBodyHalfSize - 3f)
-                    rectangleReach = Mathf.Max(rectangleReach, Mathf.Abs(vertex.y));
-            Assert.That(rectangleReach, Is.GreaterThan(capsuleReach + 2f));
+
+            Texture2D shadow = DirectionECarVisual.LoadContactShadow();
+            Assert.That(shadow.width, Is.EqualTo(DirectionECarVisual.ShadowSourceWidth));
+            Assert.That(shadow.height, Is.EqualTo(DirectionECarVisual.ShadowSourceHeight));
+            Assert.That(shadow.width / DirectionECarVisual.ShadowPixelsPerUnit,
+                Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfSize * 2f));
+            Assert.That(shadow.height / DirectionECarVisual.ShadowPixelsPerUnit,
+                Is.EqualTo(RaceSurfaceGeometry.CarBodyHalfWidth * 2f));
         }
 
         [Test]

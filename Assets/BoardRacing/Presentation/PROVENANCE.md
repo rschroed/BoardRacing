@@ -80,3 +80,28 @@ BoardRacingTheme (future)
 Player accent colours, HUD colours, and condition-state semantics are **not**
 course-owned and are not defined here, so the course phase cannot accidentally
 claim them. The downstream theme assets are intentionally not created yet.
+
+## Direction E production car family
+
+`Resources/Cars/` contains the first owner-approved production car family from
+issues #174 and #175. The four body textures are derived from the single
+approved Direction E generated master in
+`docs/design/car-concepts/direction-e-asset-study/`; no third-party or licensed
+source material is used.
+
+The family keeps one identical widebody muscle-coupe silhouette and bakes the
+session-owned color and non-color Piece identity into four exports:
+
+- Orange / triangle
+- Purple / circle
+- Pink / diamond
+- Yellow / square
+
+Each body source is `432 × 208` and renders at eight source pixels per reference
+pixel, producing the existing `54 × 26` gameplay footprint. The separate
+`DirectionE_ContactShadow.png` also stays inside that footprint. Textures use
+bilinear filtering, mipmaps, clamp wrapping, alpha transparency, and no Android
+compression so arbitrary heading and drift rotations do not depend on MSAA.
+
+This is intentionally one concrete family rather than a generalized car
+catalog. A second approved car is the trigger for that abstraction.
