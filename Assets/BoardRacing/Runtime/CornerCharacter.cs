@@ -55,7 +55,7 @@ namespace BoardRacing.Runtime
 
         // Brake dive: the body compresses along its heading (and spreads a
         // little across) in proportion to deceleration against full braking.
-        public const float DiveSquash = .12f;
+        public const float DiveSquash = .08f;
 
         // Signed curvature (1/px) of the racing line: the turn between the
         // chords behind and ahead of the sample, over the arc between their

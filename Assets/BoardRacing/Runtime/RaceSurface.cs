@@ -820,10 +820,14 @@ namespace BoardRacing.Runtime
 
         private Material material;
         private Material carMaterial;
+        private Texture2D responseTexture;
+        private Sprite responseSprite;
         private readonly List<Mesh> meshes = new List<Mesh>();
         private readonly List<Sprite> sprites = new List<Sprite>();
         private readonly Dictionary<PlayerId, Transform> cars =
             new Dictionary<PlayerId, Transform>();
+        private readonly Dictionary<PlayerId, CarResponseRig> carResponses =
+            new Dictionary<PlayerId, CarResponseRig>();
         private Camera surfaceCamera;
         private MeshFilter surfaceFilter;
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
@@ -875,6 +879,7 @@ namespace BoardRacing.Runtime
             surface.carMaterial = new Material(
                 Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
                 ?? Shader.Find("Sprites/Default"));
+            surface.CreateResponseSprite();
             surface.ApplyStyle(style);
             Transform surfaceObject = surface.CreateMeshObject("Race Surface Mesh", data);
             surface.surfaceFilter = surfaceObject.GetComponent<MeshFilter>();
@@ -935,13 +940,18 @@ namespace BoardRacing.Runtime
             car.SetParent(transform, false);
             AddSpriteLayer(car, "Contact Shadow", DirectionECarVisual.LoadContactShadow(),
                 DirectionECarVisual.ShadowPixelsPerUnit, 1);
-            AddSpriteLayer(car, "Direction E Body", DirectionECarVisual.LoadBody(identity),
+
+            var bodyObject = new GameObject("Body Response");
+            Transform body = bodyObject.transform;
+            body.SetParent(car, false);
+            AddSpriteLayer(body, "Direction E Body", DirectionECarVisual.LoadBody(identity),
                 DirectionECarVisual.BodyPixelsPerUnit, 2);
+            carResponses[playerId] = CreateCarResponseRig(car, body);
             car.gameObject.SetActive(carsVisible);
             cars[playerId] = car;
         }
 
-        private void AddSpriteLayer(Transform parent, string layerName, Texture2D texture,
+        private SpriteRenderer AddSpriteLayer(Transform parent, string layerName, Texture2D texture,
             float pixelsPerUnit, int sortingOrder)
         {
             Sprite sprite = Sprite.Create(texture,
@@ -955,6 +965,24 @@ namespace BoardRacing.Runtime
             layer.transform.SetParent(parent, false);
             var spriteRenderer = layer.AddComponent<SpriteRenderer>();
             spriteRenderer.sprite = sprite;
+            ConfigureSpriteRenderer(spriteRenderer, sortingOrder);
+            return spriteRenderer;
+        }
+
+        private SpriteRenderer AddResponseLayer(Transform parent, string layerName,
+            int sortingOrder)
+        {
+            var layer = new GameObject(layerName);
+            layer.transform.SetParent(parent, false);
+            var spriteRenderer = layer.AddComponent<SpriteRenderer>();
+            spriteRenderer.sprite = responseSprite;
+            ConfigureSpriteRenderer(spriteRenderer, sortingOrder);
+            spriteRenderer.enabled = false;
+            return spriteRenderer;
+        }
+
+        private void ConfigureSpriteRenderer(SpriteRenderer spriteRenderer, int sortingOrder)
+        {
             spriteRenderer.sharedMaterial = carMaterial;
             spriteRenderer.sortingOrder = sortingOrder;
             spriteRenderer.shadowCastingMode =
@@ -964,6 +992,57 @@ namespace BoardRacing.Runtime
                 UnityEngine.Rendering.LightProbeUsage.Off;
             spriteRenderer.reflectionProbeUsage =
                 UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        }
+
+        private CarResponseRig CreateCarResponseRig(Transform car, Transform body)
+        {
+            return new CarResponseRig(body,
+                AddResponseLayer(car, "Drive Exhaust", 3),
+                AddResponseLayer(car, "Brake Cue Left", 4),
+                AddResponseLayer(car, "Brake Cue Right", 4),
+                AddResponseLayer(car, "Boost Flare", 3),
+                AddResponseLayer(car, "Boost Core", 4),
+                AddResponseLayer(car, "Boost Streak Left", 3),
+                AddResponseLayer(car, "Boost Streak Center", 3),
+                AddResponseLayer(car, "Boost Streak Right", 3),
+                AddResponseLayer(car, "Corner Contact Left", 3),
+                AddResponseLayer(car, "Corner Contact Right", 3));
+        }
+
+        private void CreateResponseSprite()
+        {
+            const int Size = 32;
+            responseTexture = new Texture2D(Size, Size, TextureFormat.RGBA32,
+                false, true)
+            {
+                name = "Car Response Soft Disc",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            var pixels = new Color32[Size * Size];
+            for (int y = 0; y < Size; y++)
+                for (int x = 0; x < Size; x++)
+                {
+                    float nx = (x + .5f) / Size * 2f - 1f;
+                    float ny = (y + .5f) / Size * 2f - 1f;
+                    float edge = Mathf.Clamp01(1f - Mathf.Sqrt(nx * nx + ny * ny));
+                    byte alpha = (byte)Mathf.RoundToInt(255f *
+                        Mathf.SmoothStep(0f, 1f, edge));
+                    pixels[y * Size + x] = new Color32(255, 255, 255, alpha);
+                }
+            responseTexture.SetPixels32(pixels);
+            responseTexture.Apply(false, true);
+            responseSprite = Sprite.Create(responseTexture,
+                new Rect(0f, 0f, Size, Size), new Vector2(.5f, .5f), 1f, 0,
+                SpriteMeshType.FullRect, Vector4.zero, false);
+            responseSprite.name = "Car Response Soft Disc";
+            sprites.Add(responseSprite);
+        }
+
+        public void SetCarResponse(PlayerId playerId, CarResponseState state, float pulse)
+        {
+            if (carResponses.TryGetValue(playerId, out CarResponseRig response))
+                response.Apply(state, Mathf.Clamp01(pulse));
         }
 
         public void SetCarsVisible(bool visible)
@@ -993,6 +1072,97 @@ namespace BoardRacing.Runtime
             car.localPosition = new Vector3(referencePosition.x, referencePosition.y, CarDepth);
             car.localRotation = Quaternion.Euler(0f, 0f, rotationDegrees);
             car.localScale = new Vector3(scale.x, scale.y, 1f);
+        }
+
+        private sealed class CarResponseRig
+        {
+            private static readonly Color DriveSmoke =
+                new Color(.72f, .76f, .78f, 1f);
+            private static readonly Color BrakeRed =
+                new Color(1f, .16f, .04f, 1f);
+            private static readonly Color BoostOrange =
+                new Color(1f, .34f, .04f, 1f);
+            private static readonly Color BoostIvory =
+                new Color(1f, .9f, .58f, 1f);
+            private static readonly Color TireChirp =
+                new Color(.92f, .86f, .7f, 1f);
+
+            private readonly Transform body;
+            private readonly SpriteRenderer driveExhaust;
+            private readonly SpriteRenderer brakeLeft, brakeRight;
+            private readonly SpriteRenderer boostFlare, boostCore;
+            private readonly SpriteRenderer boostLeft, boostCenter, boostRight;
+            private readonly SpriteRenderer cornerLeft, cornerRight;
+
+            public CarResponseRig(Transform body, SpriteRenderer driveExhaust,
+                SpriteRenderer brakeLeft, SpriteRenderer brakeRight,
+                SpriteRenderer boostFlare, SpriteRenderer boostCore,
+                SpriteRenderer boostLeft, SpriteRenderer boostCenter,
+                SpriteRenderer boostRight, SpriteRenderer cornerLeft,
+                SpriteRenderer cornerRight)
+            {
+                this.body = body;
+                this.driveExhaust = driveExhaust;
+                this.brakeLeft = brakeLeft;
+                this.brakeRight = brakeRight;
+                this.boostFlare = boostFlare;
+                this.boostCore = boostCore;
+                this.boostLeft = boostLeft;
+                this.boostCenter = boostCenter;
+                this.boostRight = boostRight;
+                this.cornerLeft = cornerLeft;
+                this.cornerRight = cornerRight;
+            }
+
+            public void Apply(CarResponseState state, float pulse)
+            {
+                // The root carries truthful position/heading and the established
+                // corner/brake attitude. Only the authored body child strains.
+                float motorBeat = state.Drive * (.002f + .003f * pulse);
+                body.localScale = new Vector3(
+                    1f + .045f * state.Boost + motorBeat,
+                    1f - .022f * state.Boost - motorBeat * .5f, 1f);
+
+                Set(driveExhaust, new Vector2(-31f - pulse * 2f, 0f),
+                    new Vector2(9f + pulse * 3f, 4.5f + pulse),
+                    DriveSmoke, state.Drive * (.42f + .18f * pulse));
+
+                Set(brakeLeft, new Vector2(-27f, -7.5f), new Vector2(9f, 5f),
+                    BrakeRed, state.Brake);
+                Set(brakeRight, new Vector2(-27f, 7.5f), new Vector2(9f, 5f),
+                    BrakeRed, state.Brake);
+
+                Set(boostFlare, new Vector2(-31f - pulse, 0f),
+                    new Vector2(15f + pulse * 3f, 6.5f),
+                    BoostOrange, state.Boost * (.78f + .20f * pulse));
+                Set(boostCore, new Vector2(-27f, 0f), new Vector2(7f, 2.8f),
+                    BoostIvory, state.Boost);
+                Set(boostLeft, new Vector2(-36f, -6.5f), new Vector2(12f, 2.1f),
+                    BoostIvory, state.Boost * .82f);
+                Set(boostCenter, new Vector2(-39f, 0f), new Vector2(16f, 2.3f),
+                    BoostIvory, state.Boost * .94f);
+                Set(boostRight, new Vector2(-36f, 6.5f), new Vector2(12f, 2.1f),
+                    BoostIvory, state.Boost * .82f);
+
+                Set(cornerLeft, new Vector2(-22f, -10f), new Vector2(11f, 2.5f),
+                    TireChirp, state.Corner * (.72f + .18f * pulse));
+                Set(cornerRight, new Vector2(-22f, 10f), new Vector2(11f, 2.5f),
+                    TireChirp, state.Corner * (.72f + .18f * (1f - pulse)));
+            }
+
+            private static void Set(SpriteRenderer renderer, Vector2 position,
+                Vector2 size, Color color, float opacity)
+            {
+                float alpha = Mathf.Clamp01(opacity);
+                renderer.enabled = alpha > .002f;
+                if (!renderer.enabled) return;
+                renderer.transform.localPosition =
+                    new Vector3(position.x, position.y, 0f);
+                renderer.transform.localScale =
+                    new Vector3(size.x / 32f, size.y / 32f, 1f);
+                color.a = alpha;
+                renderer.color = color;
+            }
         }
 
         private Transform CreateMeshObject(string objectName, SurfaceMeshData data)
@@ -1091,6 +1261,7 @@ namespace BoardRacing.Runtime
         {
             foreach (Mesh mesh in meshes) DestroyOwned(mesh);
             foreach (Sprite sprite in sprites) DestroyOwned(sprite);
+            DestroyOwned(responseTexture);
             DestroyOwned(carMaterial);
             DestroyOwned(material);
         }
