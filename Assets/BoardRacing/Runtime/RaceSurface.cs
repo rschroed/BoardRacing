@@ -742,25 +742,21 @@ namespace BoardRacing.Runtime
             AppendOrientedRect(mesh, center + along * (halfLength - inset), along, inset, halfWidth, color);
         }
 
-        // Car bodies, centered on the origin so the renderer moves them by
+        // Car visuals are centered on the origin so the renderer moves them by
         // transform, nose along +X. 54 long × 26 wide (owner direction
         // 2026-07-23, narrowed twice from the square 54×54 IMGUI footprint:
         // 30 made a pair fit the 64 px ribbon, 26 gives the duel visible
         // daylight — 6 px tucked instead of 2 — and frees breath budget):
         // car proportions make the heading rotation and drift angle read.
-        // P1 is a rounded rectangle (corner radius 8); P2 a capsule (the
-        // corner radius grown to the half width).
+        // Direction E supplies the art, while these constants remain the
+        // simulation and layout contract.
         public const float CarBodyHalfSize = 27f;
         public const float CarBodyHalfWidth = 13f;
         public const float CarBodyCornerRadius = 8f;
 
-        // Two drawn bodies always share a heading, so whether they touch is a
-        // question about their footprints alone. Every body is an inner box
-        // grown by its corner radius, so a pair clears exactly when the
-        // vector between their centers escapes the summed inner box grown by
-        // the summed radii. The worst pair in a four-car field is Player 1's
-        // boxy rounded rect against a round-ended body, and that is the pair
-        // both of these answer for — one rule covers every pairing.
+        // These values are the proven deterministic clearance contract from
+        // the placeholder bodies. Direction E changes only presentation, so
+        // the simulation keeps that conservative envelope unchanged.
         private const float PairBoxAlong =
             (CarBodyHalfSize - CarBodyCornerRadius) + (CarBodyHalfSize - CarBodyHalfWidth);
         private const float PairBoxAcross =
@@ -772,42 +768,6 @@ namespace BoardRacing.Runtime
             float dx = Mathf.Max(Mathf.Abs(alongGap) - PairBoxAlong, 0f);
             float dy = Mathf.Max(Mathf.Abs(acrossGap) - PairBoxAcross, 0f);
             return Mathf.Sqrt(dx * dx + dy * dy) - PairRadii;
-        }
-
-        public static SurfaceMeshData BuildCarBody(PlayerId playerId, Color accent)
-        {
-            var mesh = new SurfaceMeshData();
-            mesh.AddFan(Vector2.zero, RoundedPerimeter(CarBodyHalfSize, CarBodyHalfWidth,
-                playerId == PlayerId.Player1 ? CarBodyCornerRadius : CarBodyHalfWidth), accent);
-            // A darker cockpit wedge pointing along +X, the body's nose: now
-            // that the bodies rotate to their heading and drift past it
-            // (issue #117), both silhouettes need a visible front. Inside the
-            // footprint, so nothing else moves.
-            mesh.AddFan(new Vector2(11f, 0f), new List<Vector2>
-            {
-                new Vector2(23f, 0f), new Vector2(5f, -9f), new Vector2(5f, 9f)
-            }, Color.Lerp(accent, Color.black, .45f));
-            return mesh;
-        }
-
-        private static List<Vector2> RoundedPerimeter(float halfLength, float halfWidth,
-            float cornerRadius, int segmentsPerCorner = 6)
-        {
-            float insetX = halfLength - cornerRadius, insetY = halfWidth - cornerRadius;
-            var points = new List<Vector2>(4 * (segmentsPerCorner + 1));
-            for (int corner = 0; corner < 4; corner++)
-            {
-                float baseAngle = corner * 90f;
-                var center = new Vector2(
-                    Mathf.Sign(Mathf.Cos((baseAngle + 45f) * Mathf.Deg2Rad)) * insetX,
-                    Mathf.Sign(Mathf.Sin((baseAngle + 45f) * Mathf.Deg2Rad)) * insetY);
-                for (int step = 0; step <= segmentsPerCorner; step++)
-                {
-                    float angle = (baseAngle + 90f * step / segmentsPerCorner) * Mathf.Deg2Rad;
-                    points.Add(center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * cornerRadius);
-                }
-            }
-            return points;
         }
 
         // Centripetal parameterization (alpha = .5), Barry-Goldman evaluation.
@@ -859,7 +819,9 @@ namespace BoardRacing.Runtime
         private static readonly int DetailStrengthId = Shader.PropertyToID("_DetailStrength");
 
         private Material material;
+        private Material carMaterial;
         private readonly List<Mesh> meshes = new List<Mesh>();
+        private readonly List<Sprite> sprites = new List<Sprite>();
         private readonly Dictionary<PlayerId, Transform> cars =
             new Dictionary<PlayerId, Transform>();
         private Camera surfaceCamera;
@@ -910,6 +872,9 @@ namespace BoardRacing.Runtime
                 ? new Material(style.SurfaceMaterial)
                 : new Material(Shader.Find(CourseSurfaceShaderName)
                     ?? Shader.Find("Sprites/Default"));
+            surface.carMaterial = new Material(
+                Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
+                ?? Shader.Find("Sprites/Default"));
             surface.ApplyStyle(style);
             Transform surfaceObject = surface.CreateMeshObject("Race Surface Mesh", data);
             surface.surfaceFilter = surfaceObject.GetComponent<MeshFilter>();
@@ -963,11 +928,42 @@ namespace BoardRacing.Runtime
             material.SetFloat(DetailStrengthId, Mathf.Clamp01(style.DetailStrength));
         }
 
-        public void AttachCar(PlayerId playerId, SurfaceMeshData body)
+        public void AttachCar(PlayerId playerId, PieceIdentity identity)
         {
-            Transform car = CreateMeshObject("Race Car " + playerId, body);
+            var carObject = new GameObject("Race Car " + playerId);
+            Transform car = carObject.transform;
+            car.SetParent(transform, false);
+            AddSpriteLayer(car, "Contact Shadow", DirectionECarVisual.LoadContactShadow(),
+                DirectionECarVisual.ShadowPixelsPerUnit, 1);
+            AddSpriteLayer(car, "Direction E Body", DirectionECarVisual.LoadBody(identity),
+                DirectionECarVisual.BodyPixelsPerUnit, 2);
             car.gameObject.SetActive(carsVisible);
             cars[playerId] = car;
+        }
+
+        private void AddSpriteLayer(Transform parent, string layerName, Texture2D texture,
+            float pixelsPerUnit, int sortingOrder)
+        {
+            Sprite sprite = Sprite.Create(texture,
+                new Rect(0f, 0f, texture.width, texture.height),
+                new Vector2(.5f, .5f), pixelsPerUnit, 0,
+                SpriteMeshType.FullRect, Vector4.zero, false);
+            sprite.name = layerName;
+            sprites.Add(sprite);
+
+            var layer = new GameObject(layerName);
+            layer.transform.SetParent(parent, false);
+            var spriteRenderer = layer.AddComponent<SpriteRenderer>();
+            spriteRenderer.sprite = sprite;
+            spriteRenderer.sharedMaterial = carMaterial;
+            spriteRenderer.sortingOrder = sortingOrder;
+            spriteRenderer.shadowCastingMode =
+                UnityEngine.Rendering.ShadowCastingMode.Off;
+            spriteRenderer.receiveShadows = false;
+            spriteRenderer.lightProbeUsage =
+                UnityEngine.Rendering.LightProbeUsage.Off;
+            spriteRenderer.reflectionProbeUsage =
+                UnityEngine.Rendering.ReflectionProbeUsage.Off;
         }
 
         public void SetCarsVisible(bool visible)
@@ -1094,6 +1090,8 @@ namespace BoardRacing.Runtime
         private void OnDestroy()
         {
             foreach (Mesh mesh in meshes) DestroyOwned(mesh);
+            foreach (Sprite sprite in sprites) DestroyOwned(sprite);
+            DestroyOwned(carMaterial);
             DestroyOwned(material);
         }
     }

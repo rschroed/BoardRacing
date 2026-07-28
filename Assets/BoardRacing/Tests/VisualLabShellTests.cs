@@ -129,7 +129,7 @@ namespace BoardRacing.Tests
             spawned.Add(surface.gameObject);
 
             surface.SetCarsVisible(false);
-            surface.AttachCar(PlayerId.Player1, data);
+            surface.AttachCar(PlayerId.Player1, PhysicalPieceCatalog.All[0]);
             Transform car = surface.transform.Find("Race Car Player1");
             Assert.That(car, Is.Not.Null);
             Assert.That(car.gameObject.activeSelf, Is.False);
@@ -147,7 +147,7 @@ namespace BoardRacing.Tests
             second.AddRect(new Rect(0f, 0f, 20f, 20f), Color.red);
             RaceSurfaceRenderer surface = RaceSurfaceRenderer.Create(first, Color.black);
             spawned.Add(surface.gameObject);
-            surface.AttachCar(PlayerId.Player1, first);
+            surface.AttachCar(PlayerId.Player1, PhysicalPieceCatalog.All[0]);
             surface.SetCarPose(PlayerId.Player1, new Vector2(123f, 456f), 37f,
                 new Vector2(.8f, 1.2f));
             Transform car = surface.transform.Find("Race Car Player1");

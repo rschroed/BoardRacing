@@ -181,8 +181,12 @@ namespace BoardRacing.Runtime
             surface.SetWireframeVisible(visualLabWireframeVisible);
 #endif
             foreach (PlayerSeat seat in raceSeats)
-                surface.AttachCar(seat.PlayerId,
-                    RaceSurfaceGeometry.BuildCarBody(seat.PlayerId, PlayerAccent(seat.PlayerId)));
+            {
+                PieceIdentity identity = seat.PieceIdentity.HasValue
+                    ? seat.PieceIdentity.Value
+                    : PhysicalPieceCatalog.All[(int)seat.PlayerId - 1];
+                surface.AttachCar(seat.PlayerId, identity);
+            }
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             visualLab?.ReapplyStageComposition();
 #endif
@@ -732,9 +736,8 @@ namespace BoardRacing.Runtime
                     status = "FINISHED · " + Ordinal(racer.Place);
                 else if (racer.Pit.Phase != PitPhase.OnTrack)
                     status = CarPitLabel(racer.Pit);
-                PlayerSeat seat = raceSeats.Single(x => x.PlayerId == racer.PlayerId);
                 return new CarAnnotationUiModel(racer.PlayerId, CarCenter(racer),
-                    seat.PieceIdentity.Value.Symbol, status, statusAbove);
+                    status, statusAbove);
             }).ToArray();
         }
 

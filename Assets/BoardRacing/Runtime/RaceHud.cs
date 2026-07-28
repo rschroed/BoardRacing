@@ -371,19 +371,17 @@ namespace BoardRacing.Runtime
 
     internal readonly struct CarAnnotationUiModel
     {
-        public CarAnnotationUiModel(PlayerId playerId, Vector2 center, string symbol,
-            string status, bool statusAbove)
+        public CarAnnotationUiModel(PlayerId playerId, Vector2 center, string status,
+            bool statusAbove)
         {
             PlayerId = playerId;
             Center = center;
-            Symbol = symbol;
             Status = status;
             StatusAbove = statusAbove;
         }
 
         public PlayerId PlayerId { get; }
         public Vector2 Center { get; }
-        public string Symbol { get; }
         public string Status { get; }
         public bool StatusAbove { get; }
     }
@@ -405,7 +403,7 @@ namespace BoardRacing.Runtime
     internal sealed class CarAnnotationHud
     {
         internal GameObject Container;
-        internal Text Symbol, Status;
+        internal Text Status;
 
         internal static CarAnnotationHud Create(Transform parent, PlayerId id, Font font)
         {
@@ -413,8 +411,6 @@ namespace BoardRacing.Runtime
             return new CarAnnotationHud
             {
                 Container = root.gameObject,
-                Symbol = RaceHud.CreateLabel(root, "Symbol", new Rect(0f, 0f, 54f, 54f),
-                    22, Color.white, font),
                 Status = RaceHud.CreateLabel(root, "Status", new Rect(0f, 0f, 220f, 34f),
                     24, new Color(1f, .75f, .2f), font)
             };
@@ -423,9 +419,6 @@ namespace BoardRacing.Runtime
         internal void Apply(CarAnnotationUiModel model)
         {
             Container.SetActive(true);
-            Symbol.text = model.Symbol ?? string.Empty;
-            RaceHud.Place(Symbol.rectTransform,
-                new Rect(model.Center.x - 27f, model.Center.y - 27f, 54f, 54f));
             Status.text = model.Status ?? string.Empty;
             Status.gameObject.SetActive(!string.IsNullOrEmpty(model.Status));
             if (!string.IsNullOrEmpty(model.Status))
