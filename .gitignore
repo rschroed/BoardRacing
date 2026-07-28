@@ -54,3 +54,6 @@ crashlytics-build.properties
 /Assets/Samples/Board SDK.meta
 /Assets/Samples/Board SDK/
 /ProjectSettings/PackageManagerSettings.asset
+
+# Unity 6 build scratch (Android player build tooling).
+/.utmp/
