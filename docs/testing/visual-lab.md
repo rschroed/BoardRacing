@@ -9,10 +9,14 @@ scene, simulation, or renderer.
 1. Open the normal `Main` scene and enter Play mode.
 2. Press **F10** to expose the `VISUAL LAB` launcher.
 3. Click the launcher to open the shell.
-4. Use **CARS** and **HUD** to compose the live stage.
-5. Use **COURSE SURFACE** to tune the temporary rendering style.
-6. Close the panel with **×** to return to the narrow visible `LAB` edge tab.
-7. Press **F10** again when an exact chrome-free editor capture is required.
+4. Use the **ROAD** and **CARS** tabs to switch control panels. Each panel keeps
+   its temporary state while the other is active.
+5. Use **SHOW CARS** and **SHOW HUD** to compose the live stage independently of
+   the selected control panel.
+6. Use **ROAD** to tune the temporary rendering style, or **CARS** to inspect
+   the production car family and response states.
+7. Close the panel with **×** to return to the narrow visible `LAB` edge tab.
+8. Press **F10** again when an exact chrome-free editor capture is required.
 
 The lab starts unavailable in the editor so automated capture runs retain their
 existing clean comparison images.
@@ -74,3 +78,25 @@ The shell and its integration references are guarded by:
 
 Normal Android release players therefore compile without a Visual Lab code
 path. No player-facing gesture or runtime setting enables it.
+
+## Cars panel
+
+The **CARS** panel has two modes:
+
+- **LIVE** leaves the production cars entirely under race and input control.
+- **STUDY** temporarily hides live car presentation and shows four retained
+  production car instances in a full-scale lineup over the current course, one
+  in each canonical player color. These instances never enter the race roster
+  or simulation.
+
+Cycle the target through **ALL** and **P1–P4**. Neutral, Drive, Brake, Boost,
+and Fast Corner presets apply the production response vocabulary to the target;
+the four response steppers can then compose overlap cases. Non-target study
+cars remain neutral for comparison.
+
+**RESET** returns to Live, All, and Neutral. **LOG** emits one stable
+`[CarsVisualLab]` record containing mode, target, preset, and response
+intensities. Study instances are created once per rendered surface and reused;
+switching tabs, hiding the lab chrome, or repeatedly changing responses does
+not create new cars. Returning to Live reveals the untouched live car objects
+at their current race poses.

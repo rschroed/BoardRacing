@@ -70,6 +70,7 @@ namespace BoardRacing.Runtime
         }
 
         public string Id => "course-surface";
+        public string TabLabel => "ROAD";
         public string Title => "COURSE SURFACE";
 
         public GameObject CreateContent(RectTransform parent)

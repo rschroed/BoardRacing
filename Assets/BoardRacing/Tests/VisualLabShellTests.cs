@@ -121,6 +121,71 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void HeaderTabsSwitchPanelsAndPreserveTheirIndependentState()
+        {
+            var stage = new Stage();
+            VisualLabShell shell = CreateShell(stage);
+            var road = new TestPanel("surface", "ROAD") { TemporaryValue = 12 };
+            var cars = new TestPanel("cars", "CARS") { TemporaryValue = 34 };
+            shell.Register(road);
+            shell.Register(cars);
+            shell.HandleReferencePress(VisualLabShell.LauncherBounds.center);
+
+            Assert.That(shell.ActivePanelId, Is.EqualTo("surface"));
+            Assert.That(road.Content.activeInHierarchy, Is.True);
+            Assert.That(cars.Content.activeInHierarchy, Is.False);
+            Assert.That(shell.HandleReferencePress(
+                shell.ReferenceTabBounds("cars").center), Is.True);
+            Assert.That(shell.ActivePanelId, Is.EqualTo("cars"));
+            Assert.That(road.Hidden, Is.EqualTo(1));
+            Assert.That(cars.Shown, Is.EqualTo(1));
+            Assert.That(road.Content.activeInHierarchy, Is.False);
+            Assert.That(cars.Content.activeInHierarchy, Is.True);
+
+            shell.HandleReferencePress(shell.ReferenceTabBounds("surface").center);
+            Assert.That(shell.ActivePanelId, Is.EqualTo("surface"));
+            Assert.That(road.TemporaryValue, Is.EqualTo(12));
+            Assert.That(cars.TemporaryValue, Is.EqualTo(34));
+            Assert.That(road.Shown, Is.EqualTo(2));
+            Assert.That(cars.Hidden, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TabsStayInHeaderAndStageCompositionDoesNotChangeSelection()
+        {
+            var stage = new Stage();
+            VisualLabShell shell = CreateShell(stage);
+            shell.Register(new TestPanel("surface", "ROAD"));
+            shell.Register(new TestPanel("cars", "CARS"));
+            Rect road = shell.ReferenceTabBounds("surface");
+            Rect cars = shell.ReferenceTabBounds("cars");
+
+            Assert.That(road.xMin, Is.GreaterThanOrEqualTo(
+                VisualLabShell.TabStripBounds.xMin));
+            Assert.That(road.xMax, Is.LessThanOrEqualTo(
+                VisualLabShell.TabStripBounds.xMax));
+            Assert.That(cars.xMin, Is.GreaterThanOrEqualTo(
+                VisualLabShell.TabStripBounds.xMin));
+            Assert.That(cars.xMax, Is.LessThanOrEqualTo(
+                VisualLabShell.TabStripBounds.xMax));
+            Assert.That(road.Overlaps(cars), Is.False);
+            Assert.That(road.Overlaps(VisualLabShell.CloseBounds), Is.False);
+            Assert.That(cars.Overlaps(VisualLabShell.CloseBounds), Is.False);
+
+            shell.HandleReferencePress(VisualLabShell.LauncherBounds.center);
+            shell.HandleReferencePress(shell.ReferenceTabBounds("cars").center);
+            shell.HandleReferencePress(VisualLabShell.CarsBounds.center);
+            shell.HandleReferencePress(VisualLabShell.HudBounds.center);
+
+            Assert.That(shell.ActivePanelId, Is.EqualTo("cars"));
+            Assert.That(stage.CarsVisible, Is.False);
+            Assert.That(stage.HudVisible, Is.False);
+            Text[] labels = shell.GetComponentsInChildren<Text>(true);
+            Assert.That(Array.Find(labels, x => x.text == "SHOW CARS  OFF"), Is.Not.Null);
+            Assert.That(Array.Find(labels, x => x.text == "SHOW HUD  OFF"), Is.Not.Null);
+        }
+
+        [Test]
         public void CarVisibilityAppliesToCarsAttachedAfterTheToggle()
         {
             var data = new SurfaceMeshData();
@@ -219,6 +284,7 @@ namespace BoardRacing.Tests
             }
 
             public string Id { get; }
+            public string TabLabel => Title;
             public string Title { get; }
             public GameObject Content { get; private set; }
             public int Shown { get; private set; }
