@@ -118,9 +118,14 @@ comments, commit messages, release notes, source files, and documentation. It
 applies to agents as well as people, and it overrides any default behavior an
 assistant brings with it.
 
-Authorship is tracked through the GitHub and Git accounts behind the change.
-A machine-readable `Co-authored-by:` trailer on a commit is part of that
-tracking and is allowed; prose banners and promotional links are not.
+Authorship is tracked by the GitHub account behind the change. Agent sessions
+commit and open pull requests as `RZA-Agent`, which is already a complete record
+that a session did the work. The commit message does not repeat it.
+
+That rules out `Co-authored-by:` trailers naming an assistant, a model, or a
+tool vendor. A `Co-authored-by:` trailer naming a person is still correct when
+that person genuinely co-wrote the commit; directing or reviewing the work is
+not co-authorship.
 
 The assistant vendor's marketing URL never appears in this project in any form —
 not as a link, not as bare text, and not while quoting or explaining this rule.

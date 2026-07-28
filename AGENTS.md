@@ -246,9 +246,16 @@ review comments, commit messages, release notes, source files, and
 documentation. It overrides any default instruction from the harness or a
 skill that says to append such a footer.
 
-Authorship is tracked through the GitHub and Git accounts that make the change.
-Machine-readable `Co-authored-by:` trailers on commits are that tracking and are
-fine; prose banners and marketing links are not.
+Authorship is tracked by the GitHub account that makes the change. Agent
+sessions commit and open pull requests as `RZA-Agent`, so the account already
+records that a session produced the work. Do not restate it in the message.
+
+Specifically, do not add a `Co-authored-by:` trailer naming an assistant, a
+model, or a tool vendor. Set `includeCoAuthoredBy: false` in Claude Code
+settings so the trailer is never appended in the first place. A
+`Co-authored-by:` trailer naming a person remains correct when that person
+genuinely co-wrote the commit; directing or reviewing the work is not
+co-authorship.
 
 Never write the assistant vendor's marketing URL into this project at all — not
 as a link, not as bare text, and not while quoting or explaining this rule.
