@@ -736,9 +736,8 @@ namespace BoardRacing.Runtime
                     status = "FINISHED · " + Ordinal(racer.Place);
                 else if (racer.Pit.Phase != PitPhase.OnTrack)
                     status = CarPitLabel(racer.Pit);
-                PlayerSeat seat = raceSeats.Single(x => x.PlayerId == racer.PlayerId);
                 return new CarAnnotationUiModel(racer.PlayerId, CarCenter(racer),
-                    seat.PieceIdentity.Value.Symbol, status, statusAbove);
+                    status, statusAbove);
             }).ToArray();
         }
 

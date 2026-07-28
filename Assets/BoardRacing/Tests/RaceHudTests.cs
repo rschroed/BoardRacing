@@ -274,9 +274,9 @@ namespace BoardRacing.Tests
             var cars = new[]
             {
                 new CarAnnotationUiModel(PlayerId.Player1, new Vector2(500f, 400f),
-                    "▲", "SLOWDOWN!", true),
+                    "SLOWDOWN!", true),
                 new CarAnnotationUiModel(PlayerId.Player3, new Vector2(700f, 600f),
-                    "◆", "PIT ENTRY", false)
+                    "PIT ENTRY", false)
             };
             var pits = new[]
             {
@@ -288,7 +288,8 @@ namespace BoardRacing.Tests
                     CenterMessageKind.None, null),
                 false, cars, pits);
 
-            Assert.That(hud.CarAnnotations[PlayerId.Player1].Symbol.text, Is.EqualTo("▲"));
+            Assert.That(hud.CarAnnotations[PlayerId.Player1].Container.transform.Find("Symbol"),
+                Is.Null, "the authored car body owns moving-car identity");
             Assert.That(hud.CarAnnotations[PlayerId.Player1].Status.text,
                 Is.EqualTo("SLOWDOWN!"));
             Assert.That(hud.CarAnnotations[PlayerId.Player3].Status.text,
