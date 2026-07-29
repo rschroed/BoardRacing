@@ -44,6 +44,7 @@ namespace BoardRacing.Runtime
         private VisualLabShell visualLab;
         private bool visualLabConsumedPress;
         private bool visualLabWireframeVisible;
+        private CarStudyPresentation visualLabCarStudy = CarStudyPresentation.Live;
 #endif
         // Everything the current track IS — racing line, pit complex, race
         // length — comes from one authored artifact (issue #107 phase 1).
@@ -162,6 +163,7 @@ namespace BoardRacing.Runtime
                 surfaceStyle,
                 ApplyVisualLabSurfaceStyle,
                 SetVisualLabWireframeVisible));
+            visualLab.Register(new CarsVisualLabPanel(ApplyVisualLabCarStudy));
 #endif
         }
 
@@ -192,6 +194,7 @@ namespace BoardRacing.Runtime
                 carResponseStates[seat.PlayerId] = CarResponseState.Still;
             }
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            surface.SetCarStudy(visualLabCarStudy);
             visualLab?.ReapplyStageComposition();
 #endif
         }
@@ -203,6 +206,7 @@ namespace BoardRacing.Runtime
                 BuildSurfaceData(course.Track, false), surfaceStyle);
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             surface.SetWireframeVisible(visualLabWireframeVisible);
+            surface.SetCarStudy(visualLabCarStudy);
             visualLab?.ReapplyStageComposition();
 #endif
         }
@@ -682,6 +686,12 @@ namespace BoardRacing.Runtime
         {
             visualLabWireframeVisible = visible;
             if (surface != null) surface.SetWireframeVisible(visible);
+        }
+
+        private void ApplyVisualLabCarStudy(CarStudyPresentation presentation)
+        {
+            visualLabCarStudy = presentation;
+            if (surface != null) surface.SetCarStudy(presentation);
         }
 #endif
 

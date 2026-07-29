@@ -91,8 +91,10 @@ namespace BoardRacing.PlayModeTests
                 "the development overlay attaches to the normal RacePrototype");
             Assert.That(visualLab.Available, Is.False,
                 "editor runs require the explicit F10 workflow, keeping captures clean");
-            Assert.That(visualLab.RegisteredPanelCount, Is.EqualTo(1));
+            Assert.That(visualLab.RegisteredPanelCount, Is.EqualTo(2));
             Assert.That(visualLab.ActivePanelId, Is.EqualTo("course-surface"));
+            Assert.That(visualLab.ReferenceTabBounds("course-surface").Overlaps(
+                visualLab.ReferenceTabBounds("cars")), Is.False);
         }
 
         [UnityTest]

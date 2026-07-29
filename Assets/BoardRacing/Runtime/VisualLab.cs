@@ -20,6 +20,7 @@ namespace BoardRacing.Runtime
     internal interface IVisualLabPanel
     {
         string Id { get; }
+        string TabLabel { get; }
         string Title { get; }
         GameObject CreateContent(RectTransform parent);
         bool HandlePress(Vector2 referencePoint);
@@ -34,20 +35,26 @@ namespace BoardRacing.Runtime
         internal static readonly Rect LauncherBounds = new Rect(1844f, 490f, 64f, 100f);
         internal static readonly Rect PanelBounds = new Rect(1390f, 60f, 470f, 960f);
         internal static readonly Rect CloseBounds = new Rect(1790f, 80f, 50f, 50f);
+        internal static readonly Rect TabStripBounds = new Rect(1420f, 80f, 350f, 50f);
         internal static readonly Rect CarsBounds = new Rect(1420f, 160f, 190f, 58f);
         internal static readonly Rect HudBounds = new Rect(1630f, 160f, 190f, 58f);
         internal static readonly Rect ContentBounds = new Rect(1420f, 240f, 400f, 740f);
 
         private sealed class PanelSlot
         {
-            public PanelSlot(IVisualLabPanel panel, GameObject content)
+            public PanelSlot(IVisualLabPanel panel, GameObject content,
+                RoundedRectGraphic tabBackground, Text tabLabel)
             {
                 Panel = panel;
                 Content = content;
+                TabBackground = tabBackground;
+                TabLabel = tabLabel;
             }
 
             public IVisualLabPanel Panel { get; }
             public GameObject Content { get; }
+            public RoundedRectGraphic TabBackground { get; }
+            public Text TabLabel { get; }
         }
 
         private readonly List<PanelSlot> panels = new List<PanelSlot>();
@@ -56,7 +63,6 @@ namespace BoardRacing.Runtime
         private Canvas canvas;
         private GameObject launcher;
         private GameObject panelChrome;
-        private Text title;
         private Text carsLabel;
         private Text hudLabel;
         private Text noPanelsLabel;
@@ -115,8 +121,18 @@ namespace BoardRacing.Runtime
                 throw new InvalidOperationException(
                     "Visual Lab panel content must belong to the supplied content root.");
 
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            RoundedRectGraphic tabBackground = RaceHud.CreatePanel(
+                panelChrome.transform, "Tab " + panel.Id, TabStripBounds,
+                new Color(.09f, .12f, .17f, .98f), 8f);
+            Text tabLabel = RaceHud.CreateLabel(tabBackground.transform,
+                "Tab " + panel.Id + " Label",
+                new Rect(0f, 0f, TabStripBounds.width, TabStripBounds.height),
+                16, Color.white, font);
+            tabLabel.text = panel.TabLabel;
+
             holder.SetActive(false);
-            var slot = new PanelSlot(panel, holder);
+            var slot = new PanelSlot(panel, holder, tabBackground, tabLabel);
             panels.Add(slot);
             if (activePanel == null) activePanel = slot;
             RefreshVisibility();
@@ -132,6 +148,15 @@ namespace BoardRacing.Runtime
             SetActivePanelShown(false);
             activePanel = next;
             RefreshVisibility();
+        }
+
+        internal Rect ReferenceTabBounds(string panelId)
+        {
+            int index = panels.FindIndex(x => x.Panel.Id == panelId);
+            if (index < 0)
+                throw new ArgumentOutOfRangeException(nameof(panelId),
+                    "No Visual Lab panel is registered as '" + panelId + "'.");
+            return TabBounds(index, panels.Count);
         }
 
         internal void SetAvailable(bool value)
@@ -174,6 +199,10 @@ namespace BoardRacing.Runtime
                 open = false;
                 RefreshVisibility();
             }
+            else if (TrySelectTab(referencePoint))
+            {
+                // Selection owns its own lifecycle and visibility refresh.
+            }
             else if (CarsBounds.Contains(referencePoint))
             {
                 carsVisible = !carsVisible;
@@ -194,6 +223,17 @@ namespace BoardRacing.Runtime
             // The full panel consumes presses, including blank chrome, so a lab
             // adjustment can never activate setup or race navigation beneath it.
             return true;
+        }
+
+        private bool TrySelectTab(Vector2 referencePoint)
+        {
+            for (int i = 0; i < panels.Count; i++)
+            {
+                if (!TabBounds(i, panels.Count).Contains(referencePoint)) continue;
+                Select(panels[i].Panel.Id);
+                return true;
+            }
+            return false;
         }
 
         internal void ReapplyStageComposition()
@@ -224,8 +264,6 @@ namespace BoardRacing.Runtime
             panelChrome = RaceHud.CreateFullScreenNode(transform, "Visual Lab Panel").gameObject;
             RaceHud.CreatePanel(panelChrome.transform, "Panel Background", PanelBounds,
                 new Color(.035f, .05f, .075f, .97f), 14f);
-            title = RaceHud.CreateLabel(panelChrome.transform, "Panel Title",
-                new Rect(1420f, 80f, 350f, 50f), 23, Color.white, font);
             CreateButton(panelChrome.transform, "Close", CloseBounds, "×", font);
             carsLabel = CreateButton(panelChrome.transform, "Cars", CarsBounds, null, font);
             hudLabel = CreateButton(panelChrome.transform, "HUD", HudBounds, null, font);
@@ -254,6 +292,7 @@ namespace BoardRacing.Runtime
             panelChrome.SetActive(chromeVisible && open);
             noPanelsLabel.gameObject.SetActive(chromeVisible && open && activePanel == null);
             SetActivePanelShown(chromeVisible && open && activePanel != null);
+            RefreshTabs();
             RefreshLabels();
         }
 
@@ -268,14 +307,39 @@ namespace BoardRacing.Runtime
             else activePanel.Panel.OnHidden();
         }
 
+        private void RefreshTabs()
+        {
+            for (int i = 0; i < panels.Count; i++)
+            {
+                PanelSlot slot = panels[i];
+                Rect bounds = TabBounds(i, panels.Count);
+                RaceHud.Place(slot.TabBackground.rectTransform, bounds);
+                RaceHud.Place(slot.TabLabel.rectTransform,
+                    new Rect(0f, 0f, bounds.width, bounds.height));
+                bool selected = slot == activePanel;
+                slot.TabBackground.color = selected
+                    ? new Color(.24f, .34f, .48f, .99f)
+                    : new Color(.09f, .12f, .17f, .98f);
+                slot.TabLabel.color = selected ? Color.white :
+                    new Color(.68f, .73f, .8f, 1f);
+            }
+        }
+
+        private static Rect TabBounds(int index, int count)
+        {
+            const float Gap = 10f;
+            float width = (TabStripBounds.width - Gap * Mathf.Max(0, count - 1)) /
+                Mathf.Max(1, count);
+            return new Rect(TabStripBounds.x + index * (width + Gap),
+                TabStripBounds.y, width, TabStripBounds.height);
+        }
+
         private void RefreshLabels()
         {
-            if (title != null)
-                title.text = activePanel == null ? "VISUAL LAB" : activePanel.Panel.Title;
             if (carsLabel != null)
-                carsLabel.text = "CARS  " + (carsVisible ? "ON" : "OFF");
+                carsLabel.text = "SHOW CARS  " + (carsVisible ? "ON" : "OFF");
             if (hudLabel != null)
-                hudLabel.text = "HUD  " + (hudVisible ? "ON" : "OFF");
+                hudLabel.text = "SHOW HUD  " + (hudVisible ? "ON" : "OFF");
         }
 
         private static bool TryPressed(out Vector2 referencePoint)

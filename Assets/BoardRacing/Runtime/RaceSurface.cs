@@ -832,6 +832,11 @@ namespace BoardRacing.Runtime
         private MeshFilter surfaceFilter;
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
         private MeshFilter wireframeFilter;
+        private readonly Dictionary<PlayerId, Transform> studyCars =
+            new Dictionary<PlayerId, Transform>();
+        private readonly Dictionary<PlayerId, CarResponseRig> studyResponses =
+            new Dictionary<PlayerId, CarResponseRig>();
+        private CarStudyPresentation carStudy = CarStudyPresentation.Live;
 #endif
         private bool carsVisible = true;
 
@@ -935,7 +940,17 @@ namespace BoardRacing.Runtime
 
         public void AttachCar(PlayerId playerId, PieceIdentity identity)
         {
-            var carObject = new GameObject("Race Car " + playerId);
+            Transform car = CreateCar("Race Car " + playerId, identity,
+                out CarResponseRig response);
+            carResponses[playerId] = response;
+            cars[playerId] = car;
+            ApplyCarVisibility();
+        }
+
+        private Transform CreateCar(string objectName, PieceIdentity identity,
+            out CarResponseRig response)
+        {
+            var carObject = new GameObject(objectName);
             Transform car = carObject.transform;
             car.SetParent(transform, false);
             AddSpriteLayer(car, "Contact Shadow", DirectionECarVisual.LoadContactShadow(),
@@ -946,9 +961,8 @@ namespace BoardRacing.Runtime
             body.SetParent(car, false);
             AddSpriteLayer(body, "Direction E Body", DirectionECarVisual.LoadBody(identity),
                 DirectionECarVisual.BodyPixelsPerUnit, 2);
-            carResponses[playerId] = CreateCarResponseRig(car, body);
-            car.gameObject.SetActive(carsVisible);
-            cars[playerId] = car;
+            response = CreateCarResponseRig(car, body);
+            return car;
         }
 
         private SpriteRenderer AddSpriteLayer(Transform parent, string layerName, Texture2D texture,
@@ -1048,15 +1062,80 @@ namespace BoardRacing.Runtime
         public void SetCarsVisible(bool visible)
         {
             carsVisible = visible;
+            ApplyCarVisibility();
+        }
+
+        private void ApplyCarVisibility()
+        {
             foreach (Transform car in cars.Values)
-                if (car != null) car.gameObject.SetActive(visible);
+                if (car != null)
+                    car.gameObject.SetActive(carsVisible
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+                        && !carStudy.Enabled
+#endif
+                    );
+#if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+            foreach (Transform car in studyCars.Values)
+                if (car != null)
+                    car.gameObject.SetActive(carsVisible && carStudy.Enabled);
+#endif
         }
 
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
+        public void SetCarStudy(CarStudyPresentation presentation)
+        {
+            carStudy = presentation;
+            if (presentation.Enabled) EnsureStudyCars();
+            ApplyCarVisibility();
+            if (!presentation.Enabled) return;
+
+            foreach (PlayerId playerId in StudyPlayerIds)
+            {
+                CarResponseState response = presentation.AppliesTo(playerId)
+                    ? presentation.Response : CarResponseState.Still;
+                Transform car = studyCars[playerId];
+                float brake = response.Brake;
+                float corner = response.Corner;
+                car.localPosition = new Vector3(
+                    560f + ((int)playerId - 1) * 220f, 540f, CarDepth);
+                car.localRotation = Quaternion.Euler(
+                    0f, 0f, CornerCharacter.MaxDriftDegrees * corner);
+                car.localScale = new Vector3(
+                    1f - CornerCharacter.DiveSquash * brake,
+                    1f + CornerCharacter.DiveSquash * .5f * brake, 1f);
+                studyResponses[playerId].Apply(response, .55f);
+            }
+        }
+
+        private void EnsureStudyCars()
+        {
+            if (studyCars.Count != 0) return;
+            foreach (PlayerId playerId in StudyPlayerIds)
+            {
+                PieceIdentity identity = PhysicalPieceCatalog.All[(int)playerId - 1];
+                Transform car = CreateCar("Visual Lab Study Car " + playerId,
+                    identity, out CarResponseRig response);
+                studyCars.Add(playerId, car);
+                studyResponses.Add(playerId, response);
+            }
+        }
+
+        internal int StudyCarCount => studyCars.Count;
+        internal Transform StudyCar(PlayerId playerId) =>
+            studyCars.TryGetValue(playerId, out Transform car) ? car : null;
+
         public void SetWireframeVisible(bool visible)
         {
             if (wireframeFilter != null) wireframeFilter.gameObject.SetActive(visible);
         }
+
+        private static readonly PlayerId[] StudyPlayerIds =
+        {
+            PlayerId.Player1,
+            PlayerId.Player2,
+            PlayerId.Player3,
+            PlayerId.Player4
+        };
 #endif
 
         // Reference-pixel position (Y down), straight onto the transform — world
