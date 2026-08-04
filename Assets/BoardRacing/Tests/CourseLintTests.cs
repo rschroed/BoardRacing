@@ -121,6 +121,81 @@ namespace BoardRacing.Tests
             Assert.That(findings, Has.Some.Contains("needs a straight"));
         }
 
+        [Test]
+        public void LintFlagsTheSharedLanePassingThroughAParkedCar()
+        {
+            CourseDefinition wedge = CourseCatalog.Wedge();
+            PitStallDefinition[] stalls = wedge.Pit.Stalls.ToArray();
+            PitStallDefinition original = stalls[1];
+            stalls[1] = new PitStallDefinition(original.LaneAnchor,
+                new Vec2(original.LaneAnchor.X, original.LaneAnchor.Y + 10f),
+                original.ParkedHeading);
+
+            IReadOnlyList<string> findings = CourseLint.Check(
+                WithStalls(wedge, stalls), Layout());
+
+            Assert.That(findings, Has.Some.Contains("shared pit lane passes"));
+        }
+
+        [Test]
+        public void LintAllowsTheServiceSurfaceToFlowIntoTheSharedLane()
+        {
+            CourseDefinition wedge = CourseCatalog.Wedge();
+            PitStallDefinition[] stalls = wedge.Pit.Stalls.ToArray();
+            PitStallDefinition original = stalls[0];
+            Vector2 anchor = new Vector2(original.LaneAnchor.X, original.LaneAnchor.Y);
+            Vector2 parked = new Vector2(
+                original.ParkedPosition.X, original.ParkedPosition.Y);
+            Vector2 towardApron = (parked - anchor).normalized;
+            Vector2 overlapping = anchor + towardApron * 35f;
+            stalls[0] = new PitStallDefinition(original.LaneAnchor,
+                new Vec2(overlapping.x, overlapping.y), original.ParkedHeading);
+
+            IReadOnlyList<string> findings = CourseLint.Check(
+                WithStalls(wedge, stalls), Layout());
+
+            Assert.That(findings, Has.None.Contains("service apron sits"));
+            Assert.That(findings, Has.None.Contains("paved zones overlap"));
+        }
+
+        [Test]
+        public void LintFlagsAStallBranchPassingAnUnrelatedParkedCar()
+        {
+            CourseDefinition wedge = CourseCatalog.Wedge();
+            PitStallDefinition[] stalls = wedge.Pit.Stalls.ToArray();
+            PitStallDefinition first = stalls[0];
+            PitStallDefinition second = stalls[1];
+            stalls[0] = new PitStallDefinition(first.EntryAnchor, first.ExitAnchor,
+                second.ParkedPosition, first.ParkedHeading);
+
+            IReadOnlyList<string> findings = CourseLint.Check(
+                WithStalls(wedge, stalls), Layout());
+
+            Assert.That(findings, Has.Some.Contains("stall branch passes"));
+        }
+
+        [Test]
+        public void LintFlagsLaneJoinsTooCloseForTheTrafficHeadway()
+        {
+            CourseDefinition wedge = CourseCatalog.Wedge();
+            PitStallDefinition[] stalls = wedge.Pit.Stalls.ToArray();
+            PitStallDefinition second = stalls[1];
+            stalls[1] = new PitStallDefinition(
+                new Vec2(stalls[0].EntryAnchor.X + 20f, stalls[0].EntryAnchor.Y),
+                second.ExitAnchor, second.ParkedPosition, second.ParkedHeading);
+
+            IReadOnlyList<string> findings = CourseLint.Check(
+                WithStalls(wedge, stalls), Layout());
+
+            Assert.That(findings, Has.Some.Contains("lane joins are"));
+        }
+
+        private static CourseDefinition WithStalls(CourseDefinition course,
+            IEnumerable<PitStallDefinition> stalls) => new CourseDefinition(course.Name,
+                course.Track, new PitComplexDefinition(course.Pit.Entry, stalls,
+                    course.Pit.Exit, course.Pit.MergeApproach,
+                    course.Pit.ExitRejoinDistance), course.Laps);
+
         // The shipped Wedge, rigidly translated — geometry that is valid in
         // itself but sits in the wrong place on the table.
         private static CourseDefinition TranslatedWedge(float dx, float dy)

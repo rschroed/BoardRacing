@@ -185,14 +185,19 @@ namespace BoardRacing.Runtime
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             surface.SetWireframeVisible(visualLabWireframeVisible);
 #endif
+            var pitIdentities = new Dictionary<PlayerId, PieceIdentity>();
             foreach (PlayerSeat seat in raceSeats)
             {
                 PieceIdentity identity = seat.PieceIdentity.HasValue
                     ? seat.PieceIdentity.Value
                     : PhysicalPieceCatalog.All[(int)seat.PlayerId - 1];
+                pitIdentities[seat.PlayerId] = identity;
                 surface.AttachCar(seat.PlayerId, identity);
                 carResponseStates[seat.PlayerId] = CarResponseState.Still;
             }
+            surface.AttachPitComplex(PitLayout(), pitIdentities);
+            surface.SetPitPresentation(simulation.Snapshot.Racers,
+                simulation.Snapshot.ElapsedSeconds, 0f);
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             surface.SetCarStudy(visualLabCarStudy);
             visualLab?.ReapplyStageComposition();
@@ -204,6 +209,8 @@ namespace BoardRacing.Runtime
             if (surface != null) Destroy(surface.gameObject);
             surface = RaceSurfaceRenderer.Create(
                 BuildSurfaceData(course.Track, false), surfaceStyle);
+            surface.AttachPitComplex(PitLayout());
+            surface.SetPitPresentation(null, 0f, 0f);
 #if UNITY_EDITOR || (DEVELOPMENT_BUILD && UNITY_ANDROID)
             surface.SetWireframeVisible(visualLabWireframeVisible);
             surface.SetCarStudy(visualLabCarStudy);
@@ -499,6 +506,8 @@ namespace BoardRacing.Runtime
                     CarResponsePresentation.Pulse(presentedRace.ElapsedSeconds,
                         racer.PlayerId));
             }
+            surface.SetPitPresentation(presentedRace.Racers,
+                presentedRace.ElapsedSeconds, deltaSeconds);
         }
 
         private bool TryControl(PlayerId playerId, out PlayerControlSnapshot result)
@@ -571,11 +580,12 @@ namespace BoardRacing.Runtime
             // and halfway through a corner approach neither has finished its
             // job, so the split holds whatever width the two bodies need
             // until the file itself is long enough to keep them apart.
-            // Modeled lateral (issue #147) is drawn exactly as the simulation
-            // holds it: the car earned that position by paying for the longer
-            // arc, so scaling it would be the lie this whole channel exists to
-            // stop telling.
-            float lateralOffset = OnRacingLine(racer) ? racer.LateralOffset : 0f;
+            // Modeled lateral (issue #147) is drawn exactly while racing. Pit
+            // entry carries that same position through the course handoff and
+            // then eases it onto the pit centerline; discarding it on the phase
+            // change made the car jump despite coincident route centerlines.
+            float lateralOffset =
+                PitLanePresentationMapper.PresentedLateralOffset(racer);
             return new Vector2(center.x - tangent.y * lateralOffset, center.y + tangent.x * lateralOffset);
         }
 
@@ -806,6 +816,9 @@ namespace BoardRacing.Runtime
         private static string CarPitLabel(RacerPitSnapshot pit)
         {
             if (pit.Phase == PitPhase.Requested) return "PIT @ LINE";
+            if (pit.TrafficState == PitTrafficState.Queued) return "PIT QUEUE";
+            if (pit.TrafficState == PitTrafficState.WaitingToRelease)
+                return "WAITING FOR PIT LANE";
             if (pit.Phase == PitPhase.Entering) return "PIT ENTRY";
             if (pit.Phase == PitPhase.InService) return pit.SelectedService == PitService.None
                 ? "CAR PARKED · REPAIR OR LEAVE" : "IN BOX · " + ServiceName(pit.SelectedService);

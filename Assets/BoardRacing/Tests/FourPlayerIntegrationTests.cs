@@ -82,10 +82,33 @@ namespace BoardRacing.Tests
                         Is.LessThanOrEqualTo(Step + .001f),
                         course.Name + " roster-order timing changed for " + id);
 
+                // Same-step pit arrivals now queue by PlayerId on purpose. The
+                // stable order may affect results, but the cost is bounded by
+                // physical queue plus one private service-curve traversal at
+                // the authored lane speed, rather than roster iteration or
+                // frame rate.
                 float[] firstRun = times[0].Values.ToArray();
-                Assert.That(firstRun.Max() - firstRun.Min(), Is.LessThanOrEqualTo(.25f),
-                    course.Name + " pit/PlayerId timing spread");
+                // The same stable ordering can apply once on entry and again
+                // when all four cars request release together.
+                float maximumQueueDelay = 2f * (permutations[0].Length - 1) *
+                    PitRules.ProductionMinimumHeadway / Pace.PitLaneSpeed;
+                float longestServiceCurve = course.Pit.Stalls.Max(stall =>
+                    Distance(stall.EntryAnchor, stall.ParkedPosition) +
+                    Distance(stall.ParkedPosition, stall.ExitAnchor));
+                maximumQueueDelay += longestServiceCurve / Pace.PitLaneSpeed;
+                Assert.That(firstRun.Max() - firstRun.Min(),
+                    // Entry, parking, release, and rejoin each land on fixed
+                    // simulation steps, so the aggregate bound includes their
+                    // quantization without allowing a route-order advantage.
+                    Is.LessThanOrEqualTo(maximumQueueDelay + Step * 5f + .01f),
+                    course.Name + " deterministic pit queue timing spread");
             }
+        }
+
+        private static float Distance(Vec2 a, Vec2 b)
+        {
+            float dx = b.X - a.X, dy = b.Y - a.Y;
+            return (float)Math.Sqrt(dx * dx + dy * dy);
         }
 
         private static IntegrationResult Run(CourseDefinition course, PlayerId[] roster)

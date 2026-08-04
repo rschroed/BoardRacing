@@ -196,6 +196,19 @@ namespace BoardRacing.Domain
         public const float FishhookBulgeSpeedFactor = 1.05f;
         public const float FishhookClipTightSpeedFactor = .7f;
         public const float FishhookClipWideSpeedFactor = .8f;
+        // Direction A's offset service apron needs a few more pixels above the
+        // opening diagonal. A two-percent vertical compression preserves the
+        // silhouette while keeping both the new apron and the lower paperclip
+        // clear of the fixed seat regions.
+        public const float FishhookVerticalScale = .975f;
+        private const float FishhookVerticalScaleOrigin = 295f;
+        // Direction A's readable lane/apron seam needs more vertical room than
+        // the car-only clearance did. Apply one final board-fit compression to
+        // both the racing line and pit complex about table center; CourseCatalog
+        // uses FishhookBoardY for its authored pit points.
+        public const float FishhookBoardFitScale = .948f;
+        public const float FishhookBoardFitOriginX = 960f;
+        public const float FishhookBoardFitOrigin = 540f;
 
         public static TrackDefinition Fishhook(float cornerSafeSpeed = Pace.CornerSafeSpeed)
         {
@@ -204,12 +217,24 @@ namespace BoardRacing.Domain
             foreach (var (count, factor) in FishhookRuns)
                 for (int i = 0; i < count; i++, point++)
                     segments.Add(factor <= 0f
-                        ? new TrackSegment(FishhookPoints[point], FishhookPoints[point + 1],
+                        ? new TrackSegment(FishhookPoint(point), FishhookPoint(point + 1),
                             TrackSectionKind.Straight, float.PositiveInfinity)
-                        : new TrackSegment(FishhookPoints[point], FishhookPoints[point + 1],
+                        : new TrackSegment(FishhookPoint(point), FishhookPoint(point + 1),
                             TrackSectionKind.Corner, cornerSafeSpeed * factor));
             return new TrackDefinition(segments);
         }
+
+        private static Vec2 FishhookPoint(int index) => new Vec2(
+            FishhookBoardX(FishhookPoints[index].X),
+            FishhookBoardY(FishhookVerticalScaleOrigin +
+            (FishhookPoints[index].Y - FishhookVerticalScaleOrigin) *
+            FishhookVerticalScale));
+
+        public static float FishhookBoardX(float x) =>
+            FishhookBoardFitOriginX + (x - FishhookBoardFitOriginX) * FishhookBoardFitScale;
+
+        public static float FishhookBoardY(float y) =>
+            FishhookBoardFitOrigin + (y - FishhookBoardFitOrigin) * FishhookBoardFitScale;
 
         private static readonly (int Count, float Factor)[] FishhookRuns =
         {

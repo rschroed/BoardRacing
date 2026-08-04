@@ -1,5 +1,6 @@
 using System;
 using BoardRacing.Domain;
+using BoardRacing.Runtime;
 using NUnit.Framework;
 
 namespace BoardRacing.Tests
@@ -19,10 +20,16 @@ namespace BoardRacing.Tests
             Assert.That(course.Laps, Is.EqualTo(6));
             AssertVec(course.Pit.Entry, 680f, 455f);
             Assert.That(course.Pit.Boxes.Count, Is.EqualTo(4));
-            AssertVec(course.Pit.Box(PlayerId.Player1), 778f, 455f);
-            AssertVec(course.Pit.Box(PlayerId.Player2), 892f, 455f);
-            AssertVec(course.Pit.Box(PlayerId.Player3), 1006f, 455f);
-            AssertVec(course.Pit.Box(PlayerId.Player4), 1120f, 455f);
+            AssertVec(course.Pit.LaneAnchors[0], 778f, 455f);
+            AssertVec(course.Pit.LaneAnchors[1], 892f, 455f);
+            AssertVec(course.Pit.LaneAnchors[2], 1006f, 455f);
+            AssertVec(course.Pit.LaneAnchors[3], 1120f, 455f);
+            AssertVec(course.Pit.EntryAnchors[0], 732f, 455f);
+            AssertVec(course.Pit.ExitAnchors[0], 824f, 455f);
+            AssertVec(course.Pit.Box(PlayerId.Player1), 778f, 509f);
+            AssertVec(course.Pit.Box(PlayerId.Player2), 892f, 509f);
+            AssertVec(course.Pit.Box(PlayerId.Player3), 1006f, 509f);
+            AssertVec(course.Pit.Box(PlayerId.Player4), 1120f, 509f);
             AssertVec(course.Pit.Exit, 1353f, 455f);
             // Retuned for the Y-junction meshing (issue #107 phase 2): the merge
             // approach lifts off the lane center so the climb to the rejoin
@@ -39,10 +46,11 @@ namespace BoardRacing.Tests
             // for the exit spline to read as a forward merge.
             CourseDefinition course = CourseCatalog.Wedge();
             Assert.That(course.Pit.ExitRejoinDistance, Is.LessThan(course.Track.Length));
-            Assert.That(course.Pit.Entry.X, Is.LessThan(course.Pit.Boxes[0].X));
-            for (int i = 1; i < course.Pit.Boxes.Count; i++)
-                Assert.That(course.Pit.Boxes[i - 1].X, Is.LessThan(course.Pit.Boxes[i].X));
-            Assert.That(course.Pit.Boxes[3].X, Is.LessThan(course.Pit.MergeApproach.X));
+            Assert.That(course.Pit.Entry.X, Is.LessThan(course.Pit.LaneAnchors[0].X));
+            for (int i = 1; i < course.Pit.LaneAnchors.Count; i++)
+                Assert.That(course.Pit.LaneAnchors[i - 1].X,
+                    Is.LessThan(course.Pit.LaneAnchors[i].X));
+            Assert.That(course.Pit.LaneAnchors[3].X, Is.LessThan(course.Pit.MergeApproach.X));
             Assert.That(course.Pit.MergeApproach.X, Is.LessThan(course.Pit.Exit.X));
         }
 
@@ -64,11 +72,56 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void EveryCourseAuthorsAForwardServiceCurveWithAParallelParkedApex()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                for (int i = 0; i < course.Pit.Stalls.Count; i++)
+                {
+                    PitStallDefinition stall = course.Pit.Stalls[i];
+                    float expectedOffset = course.Name == "Fishhook"
+                        ? CourseCatalog.FishhookParallelStallOffset
+                        : CourseCatalog.ParallelStallOffset;
+                    Assert.That(Distance(stall.LaneAnchor, stall.ParkedPosition),
+                        Is.EqualTo(expectedOffset).Within(.01f), course.Name);
+                    Assert.That(Distance(stall.LaneAnchor, stall.ParkedPosition),
+                        Is.GreaterThanOrEqualTo(CourseLint.MinLaneToParkedCar), course.Name);
+                    Vec2 serviceDirection = new Vec2(
+                        stall.ExitAnchor.X - stall.EntryAnchor.X,
+                        stall.ExitAnchor.Y - stall.EntryAnchor.Y);
+                    Assert.That(serviceDirection.X * stall.ParkedHeading.X +
+                        serviceDirection.Y * stall.ParkedHeading.Y,
+                        Is.GreaterThan(0f), course.Name + " service direction");
+                    Assert.That(Math.Abs(stall.ParkedHeading.X * stall.ParkedHeading.X +
+                        stall.ParkedHeading.Y * stall.ParkedHeading.Y - 1f),
+                        Is.LessThan(.001f), course.Name);
+                }
+            }
+        }
+
+        [Test]
+        public void CrossingHeavyCoursesUseDetachedConstantWidthPitRoads()
+        {
+            Assert.That(CourseCatalog.Wedge().PitRoadbed,
+                Is.EqualTo(PitRoadbedKind.Trackside));
+            Assert.That(CourseCatalog.Hourglass().PitRoadbed,
+                Is.EqualTo(PitRoadbedKind.Trackside));
+            Assert.That(CourseCatalog.Infinity().PitRoadbed,
+                Is.EqualTo(PitRoadbedKind.Detached));
+            Assert.That(CourseCatalog.Fishhook().PitRoadbed,
+                Is.EqualTo(PitRoadbedKind.Detached));
+
+            foreach (CourseDefinition course in CourseCatalog.All())
+                Assert.That(PitLanePresentationLayout.ForCourse(course).RoadbedKind,
+                    Is.EqualTo(course.PitRoadbed), course.Name);
+        }
+
+        [Test]
         public void HourglassLeavesAVisibleRunFromEntryToFirstBox()
         {
             CourseDefinition course = CourseCatalog.Hourglass();
-            Assert.That(course.Pit.Box(PlayerId.Player1).X - course.Pit.Entry.X,
-                Is.EqualTo(20f));
+            Assert.That(course.Pit.EntryAnchors[0].X - course.Pit.Entry.X,
+                Is.EqualTo(13f));
             Assert.That(course.Pit.ExitRejoinDistance, Is.EqualTo(712f));
         }
 
@@ -117,6 +170,12 @@ namespace BoardRacing.Tests
         {
             Assert.That(actual.X, Is.EqualTo(x).Within(.001f));
             Assert.That(actual.Y, Is.EqualTo(y).Within(.001f));
+        }
+
+        private static float Distance(Vec2 a, Vec2 b)
+        {
+            float dx = b.X - a.X, dy = b.Y - a.Y;
+            return (float)Math.Sqrt(dx * dx + dy * dy);
         }
     }
 }

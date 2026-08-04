@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using BoardRacing.Domain;
 using NUnit.Framework;
@@ -42,21 +43,61 @@ namespace BoardRacing.Tests
                 PitRules rules = PitRules.ForCourse(course, Pace.PitLaneSpeed);
                 Vec2 pitLine = course.Track.Sample(0f).Position;
                 Vec2 rejoin = course.Track.Sample(course.Pit.ExitRejoinDistance).Position;
+                var common = new List<Vec2> { pitLine, course.Pit.Entry };
+                common.AddRange(OrderedLaneWaypoints(course.Pit.Stalls));
+                common.Add(course.Pit.MergeApproach);
+                common.Add(rejoin);
+                float[] prefix = new float[common.Count];
+                for (int i = 1; i < common.Count; i++)
+                    prefix[i] = prefix[i - 1] + Distance(common[i - 1], common[i]);
                 foreach (PlayerId player in new[]
                     { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
                 {
-                    Vec2 box = course.Pit.Box(player);
-                    float entry = Distance(pitLine, course.Pit.Entry) + Distance(course.Pit.Entry, box);
-                    float exit = Distance(box, course.Pit.MergeApproach) +
-                        Distance(course.Pit.MergeApproach, rejoin);
+                    PitStallDefinition stall = course.Pit.Stall(player);
+                    float sharedEntry = prefix[PointIndex(common, stall.EntryAnchor)];
+                    float entryBranch = Distance(stall.EntryAnchor, stall.ParkedPosition);
+                    float exitBranch = Distance(stall.ParkedPosition, stall.ExitAnchor);
+                    float exitShared = prefix[prefix.Length - 1] -
+                        prefix[PointIndex(common, stall.ExitAnchor)];
+                    float entry = sharedEntry + entryBranch;
+                    float exit = exitBranch + exitShared;
                     Assert.That(rules.EntryLength(player), Is.EqualTo(entry).Within(.001f), course.Name);
                     Assert.That(rules.ExitLength(player), Is.EqualTo(exit).Within(.001f), course.Name);
+                    Assert.That(rules.EntrySharedLength(player),
+                        Is.EqualTo(sharedEntry).Within(.001f), course.Name);
+                    Assert.That(rules.ExitBranchLength(player),
+                        Is.EqualTo(exitBranch).Within(.001f), course.Name);
                 }
                 // Different box positions mean genuinely different transit times —
                 // the single shared duration was wrong for at least one player.
                 Assert.That(rules.EntrySeconds(PlayerId.Player1),
                     Is.Not.EqualTo(rules.EntrySeconds(PlayerId.Player2)).Within(.01f), course.Name);
+                Assert.That(rules.MinimumHeadway,
+                    Is.EqualTo(PitRules.ProductionMinimumHeadway));
             }
+        }
+
+        private static IReadOnlyList<Vec2> OrderedLaneWaypoints(
+            IReadOnlyList<PitStallDefinition> stalls)
+        {
+            Vec2 heading = stalls[0].ParkedHeading;
+            Vec2 origin = stalls[0].LaneAnchor;
+            var ordered = stalls
+                .SelectMany(stall => new[] { stall.EntryAnchor, stall.ExitAnchor })
+                .OrderBy(point => (point.X - origin.X) * heading.X +
+                    (point.Y - origin.Y) * heading.Y);
+            var unique = new List<Vec2>();
+            foreach (Vec2 point in ordered)
+                if (unique.Count == 0 || Distance(unique[unique.Count - 1], point) > .0001f)
+                    unique.Add(point);
+            return unique;
+        }
+
+        private static int PointIndex(IReadOnlyList<Vec2> points, Vec2 target)
+        {
+            for (int i = 0; i < points.Count; i++)
+                if (Distance(points[i], target) <= .0001f) return i;
+            throw new AssertionException("A pit join is missing from the common lane.");
         }
 
         [Test]
