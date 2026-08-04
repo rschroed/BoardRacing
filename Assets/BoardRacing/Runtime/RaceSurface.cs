@@ -265,6 +265,16 @@ namespace BoardRacing.Runtime
         public const float TrackStripeWidth = 3f;
         public const float PitLaneWidth = 30f;
         public const float PitStripeWidth = 2f;
+        // The continuous service pad runs through the four parked positions.
+        // Forty-two pixels is the maximum needed by the 54 px-offset layouts:
+        // it reaches their shared lane by 3 px after accounting for its 15 px
+        // half-width, while leaving enough depth behind the car for the
+        // approved rail and arm roots. Shallower authored layouts derive a
+        // smaller pad from their lane-to-bay spacing rather than overflowing
+        // the common race bounds.
+        public const float PitServicePadHalfWidth = 42f;
+        public const float PitServicePadMinimumHalfWidth = 30f;
+        private const float PitServicePadLaneOverlap = 3f;
         public const float PitBoxFrontRearClearance = 20f;
         public const float PitBoxSideClearance = 10f;
         public const float PitBoxHalfLength = CarBodyHalfSize + PitBoxFrontRearClearance;
@@ -327,41 +337,50 @@ namespace BoardRacing.Runtime
             // belt-and-braces guard against a gap at an unexpected aspect.
             AppendGround(mesh, style);
             List<CenterlineSample> centerline = SmoothCenterline(track, SamplesPerChord);
-            AppendShoulder(mesh, centerline, style);
+            List<Vector2> entry = EntryLanePoints(pitLayout);
+            var sharedLane = new List<Vector2>(pitLayout.LaneWaypoints.Count);
+            foreach (Vec2 anchor in pitLayout.LaneWaypoints)
+                sharedLane.Add(ToVector(anchor));
+            List<Vector2> merge = MergeLanePoints(pitLayout);
+            List<Vector2> pitRoad = SharedPitRoadPoints(entry, sharedLane, merge);
+            var serviceCurves =
+                new List<IReadOnlyList<Vector2>>(pitLayout.Stalls.Count);
+            for (int i = 0; i < pitLayout.Stalls.Count; i++)
+            {
+                Vec2[] samples = PitLanePresentationMapper.ServiceCurveSamples(
+                    (PlayerId)(i + 1), pitLayout);
+                serviceCurves.Add(samples.Select(ToVector).ToArray());
+            }
+            float servicePadHalfWidth = ServicePadHalfWidth(pitLayout);
+            Vector2[] parkedPositions = ExtendedServicePad(
+                pitLayout.Boxes.Select(ToVector).ToArray(), servicePadHalfWidth);
+            AppendComposedShoulder(mesh, centerline, pitRoad,
+                serviceCurves, parkedPositions, servicePadHalfWidth, style);
             if (style.DebugView == RaceSurfaceDebugView.ShoulderOnly)
             {
-                AppendClosedRibbon(mesh, centerline, TrackWidth + 4f,
-                    style.RoadBoundaryColor, style.RoadBoundaryColor);
+                Color ground = Opaque(style.GroundColor);
                 AppendClosedRibbon(mesh, centerline, TrackWidth,
-                    Opaque(style.GroundColor), Opaque(style.GroundColor), SurfaceDetail.Ground);
+                    ground, ground, SurfaceDetail.Ground);
+                if (style.PitSurfaceVisible)
+                    AppendPitPrimitives(mesh, pitRoad, serviceCurves,
+                        parkedPositions, servicePadHalfWidth, 0f,
+                        ground, SurfaceDetail.Ground);
                 return mesh;
             }
 
-            // The pit lane draws first, under the track fill, as one knot-shared
-            // chain: pit line ~entry spline~> entry -> box row -> ~exit spline~>
-            // rejoin. Where a leg meets the track, AppendJunctionRibbon clamps
-            // its boundary to the track edge so the lane closes as a wedge
-            // running along the edge — a slip-road gore whose seam IS the edge
-            // (issue #107 phase 2; the round-2.2 full ribbon under the fill
-            // crossed at ~40° and read as the lane vanishing under the track).
+            // All pit primitives share one opaque material and world-space
+            // texture. Their deliberate overlaps therefore read as one surface
+            // without a boolean mesh compiler: the common lane overlaps the
+            // continuous parked row, and each driven service curve reinforces
+            // that connection. The track still paints afterward so entry and
+            // rejoin endpoints tuck cleanly under the authored road edge.
             if (style.PitSurfaceVisible)
             {
-                List<Vector2> entry = EntryLanePoints(pitLayout);
-                var serviceRow = new List<Vector2>(pitLayout.Boxes.Count);
-                foreach (Vec2 box in pitLayout.Boxes) serviceRow.Add(ToVector(box));
-                List<Vector2> merge = MergeLanePoints(pitLayout);
-                AppendJunctionRibbon(mesh, entry, PitLaneWidth, style.PitSurfaceColor, track,
-                    SurfaceDetail.PitSurface);
-                AppendOpenRibbon(mesh, serviceRow, PitLaneWidth, style.PitSurfaceColor,
-                    SurfaceDetail.PitSurface);
-                AppendJunctionRibbon(mesh, merge, PitLaneWidth, style.PitSurfaceColor, track,
+                AppendPitPrimitives(mesh, pitRoad, serviceCurves,
+                    parkedPositions, servicePadHalfWidth, 0f, style.PitSurfaceColor,
                     SurfaceDetail.PitSurface);
                 if (style.StripeVisible)
-                {
-                    AppendJunctionRibbon(mesh, entry, PitStripeWidth, style.PitStripeColor, track);
-                    AppendOpenRibbon(mesh, serviceRow, PitStripeWidth, style.PitStripeColor);
-                    AppendJunctionRibbon(mesh, merge, PitStripeWidth, style.PitStripeColor, track);
-                }
+                    AppendOpenRibbon(mesh, pitRoad, PitStripeWidth, style.PitStripeColor);
             }
 
             if (style.DebugView == RaceSurfaceDebugView.RoadBoundary)
@@ -374,26 +393,13 @@ namespace BoardRacing.Runtime
                     style.StripeColor, style.StripeColor);
             foreach (TrackCrossing crossing in FindCrossings(track))
                 AppendCrossingDeck(mesh, crossing, style);
-            // The start line and box quads follow the local travel direction —
-            // horizontal pit straights were a Wedge special case; the phase-4b
-            // courses pit on diagonals.
+            // The start line follows local travel direction. Pit ownership and
+            // the compact 94×46 footprint now belong to the approved retained
+            // pit kit (#183), not player-colored quads baked into this mesh.
             TrackSegment first = track.Segments[0];
             Vector2 startDirection = (ToVector(first.End) - ToVector(first.Start)).normalized;
             AppendOrientedRect(mesh, ToVector(track.Sample(0f).Position), startDirection,
                 12f, 28f, Color.white);
-            if (style.PitSurfaceVisible)
-            {
-                Vector2 laneDirection =
-                    (ToVector(pitLayout.Boxes[pitLayout.Boxes.Count - 1]) -
-                     ToVector(pitLayout.Boxes[0])).normalized;
-                for (int i = 0; i < pitLayout.Boxes.Count; i++)
-                {
-                    PlayerId playerId = (PlayerId)(i + 1);
-                    Color accent = playerAccents.TryGetValue(playerId, out Color activeAccent)
-                        ? activeAccent : style.InactivePitBoxAccent;
-                    AppendPitBox(mesh, pitLayout.Boxes[i], laneDirection, accent);
-                }
-            }
             return mesh;
         }
 
@@ -406,26 +412,26 @@ namespace BoardRacing.Runtime
             mesh.MarkBackdropComplete();
         }
 
-        private static void AppendShoulder(SurfaceMeshData mesh,
-            IReadOnlyList<CenterlineSample> centerline, RaceSurfaceStyle style)
+        private static void AppendComposedShoulder(SurfaceMeshData mesh,
+            IReadOnlyList<CenterlineSample> centerline,
+            IReadOnlyList<Vector2> pitRoad,
+            IReadOnlyList<IReadOnlyList<Vector2>> serviceCurves,
+            IReadOnlyList<Vector2> parkedPositions,
+            float servicePadHalfWidth,
+            RaceSurfaceStyle style)
         {
             float opacity = Mathf.Clamp01(style.ShoulderOpacity);
             float solid = Mathf.Max(0f, style.ShoulderSolidWidth);
             float feather = Mathf.Max(0f, style.ShoulderFeatherWidth);
             if (opacity <= 0f || solid + feather <= 0f) return;
 
-            // Wide-to-narrow ribbons, every one of them opaque, so an overlap
-            // selects the strongest shoulder sample by paint order instead of
-            // accumulating alpha into a knot at the Hourglass/Infinity
-            // self-crossings and along the pit-adjacent runs.
-            //
-            // Before #161 the fade was pre-composed here, lerping each ribbon's
-            // color toward the single flat GroundColor. A textured ground has no
-            // single value to pre-compose against, so the fade moved into the
-            // shader: each ribbon still paints opaquely, but carries a per-vertex
-            // shoulder weight and the fragment blends the shoulder detail against
-            // whatever the ground texture actually is underneath. Opaque geometry
-            // plus a per-vertex weight is what keeps the crossing behavior.
+            // Compose by shoulder strength, not by object. The failed first pass
+            // painted every track band and then every pit band, allowing the
+            // pit's outer low-strength feather to overwrite the track's inner
+            // high-strength shoulder. Here each width/weight is completed across
+            // every spline before the next stronger band is drawn. Same-weight
+            // overlaps are identical opaque world-textured paint, producing the
+            // visual union we need without polygon clipping or tessellation.
             int steps = Mathf.Max(1, Mathf.CeilToInt(feather / 2f));
             Color shoulder = Opaque(style.ShoulderColor);
             Color ground = Opaque(style.GroundColor);
@@ -436,9 +442,74 @@ namespace BoardRacing.Runtime
                 float weight = eased * opacity;
                 float outsideWidth = solid + feather * (1f - t);
                 Color color = Opaque(Color.Lerp(ground, shoulder, weight));
-                AppendClosedRibbon(mesh, centerline, TrackWidth + 2f * outsideWidth,
-                    color, color, SurfaceDetail.Shoulder(weight));
+                SurfaceDetail detail = SurfaceDetail.Shoulder(weight);
+                AppendClosedRibbon(mesh, centerline,
+                    TrackWidth + outsideWidth * 2f, color, color, detail);
+                if (style.PitSurfaceVisible)
+                    AppendPitPrimitives(mesh, pitRoad, serviceCurves,
+                        parkedPositions, servicePadHalfWidth,
+                        outsideWidth, color, detail);
             }
+        }
+
+        private static void AppendPitPrimitives(SurfaceMeshData mesh,
+            IReadOnlyList<Vector2> pitRoad,
+            IReadOnlyList<IReadOnlyList<Vector2>> serviceCurves,
+            IReadOnlyList<Vector2> parkedPositions,
+            float servicePadHalfWidth,
+            float outsideWidth, Color color, SurfaceDetail detail)
+        {
+            float expansion = Mathf.Max(0f, outsideWidth) * 2f;
+            AppendOpenRibbon(mesh, pitRoad,
+                PitLaneWidth + expansion, color, detail);
+            AppendOpenRibbon(mesh, parkedPositions,
+                servicePadHalfWidth * 2f + expansion, color, detail);
+            for (int i = 0; i < serviceCurves.Count; i++)
+                AppendOpenRibbon(mesh, serviceCurves[i],
+                    PitLaneWidth + expansion, color, detail);
+        }
+
+        internal static float ServicePadHalfWidth(PitLanePresentationLayout layout)
+        {
+            if (layout.Boxes.Count != layout.LaneAnchors.Count || layout.Boxes.Count == 0)
+                throw new ArgumentException(
+                    "Pit boxes and lane anchors must be non-empty paired lists.",
+                    nameof(layout));
+            float laneOffset = 0f;
+            for (int i = 0; i < layout.Boxes.Count; i++)
+                laneOffset = Mathf.Max(laneOffset,
+                    Vector2.Distance(ToVector(layout.Boxes[i]),
+                        ToVector(layout.LaneAnchors[i])));
+            float connectedDepth = laneOffset - PitLaneWidth * .5f +
+                PitServicePadLaneOverlap;
+            return Mathf.Clamp(connectedDepth,
+                PitServicePadMinimumHalfWidth, PitServicePadHalfWidth);
+        }
+
+        private static Vector2[] ExtendedServicePad(
+            IReadOnlyList<Vector2> parkedPositions, float halfWidth)
+        {
+            if (parkedPositions == null)
+                throw new ArgumentNullException(nameof(parkedPositions));
+            if (parkedPositions.Count < 2)
+                throw new ArgumentException(
+                    "A service pad needs at least two parked positions.",
+                    nameof(parkedPositions));
+            Vector2 direction = (parkedPositions[parkedPositions.Count - 1] -
+                parkedPositions[0]).normalized;
+            var extended = new Vector2[parkedPositions.Count + 2];
+            // The row spline must continue past the end car centers into the
+            // first and last service branches. Ending it at the centers leaves
+            // triangular windows where a 30 px branch meets the wider pad. An
+            // extension equal to the derived half-depth closes those windows
+            // without imposing the deepest course's footprint on every layout.
+            extended[0] = parkedPositions[0] - direction * halfWidth;
+            for (int i = 0; i < parkedPositions.Count; i++)
+                extended[i + 1] = parkedPositions[i];
+            extended[extended.Length - 1] =
+                parkedPositions[parkedPositions.Count - 1] +
+                direction * halfWidth;
+            return extended;
         }
 
         private static Color Opaque(Color color) => new Color(color.r, color.g, color.b, 1f);
@@ -547,36 +618,6 @@ namespace BoardRacing.Runtime
             return delta.sqrMagnitude < 1e-8f ? Vector2.zero : delta.normalized;
         }
 
-        // A pit-lane leg that meets the track: an open ribbon whose boundary
-        // vertices are clamped to at most JunctionEdgeOverlap inside the track
-        // edge. Where the leg dives toward the centerline the near boundary
-        // locks onto the edge line first and the far boundary follows, so the
-        // lane closes as a wedge running along the edge instead of poking a
-        // blunt end through it; past full absorption the ribbon degenerates to
-        // a zero-width sliver under the fill. The clamp also means no lane
-        // geometry can overhang into the roadway whatever the spline does.
-        public static void AppendJunctionRibbon(SurfaceMeshData mesh, IReadOnlyList<Vector2> points,
-            float width, Color color, TrackDefinition track)
-            => AppendJunctionRibbon(mesh, points, width, color, track, SurfaceDetail.Flat);
-
-        public static void AppendJunctionRibbon(SurfaceMeshData mesh, IReadOnlyList<Vector2> points,
-            float width, Color color, TrackDefinition track, SurfaceDetail detail)
-        {
-            int count = points.Count;
-            if (count < 2) return;
-            var left = new Vector2[count];
-            var right = new Vector2[count];
-            for (int i = 0; i < count; i++)
-            {
-                Vector2 offset = MiterOffset(points[Math.Max(0, i - 1)], points[i],
-                    points[Math.Min(count - 1, i + 1)], width * .5f);
-                left[i] = ClampOutsideRoadway(points[i] + offset, track);
-                right[i] = ClampOutsideRoadway(points[i] - offset, track);
-            }
-            for (int i = 0; i < count - 1; i++)
-                mesh.AddQuad(left[i], left[i + 1], right[i + 1], right[i], color, detail);
-        }
-
         // The drawn lane legs are the very splines the cars drive: entry along
         // Player1's entering spline (the players' paths only diverge past the
         // shared straight), merge along the last box's exiting spline (the lane
@@ -586,18 +627,27 @@ namespace BoardRacing.Runtime
         {
             var points = new List<Vector2>(LaneSteps + 1);
             for (int i = 0; i <= LaneSteps; i++)
-                points.Add(ToVector(PitLanePresentationMapper.EntryPose(PlayerId.Player1,
-                    i / (float)LaneSteps, false, layout).Position));
+                points.Add(ToVector(PitLanePresentationMapper.SharedEntryPose(
+                    i / (float)LaneSteps, layout).Position));
             return points;
         }
 
         private static List<Vector2> MergeLanePoints(PitLanePresentationLayout layout)
         {
             var points = new List<Vector2>(LaneSteps + 1);
-            PlayerId lastBox = (PlayerId)layout.Boxes.Count;
             for (int i = 0; i <= LaneSteps; i++)
-                points.Add(ToVector(PitLanePresentationMapper.ExitPose(lastBox,
-                    i / (float)LaneSteps, false, layout).Position));
+                points.Add(ToVector(PitLanePresentationMapper.SharedMergePose(
+                    i / (float)LaneSteps, layout).Position));
+            return points;
+        }
+
+        private static List<Vector2> SharedPitRoadPoints(IReadOnlyList<Vector2> entry,
+            IReadOnlyList<Vector2> lane, IReadOnlyList<Vector2> merge)
+        {
+            var points = new List<Vector2>(entry.Count + lane.Count + merge.Count - 2);
+            points.AddRange(entry);
+            for (int i = 1; i < lane.Count; i++) points.Add(lane[i]);
+            for (int i = 1; i < merge.Count; i++) points.Add(merge[i]);
             return points;
         }
 
@@ -669,15 +719,6 @@ namespace BoardRacing.Runtime
             }
         }
 
-        private static Vector2 ClampOutsideRoadway(Vector2 point, TrackDefinition track)
-        {
-            NearestCenterline(point, track, out Vector2 nearest, out Vector2 interiorNormal);
-            float floor = TrackWidth * .5f - JunctionEdgeOverlap;
-            return Vector2.Dot(point - nearest, interiorNormal) >= floor
-                ? point
-                : nearest + interiorNormal * floor;
-        }
-
         // Signed cross-track position: how far the point sits on the interior
         // side of the authored centerline (negative = across it, toward the
         // outside of the loop). The pit complex lives on the interior.
@@ -711,15 +752,6 @@ namespace BoardRacing.Runtime
                 Vector2 unit = direction.normalized;
                 interiorNormal = new Vector2(-unit.y, unit.x);
             }
-        }
-
-        private static void AppendPitBox(SurfaceMeshData mesh, Vec2 center, Vector2 along,
-            Color accent)
-        {
-            AppendOrientedRect(mesh, ToVector(center), along, PitBoxHalfLength, PitBoxHalfWidth,
-                new Color(accent.r, accent.g, accent.b, .22f));
-            AppendOrientedRectOutline(mesh, ToVector(center), along,
-                PitBoxHalfLength, PitBoxHalfWidth, 3f, accent);
         }
 
         // An axis-free rect: 2·halfLength along `along`, 2·halfWidth across it.
@@ -795,7 +827,7 @@ namespace BoardRacing.Runtime
         private static Vector2 ToVector(Vec2 value) => new Vector2(value.X, value.Y);
     }
 
-    internal sealed class RaceSurfaceRenderer : MonoBehaviour
+    internal sealed partial class RaceSurfaceRenderer : MonoBehaviour
     {
         // Cars sit one unit nearer the camera than the surface (z = 0), so the
         // transparent queue draws them over the pit boxes — the order the IMGUI
@@ -1284,6 +1316,8 @@ namespace BoardRacing.Runtime
         private static Mesh CreateMesh(string meshName, SurfaceMeshData data)
         {
             var mesh = new Mesh { name = meshName };
+            if (data.Vertices.Count > ushort.MaxValue)
+                mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             mesh.SetVertices(data.Vertices);
             mesh.SetColors(data.Colors);
             // UV0 is the detail channel, not a texture coordinate: the shader
@@ -1299,6 +1333,8 @@ namespace BoardRacing.Runtime
         private static Mesh CreateWireframeMesh(SurfaceMeshData data)
         {
             var mesh = new Mesh { name = "Race Surface Wireframe" };
+            if (data.Vertices.Count > ushort.MaxValue)
+                mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             mesh.SetVertices(data.Vertices);
             var colors = new List<Color>(data.Vertices.Count);
             for (int i = 0; i < data.Vertices.Count; i++)

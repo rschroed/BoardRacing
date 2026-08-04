@@ -13,9 +13,12 @@ namespace BoardRacing.Domain
             public TrackSectionKind PriorKind;
             public int Incidents;
             public bool Finished, IncidentThisStep;
-            public float FuelUsed, TireWear, ServiceProgress, PitTimer;
+            public float FuelUsed, TireWear, ServiceProgress, PitTravel;
             public PitService SelectedService;
             public PitPhase PitPhase;
+            public PitTrafficState PitTraffic;
+            public long PitOrderStep;
+            public bool PitNewEntry;
             public int CompletedServices;
         }
 
@@ -23,6 +26,7 @@ namespace BoardRacing.Domain
         private readonly RaceRules rules;
         private readonly RacerState[] racers;
         private readonly float[] stepStartDistances;
+        private long simulationStep;
         private RacePhase phase = RacePhase.Grid;
         private float countdown, elapsed, rematchHeld, pauseHeld;
         private bool awaitingRematchRelease, resumingFromPause;
@@ -53,10 +57,12 @@ namespace BoardRacing.Domain
         public RaceSnapshot Step(float fixedDeltaSeconds, IReadOnlyList<RacerCommand> commands)
         {
             if (fixedDeltaSeconds <= 0f) throw new ArgumentOutOfRangeException(nameof(fixedDeltaSeconds));
+            simulationStep++;
             var byPlayer = commands?.ToDictionary(x => x.PlayerId) ?? new Dictionary<PlayerId, RacerCommand>();
             RacerCommand Command(PlayerId id) => byPlayer.TryGetValue(id, out var command)
                 ? command : new RacerCommand(id, ThrottleStep.Brake, false, false);
 
+            bool advancedPitTraffic = false;
             foreach (var racer in racers) racer.IncidentThisStep = false;
             if (phase == RacePhase.Grid)
             {
@@ -102,6 +108,8 @@ namespace BoardRacing.Domain
                         CaptureStrategyIntent(racer, command);
                         AdvanceRacer(racer, command, fixedDeltaSeconds);
                     }
+                    AdvancePitTraffic(fixedDeltaSeconds, Command);
+                    advancedPitTraffic = true;
                     elapsed += fixedDeltaSeconds;
                     if (racers.All(x => x.Finished)) phase = RacePhase.Finished;
                 }
@@ -118,7 +126,8 @@ namespace BoardRacing.Domain
             }
             else HandleRematch(commands == null ? Array.Empty<RacerCommand>() : commands, fixedDeltaSeconds);
 
-            if (phase != RacePhase.Grid && phase != RacePhase.Countdown)
+            if (!advancedPitTraffic && phase != RacePhase.Grid && phase != RacePhase.Countdown &&
+                phase != RacePhase.Racing)
                 AdvanceParking(fixedDeltaSeconds);
             snapshot = BuildSnapshot();
             return snapshot;
@@ -130,18 +139,20 @@ namespace BoardRacing.Domain
         // results. Parking never touches finish time, order or eligibility.
         private void AdvanceParking(float delta)
         {
-            foreach (var racer in racers)
+            if (!rules.Pit.Enabled)
             {
-                if (racer.PitPhase != PitPhase.Parking) continue;
-                racer.PitTimer += delta;
-                float seconds = rules.Pit.Enabled ? rules.Pit.EntrySeconds(racer.Id) : 0f;
-                racer.Speed = seconds <= 0f ? 0f
-                    : Math.Max(0f, racer.Speed * (1f - racer.PitTimer / seconds));
-                if (racer.PitTimer < seconds) continue;
-                racer.PitPhase = PitPhase.Parked;
-                racer.PitTimer = 0f;
-                racer.Speed = 0f;
+                foreach (var racer in racers)
+                    if (racer.PitPhase == PitPhase.Parking)
+                    {
+                        racer.PitPhase = PitPhase.Parked;
+                        racer.PitTraffic = PitTrafficState.None;
+                        racer.Speed = 0f;
+                    }
+                return;
             }
+            AdvancePitTraffic(delta,
+                id => new RacerCommand(id, ThrottleStep.Brake, false, false),
+                parkingOnly: true);
         }
 
         private void CaptureStrategyIntent(RacerState racer, RacerCommand command)
@@ -161,10 +172,7 @@ namespace BoardRacing.Domain
             if (racer.Finished) return;
             if (racer.PitPhase == PitPhase.Entering || racer.PitPhase == PitPhase.InService ||
                 racer.PitPhase == PitPhase.Exiting)
-            {
-                AdvancePit(racer, command, delta);
                 return;
-            }
             float throttleFraction = command.DrivingPiecePresent ? (int)command.Throttle / 100f : 0f;
             ThrottleStep commanded = command.DrivingPiecePresent ? command.Throttle : ThrottleStep.Brake;
             // Traffic is settled before the fuel is charged (issue #147, owner
@@ -278,55 +286,215 @@ namespace BoardRacing.Domain
             if (racer.PitPhase == PitPhase.Requested && rules.Pit.Enabled && crossedPitLine)
             {
                 racer.Distance = ((int)(prior / track.Length) + 1) * track.Length;
-                racer.Speed = 0f; racer.PitPhase = PitPhase.Entering; racer.PitTimer = 0f;
+                BeginPitEntry(racer, PitPhase.Entering);
             }
         }
 
-        private void AdvancePit(RacerState racer, RacerCommand command, float delta)
+        private void BeginPitEntry(RacerState racer, PitPhase phaseToEnter)
         {
             racer.Speed = 0f;
-            if (racer.PitPhase == PitPhase.Entering)
+            racer.PitPhase = phaseToEnter;
+            racer.PitTravel = 0f;
+            racer.PitTraffic = PitTrafficState.Queued;
+            racer.PitOrderStep = simulationStep;
+            racer.PitNewEntry = true;
+        }
+
+        private void AdvancePitTraffic(float delta, Func<PlayerId, RacerCommand> command,
+            bool parkingOnly = false)
+        {
+            if (!rules.Pit.Enabled) return;
+
+            if (!parkingOnly)
+                foreach (RacerState racer in racers)
+                    AdvanceServiceIntent(racer, command(racer.Id));
+
+            PlaceNewPitEntries();
+            if (!parkingOnly) AdmitWaitingReleases();
+            AdvanceMovingPitCars(delta, parkingOnly);
+        }
+
+        private void AdvanceServiceIntent(RacerState racer, RacerCommand command)
+        {
+            if (racer.PitPhase != PitPhase.InService) return;
+            racer.Speed = 0f;
+            // The pit stop never ends itself: the player leaves by holding the
+            // Robot in Leave Pit — allowed at any time, even mid-service. The
+            // car now exposes that it is yielding in its stall until the shared
+            // lane has a full body-length gap.
+            if (command.RequestExit)
             {
+                racer.SelectedService = PitService.None;
                 racer.ServiceProgress = 0f;
-                racer.PitTimer += delta;
-                if (racer.PitTimer >= rules.Pit.EntrySeconds(racer.Id))
-                {
-                    racer.PitPhase = PitPhase.InService; racer.PitTimer = 0f;
-                }
+                racer.PitPhase = PitPhase.Exiting;
+                racer.PitTravel = 0f;
+                racer.PitTraffic = PitTrafficState.WaitingToRelease;
+                racer.PitOrderStep = simulationStep;
                 return;
             }
-            if (racer.PitPhase == PitPhase.InService)
+            if (racer.SelectedService == PitService.None)
             {
-                // The pit stop never ends itself: the player leaves by holding the
-                // Robot in Leave Pit — allowed at any time, even mid-service.
-                if (command.RequestExit)
+                racer.ServiceProgress = 0f;
+                return;
+            }
+            float meterBefore = racer.SelectedService == PitService.Tires
+                ? racer.TireWear : racer.FuelUsed;
+            if (command.ServiceDrain > 0f)
+            {
+                if (racer.SelectedService == PitService.Tires)
+                    racer.TireWear = Math.Max(0f, racer.TireWear - command.ServiceDrain);
+                else racer.FuelUsed = Math.Max(0f, racer.FuelUsed - command.ServiceDrain);
+            }
+            float meter = racer.SelectedService == PitService.Tires ? racer.TireWear : racer.FuelUsed;
+            racer.ServiceProgress = 1f - meter;
+            // Count the service only on the emptying stroke so stirring an
+            // already-empty meter cannot count it again; both dials may be
+            // serviced in one parked stop.
+            if (meterBefore > 0f && meter <= 0f) racer.CompletedServices++;
+        }
+
+        private void PlaceNewPitEntries()
+        {
+            foreach (RacerState racer in racers.Where(x => x.PitNewEntry)
+                .OrderBy(x => x.PitOrderStep).ThenBy(x => x.Id))
+            {
+                float rear = float.PositiveInfinity;
+                foreach (RacerState other in racers)
                 {
-                    racer.SelectedService = PitService.None;
-                    racer.ServiceProgress = 0f;
-                    racer.PitPhase = PitPhase.Exiting; racer.PitTimer = 0f;
-                    return;
+                    if (other == racer || other.PitNewEntry) continue;
+                    if (TryCommonPitPosition(other, other.PitTravel, out float position))
+                        rear = Math.Min(rear, position);
                 }
-                if (racer.SelectedService == PitService.None) { racer.ServiceProgress = 0f; return; }
-                float meterBefore = racer.SelectedService == PitService.Tires
-                    ? racer.TireWear : racer.FuelUsed;
-                if (command.ServiceDrain > 0f)
+                racer.PitTravel = float.IsPositiveInfinity(rear)
+                    ? 0f : Math.Min(0f, rear - rules.Pit.MinimumHeadway);
+                racer.PitTraffic = racer.PitTravel < 0f
+                    ? PitTrafficState.Queued : PitTrafficState.Moving;
+                racer.PitNewEntry = false;
+            }
+        }
+
+        private void AdmitWaitingReleases()
+        {
+            foreach (RacerState racer in racers
+                .Where(x => x.PitPhase == PitPhase.Exiting &&
+                    x.PitTraffic == PitTrafficState.WaitingToRelease)
+                .OrderBy(x => x.PitOrderStep).ThenBy(x => x.Id))
+            {
+                float join = rules.Pit.LaneJoinPosition(racer.Id);
+                bool clear = true;
+                foreach (RacerState other in racers)
                 {
-                    if (racer.SelectedService == PitService.Tires)
-                        racer.TireWear = Math.Max(0f, racer.TireWear - command.ServiceDrain);
-                    else racer.FuelUsed = Math.Max(0f, racer.FuelUsed - command.ServiceDrain);
+                    if (other == racer) continue;
+                    if (!TryCommonPitPosition(other, other.PitTravel, out float position)) continue;
+                    if (Math.Abs(position - join) >= rules.Pit.MinimumHeadway) continue;
+                    clear = false;
+                    break;
                 }
-                float meter = racer.SelectedService == PitService.Tires ? racer.TireWear : racer.FuelUsed;
-                racer.ServiceProgress = 1f - meter;
-                // Count the service only on the emptying stroke so stirring an
-                // already-empty meter cannot count it again; both dials may be
-                // serviced in one parked stop.
-                if (meterBefore > 0f && meter <= 0f) racer.CompletedServices++;
+                if (clear) racer.PitTraffic = PitTrafficState.Moving;
+            }
+        }
+
+        private void AdvanceMovingPitCars(float delta, bool parkingOnly)
+        {
+            RacerState[] moving = racers.Where(x =>
+                    (!parkingOnly || x.PitPhase == PitPhase.Parking) &&
+                    ((x.PitPhase == PitPhase.Entering || x.PitPhase == PitPhase.Parking) &&
+                        (x.PitTraffic == PitTrafficState.Queued ||
+                         x.PitTraffic == PitTrafficState.Moving) ||
+                     x.PitPhase == PitPhase.Exiting &&
+                        x.PitTraffic == PitTrafficState.Moving))
+                .OrderByDescending(x => CurrentPitSortPosition(x))
+                .ThenBy(x => x.PitOrderStep)
+                .ThenBy(x => x.Id)
+                .ToArray();
+
+            float leaderPosition = float.PositiveInfinity;
+            foreach (RacerState racer in moving)
+            {
+                racer.Speed = 0f;
+                float desired = racer.PitTravel;
+                // A car that crossed the line this simulation step begins on
+                // the next fixed step, preserving the former timing boundary.
+                if (racer.PitOrderStep != simulationStep)
+                    desired += rules.Pit.LaneSpeed * delta;
+                desired = Math.Min(desired, RouteLength(racer));
+
+                bool desiredOnLane = TryCommonPitPosition(racer, desired,
+                    out float desiredPosition);
+                if (desiredOnLane && !float.IsPositiveInfinity(leaderPosition))
+                {
+                    float maximumPosition = leaderPosition - rules.Pit.MinimumHeadway;
+                    if (desiredPosition > maximumPosition)
+                        desired = TravelAtCommonPosition(racer, maximumPosition, desired);
+                }
+
+                racer.PitTravel = desired;
+                if (racer.PitPhase == PitPhase.Entering || racer.PitPhase == PitPhase.Parking)
+                    racer.PitTraffic = racer.PitTravel < 0f
+                        ? PitTrafficState.Queued : PitTrafficState.Moving;
+
+                if (TryCommonPitPosition(racer, racer.PitTravel, out float finalPosition))
+                    leaderPosition = Math.Min(leaderPosition, finalPosition);
+                CompletePitRouteIfNeeded(racer, delta);
+            }
+        }
+
+        private float CurrentPitSortPosition(RacerState racer) =>
+            TryCommonPitPosition(racer, racer.PitTravel, out float position)
+                ? position : float.NegativeInfinity;
+
+        private bool TryCommonPitPosition(RacerState racer, float travel, out float position)
+        {
+            position = 0f;
+            if (racer.PitPhase == PitPhase.Entering || racer.PitPhase == PitPhase.Parking)
+            {
+                if (travel > rules.Pit.EntrySharedLength(racer.Id)) return false;
+                position = travel;
+                return true;
+            }
+            if (racer.PitPhase != PitPhase.Exiting ||
+                racer.PitTraffic != PitTrafficState.Moving) return false;
+            float branch = rules.Pit.ExitBranchLength(racer.Id);
+            position = rules.Pit.LaneJoinPosition(racer.Id) + Math.Max(0f, travel - branch);
+            return true;
+        }
+
+        private float TravelAtCommonPosition(RacerState racer, float position, float fallback)
+        {
+            if (racer.PitPhase == PitPhase.Entering || racer.PitPhase == PitPhase.Parking)
+                return Math.Min(fallback, position);
+            float join = rules.Pit.LaneJoinPosition(racer.Id);
+            if (position < join) return racer.PitTravel;
+            return Math.Min(fallback, rules.Pit.ExitBranchLength(racer.Id) + position - join);
+        }
+
+        private float RouteLength(RacerState racer) =>
+            racer.PitPhase == PitPhase.Exiting
+                ? rules.Pit.ExitLength(racer.Id)
+                : rules.Pit.EntryLength(racer.Id);
+
+        private void CompletePitRouteIfNeeded(RacerState racer, float delta)
+        {
+            if (racer.PitTravel < RouteLength(racer)) return;
+            if (racer.PitPhase == PitPhase.Entering)
+            {
+                racer.PitPhase = PitPhase.InService;
+                racer.PitTravel = racer.ServiceProgress = 0f;
+                racer.PitTraffic = PitTrafficState.None;
+                return;
+            }
+            if (racer.PitPhase == PitPhase.Parking)
+            {
+                racer.PitPhase = PitPhase.Parked;
+                racer.PitTravel = 0f;
+                racer.PitTraffic = PitTrafficState.None;
+                racer.Speed = 0f;
                 return;
             }
 
-            racer.PitTimer += delta;
-            if (racer.PitTimer < rules.Pit.ExitSeconds(racer.Id)) return;
-            racer.PitPhase = PitPhase.OnTrack; racer.PitTimer = racer.ServiceProgress = 0f;
+            racer.PitPhase = PitPhase.OnTrack;
+            racer.PitTravel = racer.ServiceProgress = 0f;
+            racer.PitTraffic = PitTrafficState.None;
             racer.SelectedService = PitService.None;
             float finishDistance = track.Length * rules.Laps + racer.GridStart;
             if (racer.Distance >= finishDistance && racer.CompletedServices >= rules.RequiredServiceCount)
@@ -568,7 +736,7 @@ namespace BoardRacing.Domain
             (int)(racer.Distance / track.Length) + 1 < rules.Laps ||
             racer.CompletedServices < rules.RequiredServiceCount;
 
-        private static void FinishRacer(RacerState racer, float distance, float finishTime)
+        private void FinishRacer(RacerState racer, float distance, float finishTime)
         {
             racer.Distance = distance; racer.Finished = true; racer.FinishTime = finishTime;
             // The flag ends the race, not the car (issue #149). Stopping dead
@@ -580,8 +748,7 @@ namespace BoardRacing.Domain
             // pending pit call expires with the race; the car is parking, not
             // servicing, and never leaves the box.
             racer.SelectedService = PitService.None;
-            racer.PitPhase = PitPhase.Parking;
-            racer.PitTimer = 0f;
+            BeginPitEntry(racer, PitPhase.Parking);
         }
 
         private void BurnFuel(RacerState racer, ThrottleStep step, float delta)
@@ -639,8 +806,11 @@ namespace BoardRacing.Domain
                 racer.Speed = racer.Recovery = racer.Lateral = 0f; racer.Distance = 0f; racer.FinishTime = -1f;
                 racer.Finished = racer.IncidentThisStep = false; racer.Incidents = 0;
                 racer.PriorKind = track.Sample(0f).Kind;
-                racer.FuelUsed = racer.TireWear = racer.ServiceProgress = racer.PitTimer = 0f;
+                racer.FuelUsed = racer.TireWear = racer.ServiceProgress = racer.PitTravel = 0f;
                 racer.SelectedService = PitService.None; racer.PitPhase = PitPhase.OnTrack;
+                racer.PitTraffic = PitTrafficState.None;
+                racer.PitOrderStep = 0;
+                racer.PitNewEntry = false;
                 racer.CompletedServices = 0;
             }
             ApplyStartingGrid();
@@ -699,14 +869,16 @@ namespace BoardRacing.Domain
                 int place = Array.IndexOf(ordered, racer) + 1;
                 var condition = new RacerConditionSnapshot(racer.FuelUsed, racer.TireWear,
                     FuelPenaltyActive(racer), TirePenaltyActive(racer));
-                float phaseProgress = racer.PitPhase == PitPhase.Parking
-                    ? Clamp01(racer.PitTimer / rules.Pit.EntrySeconds(racer.Id))
-                    : racer.PitPhase == PitPhase.Entering
-                    ? Clamp01(racer.PitTimer / rules.Pit.EntrySeconds(racer.Id))
-                    : racer.PitPhase == PitPhase.Exiting
-                        ? Clamp01(racer.PitTimer / rules.Pit.ExitSeconds(racer.Id)) : 0f;
+                float phaseProgress = rules.Pit.Enabled &&
+                    (racer.PitPhase == PitPhase.Parking ||
+                     racer.PitPhase == PitPhase.Entering)
+                    ? Clamp01(Math.Max(0f, racer.PitTravel) /
+                        rules.Pit.EntryLength(racer.Id))
+                    : rules.Pit.Enabled && racer.PitPhase == PitPhase.Exiting
+                        ? Clamp01(racer.PitTravel / rules.Pit.ExitLength(racer.Id)) : 0f;
                 var pit = new RacerPitSnapshot(racer.SelectedService, racer.PitPhase, racer.ServiceProgress,
-                    racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount, phaseProgress);
+                    racer.CompletedServices, racer.CompletedServices >= rules.RequiredServiceCount,
+                    phaseProgress, racer.PitTraffic, Math.Max(0f, -racer.PitTravel));
                 return new RacerSnapshot(racer.Id, racer.Speed, racer.Distance,
                     CompletedLaps(racer), place, racer.Finished, racer.FinishTime,
                     track.Sample(racer.Distance), racer.Finished ? 0f : racer.Lateral, racer.IncidentThisStep,
@@ -721,8 +893,10 @@ namespace BoardRacing.Domain
         // Laps × Length − GridRowSpacing — and counting from zero reported it
         // one lap short at the flag, on every course, from the moment the real
         // grid landed in #148.
-        private int CompletedLaps(RacerState racer) => Math.Min(rules.Laps,
-            (int)((racer.Distance - racer.GridStart) / track.Length));
+        private int CompletedLaps(RacerState racer) => racer.Finished
+            ? rules.Laps
+            : Math.Min(rules.Laps,
+                (int)((racer.Distance - racer.GridStart) / track.Length));
 
         private static float MoveTowards(float current, float target, float maximumDelta)
         { return Math.Abs(target - current) <= maximumDelta ? target : current + Math.Sign(target - current) * maximumDelta; }

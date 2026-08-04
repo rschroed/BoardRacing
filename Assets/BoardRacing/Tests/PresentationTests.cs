@@ -103,6 +103,192 @@ namespace BoardRacing.Tests
         }
 
         [Test]
+        public void CatalogRoutesUseTheSharedLaneAndOnlyTheOwnedStallBranch()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                foreach (PlayerId player in new[]
+                    { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
+                {
+                    int stall = (int)player - 1;
+                    Vec2[] entry = PitLanePresentationMapper.EntryRoute(player, layout);
+                    Vec2[] exit = PitLanePresentationMapper.ExitRoute(player, layout);
+
+                    Assert.That(entry[entry.Length - 2],
+                        Is.EqualTo(layout.EntryAnchor(player)), course.Name + " entry anchor");
+                    Assert.That(entry[entry.Length - 1],
+                        Is.EqualTo(layout.Box(player)), course.Name + " entry box");
+                    Assert.That(exit[0], Is.EqualTo(layout.Box(player)),
+                        course.Name + " exit box");
+                    Assert.That(exit[1], Is.EqualTo(layout.ExitAnchor(player)),
+                        course.Name + " exit anchor");
+
+                    for (int other = 0; other < layout.Boxes.Count; other++)
+                    {
+                        if (other == stall) continue;
+                        Assert.That(entry, Has.None.EqualTo(layout.Boxes[other]),
+                            course.Name + " entry traverses another stall");
+                        Assert.That(exit, Has.None.EqualTo(layout.Boxes[other]),
+                            course.Name + " exit traverses another stall");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void ServiceCurvesRunFromDepartureThroughTheParkedApexToReturn()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                foreach (PlayerId player in new[]
+                    { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
+                {
+                    Vec2[] curve = PitLanePresentationMapper.ServiceCurveSamples(player, layout);
+                    Assert.That(curve[0], Is.EqualTo(layout.EntryAnchor(player)),
+                        course.Name + " departure");
+                    Assert.That(curve[curve.Length / 2], Is.EqualTo(layout.Box(player)),
+                        course.Name + " service apex");
+                    Assert.That(curve[curve.Length - 1], Is.EqualTo(layout.ExitAnchor(player)),
+                        course.Name + " return");
+
+                    Vec2 before = curve[curve.Length / 2 - 1];
+                    Vec2 after = curve[curve.Length / 2 + 1];
+                    Vec2 chord = Normalize(new Vec2(after.X - before.X, after.Y - before.Y));
+                    Assert.That(Dot(chord, layout.ParkedHeading(player)),
+                        Is.GreaterThan(Cos(8f)), course.Name + " parked tangent");
+                }
+            }
+        }
+
+        [Test]
+        public void ServiceCurveNeverPointsBackAlongThePitRowAtTheParkedApex()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                foreach (PlayerId player in new[]
+                    { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
+                {
+                    Vec2[] curve = PitLanePresentationMapper.ServiceCurveSamples(player, layout);
+                    Vec2 rowHeading = layout.ParkedHeading(player);
+                    int apex = curve.Length / 2;
+                    for (int i = 1; i < curve.Length; i++)
+                    {
+                        Vec2 movement = new Vec2(
+                            curve[i].X - curve[i - 1].X,
+                            curve[i].Y - curve[i - 1].Y);
+                        Assert.That(Dot(movement, rowHeading), Is.GreaterThanOrEqualTo(-.0001f),
+                            $"{course.Name} {player} reverses beside the stall at sample {i}");
+                        if (i <= apex)
+                            Assert.That(Cross(rowHeading, movement),
+                                Is.GreaterThanOrEqualTo(-.0001f),
+                                $"{course.Name} {player} steers away before parking at sample {i}");
+                        else
+                            Assert.That(Cross(rowHeading, movement),
+                                Is.LessThanOrEqualTo(.0001f),
+                                $"{course.Name} {player} steers back into the stall after release at sample {i}");
+                    }
+
+                    for (int step = 0; step <= 100; step++)
+                    {
+                        float entryProgress = .9f + step / 1000f;
+                        CarPresentationPose entry = PitLanePresentationMapper.EntryPose(
+                            player, entryProgress, false, layout);
+                        Assert.That(Cross(rowHeading, entry.Tangent),
+                            Is.GreaterThanOrEqualTo(-.001f),
+                            $"{course.Name} {player} faces away before parking at {entryProgress:0.000}");
+
+                        float exitProgress = step / 1000f;
+                        CarPresentationPose exit = PitLanePresentationMapper.ExitPose(
+                            player, exitProgress, false, layout);
+                        Assert.That(Cross(rowHeading, exit.Tangent),
+                            Is.LessThanOrEqualTo(.001f),
+                            $"{course.Name} {player} faces back into the stall after release at {exitProgress:0.000}");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void MovingPosesMatchTheAuthoredParkedHeadingAtBothBayHandOffs()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                foreach (PlayerId player in new[]
+                    { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
+                {
+                    Vec2 parked = layout.ParkedHeading(player);
+                    CarPresentationPose arrival = PitLanePresentationMapper.EntryPose(
+                        player, 1f, false, layout);
+                    CarPresentationPose release = PitLanePresentationMapper.ExitPose(
+                        player, 0f, false, layout);
+
+                    Assert.That(Dot(arrival.Tangent, parked), Is.GreaterThan(Cos(.5f)),
+                        $"{course.Name} {player} arrival heading snaps at the box");
+                    Assert.That(Dot(release.Tangent, parked), Is.GreaterThan(Cos(.5f)),
+                        $"{course.Name} {player} release heading snaps at the box");
+                }
+            }
+        }
+
+        [Test]
+        public void CarHeadingTurnsContinuouslyAcrossEveryServiceBranchSeam()
+        {
+            const float progressStep = .002f;
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                foreach (PlayerId player in new[]
+                    { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
+                {
+                    CarPresentationPose priorEntry = PitLanePresentationMapper.EntryPose(
+                        player, 0f, false, layout);
+                    CarPresentationPose priorExit = PitLanePresentationMapper.ExitPose(
+                        player, 0f, false, layout);
+                    for (float progress = progressStep;
+                         progress <= 1f + .0001f; progress += progressStep)
+                    {
+                        CarPresentationPose entry = PitLanePresentationMapper.EntryPose(
+                            player, progress, false, layout);
+                        CarPresentationPose exit = PitLanePresentationMapper.ExitPose(
+                            player, progress, false, layout);
+                        Assert.That(Dot(priorEntry.Tangent, entry.Tangent),
+                            Is.GreaterThan(Cos(6f)),
+                            $"{course.Name} {player} entry heading snaps near {progress:0.000}");
+                        Assert.That(Dot(priorExit.Tangent, exit.Tangent),
+                            Is.GreaterThan(Cos(6f)),
+                            $"{course.Name} {player} exit heading snaps near {progress:0.000}");
+                        priorEntry = entry;
+                        priorExit = exit;
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void QueuedCarsRenderAtTheirWorldSpaceHeadwayBehindThePitLine()
+        {
+            PitLanePresentationLayout layout =
+                PitLanePresentationLayout.ForCourse(CourseCatalog.Wedge());
+            var queued = Racer(PlayerId.Player2, PitPhase.Entering,
+                traffic: PitTrafficState.Queued, queueOffset: 62f);
+            CarPresentationPose pose = Pose(queued, layout);
+
+            Vec2 heading = layout.EntryDirection;
+            AssertPosition(pose, new Vec2(
+                layout.PitLine.X - heading.X * 62f,
+                layout.PitLine.Y - heading.Y * 62f));
+        }
+
+        [Test]
         public void InServicePoseStaysParkedAcrossUndecidedSwitchAndResetStates()
         {
             var layout = Layout();
@@ -134,12 +320,12 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void PitExitIsAShortForwardMergeOntoTheRejoinPoint()
+        public void SharedPitExitIsAShortForwardMergeOntoTheRejoinPoint()
         {
             var layout = Layout();
-            var start = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
-            var mid = PitLanePresentationMapper.ExitPose(PlayerId.Player1, .5f, false, layout);
-            var end = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 1f, false, layout);
+            var start = PitLanePresentationMapper.SharedMergePose(0f, layout);
+            var mid = PitLanePresentationMapper.SharedMergePose(.5f, layout);
+            var end = PitLanePresentationMapper.SharedMergePose(1f, layout);
 
             // Every point of the exit moves forward with the track — no doubling
             // back toward the start line.
@@ -147,8 +333,28 @@ namespace BoardRacing.Tests
             Assert.That(mid.Tangent.X, Is.GreaterThan(0f));
             Assert.That(end.Tangent.X, Is.GreaterThan(0f));
             Assert.That(mid.Position.X,
-                Is.InRange(layout.Box(PlayerId.Player1).X, layout.ExitRejoin.X));
+                Is.InRange(layout.LaneWaypoints[layout.LaneWaypoints.Count - 1].X,
+                    layout.ExitRejoin.X));
             AssertPosition(end, layout.ExitRejoin);
+        }
+
+        [Test]
+        public void SharedPitEntryHandsOffTangentToEveryAuthoredServiceRow()
+        {
+            // The surface widens this exact route. A heading discontinuity at
+            // either handoff becomes a triangular shoulder tooth after the
+            // ribbon is offset, most visibly on Fishhook's diagonal row.
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                Vec2 rowHeading = layout.ParkedHeading(PlayerId.Player1);
+                CarPresentationPose entryEnd =
+                    PitLanePresentationMapper.SharedEntryPose(1f, layout);
+
+                Assert.That(Dot(entryEnd.Tangent, rowHeading),
+                    Is.GreaterThan(Cos(5f)), course.Name + " entry-to-lane handoff");
+            }
         }
 
         [Test]
@@ -161,16 +367,17 @@ namespace BoardRacing.Tests
             var end = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 1f, false, layout);
             Assert.That(Dot(end.Tangent, new Vec2(1f, 0f)), Is.GreaterThan(Cos(8f)));
 
-            CarPresentationPose prior = PitLanePresentationMapper.ExitPose(PlayerId.Player1, 0f, false, layout);
+            CarPresentationPose prior =
+                PitLanePresentationMapper.SharedMergePose(0f, layout);
             for (float progress = .005f; progress <= 1.0001f; progress += .005f)
             {
-                var next = PitLanePresentationMapper.ExitPose(PlayerId.Player1, progress, false, layout);
+                var next = PitLanePresentationMapper.SharedMergePose(progress, layout);
                 // A 0.005 progress step over-samples a real frame: the exit legs
                 // run whole seconds at the crawl (issue #110), so a 60 fps frame
                 // spans ≤ ~0.008 progress even on the shortest catalog leg. The
                 // S-bend onto the track legitimately turns ~8 deg per chord, so
                 // the bound guards against snaps, not curvature.
-                Assert.That(Dot(prior.Tangent, next.Tangent), Is.GreaterThan(Cos(20f)),
+                Assert.That(Dot(prior.Tangent, next.Tangent), Is.GreaterThan(Cos(30f)),
                     $"heading snaps near progress {progress:0.00}");
                 prior = next;
             }
@@ -184,6 +391,64 @@ namespace BoardRacing.Tests
                 Racer(PlayerId.Player1, PitPhase.Entering, .02f), new Vec2(5f, 5f),
                 new Vec2(1f, 0f), layout);
             Assert.That(Dot(justEntered.Tangent, new Vec2(1f, 0f)), Is.GreaterThan(Cos(10f)));
+        }
+
+        [Test]
+        public void PitEntryNeverRecoilsAtTheCourseHandOff()
+        {
+            // A pinned endpoint can still form a small Catmull-Rom loop even
+            // when its reported tangent points the right way. On hardware that
+            // reads as the car jumping backward just after it leaves the course.
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                Vec2 courseHeading = Normalize(layout.EntryDirection);
+                foreach (PlayerId playerId in new[]
+                {
+                    PlayerId.Player1, PlayerId.Player2,
+                    PlayerId.Player3, PlayerId.Player4
+                })
+                {
+                    Vec2 prior = PitLanePresentationMapper
+                        .EntryPose(playerId, 0f, false, layout).Position;
+                    for (int step = 1; step <= 100; step++)
+                    {
+                        float progress = step / 1000f;
+                        Vec2 current = PitLanePresentationMapper
+                            .EntryPose(playerId, progress, false, layout).Position;
+                        Vec2 displacement = new Vec2(
+                            current.X - prior.X, current.Y - prior.Y);
+                        Assert.That(Dot(displacement, courseHeading),
+                            Is.GreaterThanOrEqualTo(-.001f),
+                            $"{course.Name} {playerId} recoils at {progress:0.000}");
+                        prior = current;
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void LateralPositionCarriesAcrossPitHandOffThenSettlesOntoTheLane()
+        {
+            const float lateral = 12f;
+            RacerSnapshot onTrack = RacerWithLateral(
+                PitPhase.OnTrack, 0f, lateral);
+            RacerSnapshot atHandOff = RacerWithLateral(
+                PitPhase.Entering, 0f, lateral);
+            RacerSnapshot halfway = RacerWithLateral(PitPhase.Entering,
+                PitLanePresentationMapper.EntryLateralSettleProgress * .5f, lateral);
+            RacerSnapshot settled = RacerWithLateral(PitPhase.Entering,
+                PitLanePresentationMapper.EntryLateralSettleProgress, lateral);
+
+            Assert.That(PitLanePresentationMapper.PresentedLateralOffset(onTrack),
+                Is.EqualTo(lateral));
+            Assert.That(PitLanePresentationMapper.PresentedLateralOffset(atHandOff),
+                Is.EqualTo(lateral), "the phase boundary must not move the car");
+            Assert.That(PitLanePresentationMapper.PresentedLateralOffset(halfway),
+                Is.EqualTo(lateral * .5f).Within(.001f));
+            Assert.That(PitLanePresentationMapper.PresentedLateralOffset(settled),
+                Is.Zero.Within(.001f));
         }
 
         [Test]
@@ -347,6 +612,45 @@ namespace BoardRacing.Tests
             Assert.That(blended.Pit.ServiceProgress, Is.EqualTo(.1f).Within(.0001f));
         }
 
+        [TestCase(PitPhase.Entering, PitPhase.InService)]
+        [TestCase(PitPhase.Parking, PitPhase.Parked)]
+        public void FinalStepIntoParkedPoseIsInterpolated(PitPhase moving, PitPhase stopped)
+        {
+            var track = TrackCatalog.Wedge();
+            var before = Race(RacePhase.Racing, 10f, RacerAt(track, 100f, 0f,
+                pit: new RacerPitSnapshot(PitService.None, moving, 0f, 0, false, .96f,
+                    PitTrafficState.Moving)));
+            var current = Race(RacePhase.Racing, 10f + 1f / 60f,
+                RacerAt(track, 100f, 0f,
+                    pit: new RacerPitSnapshot(PitService.None, stopped, 0f, 0, false)));
+
+            RacerSnapshot blended = SnapshotInterpolation
+                .Blend(before, current, .5f, track).Racers[0];
+
+            Assert.That(blended.Pit.Phase, Is.EqualTo(moving));
+            Assert.That(blended.Pit.PhaseProgress, Is.EqualTo(.98f).Within(.0001f));
+        }
+
+        [Test]
+        public void FirstReleasedStepOutOfParkedPoseIsInterpolated()
+        {
+            var track = TrackCatalog.Wedge();
+            var waiting = Race(RacePhase.Racing, 10f, RacerAt(track, 100f, 0f,
+                pit: new RacerPitSnapshot(PitService.None, PitPhase.Exiting, 0f, 0,
+                    false, 0f, PitTrafficState.WaitingToRelease)));
+            var moving = Race(RacePhase.Racing, 10f + 1f / 60f,
+                RacerAt(track, 100f, 0f,
+                    pit: new RacerPitSnapshot(PitService.None, PitPhase.Exiting, 0f, 0,
+                        false, .04f, PitTrafficState.Moving)));
+
+            RacerSnapshot blended = SnapshotInterpolation
+                .Blend(waiting, moving, .5f, track).Racers[0];
+
+            Assert.That(blended.Pit.Phase, Is.EqualTo(PitPhase.Exiting));
+            Assert.That(blended.Pit.TrafficState, Is.EqualTo(PitTrafficState.Moving));
+            Assert.That(blended.Pit.PhaseProgress, Is.EqualTo(.02f).Within(.0001f));
+        }
+
         private static RacerSnapshot RacerAt(TrackDefinition track, float distance, float speed,
             int laps = 0, RacerPitSnapshot pit = default) =>
             new RacerSnapshot(PlayerId.Player1, speed, distance, laps, 1, false, -1f,
@@ -376,6 +680,12 @@ namespace BoardRacing.Tests
             new Vec2(42f, 5f), new Vec2(1f, 0f), new Vec2(1f, 0f));
 
         private static float Dot(Vec2 a, Vec2 b) => a.X * b.X + a.Y * b.Y;
+        private static float Cross(Vec2 a, Vec2 b) => a.X * b.Y - a.Y * b.X;
+        private static Vec2 Normalize(Vec2 value)
+        {
+            float length = (float)System.Math.Sqrt(value.X * value.X + value.Y * value.Y);
+            return new Vec2(value.X / length, value.Y / length);
+        }
         private static float Cos(float degrees) => (float)System.Math.Cos(degrees * System.Math.PI / 180.0);
         private static float Distance(Vec2 a, Vec2 b) =>
             (float)System.Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
@@ -388,12 +698,22 @@ namespace BoardRacing.Tests
                 Condition(fuelUsed, wear), default);
 
         private static RacerSnapshot Racer(PlayerId id, PitPhase phase, float phaseProgress = 0f,
-            PitService service = PitService.None, float serviceProgress = 0f, bool finished = false) =>
+            PitService service = PitService.None, float serviceProgress = 0f, bool finished = false,
+            PitTrafficState traffic = PitTrafficState.None, float queueOffset = 0f) =>
             new RacerSnapshot(id, 0f, 100f, 1, 1, finished, finished ? 12f : -1f,
                 new TrackSample(new Vec2(5f, 5f), new Vec2(1f, 0f), 0,
                     TrackSectionKind.Straight, float.PositiveInfinity), 0f, false, 0f, 0,
                 Condition(0f, 0f), new RacerPitSnapshot(service, phase, serviceProgress,
-                    finished ? 1 : 0, finished, phaseProgress));
+                    finished ? 1 : 0, finished, phaseProgress, traffic, queueOffset));
+
+        private static RacerSnapshot RacerWithLateral(PitPhase phase,
+            float phaseProgress, float lateralOffset) =>
+            new RacerSnapshot(PlayerId.Player1, 0f, 100f, 1, 1, false, -1f,
+                new TrackSample(new Vec2(5f, 5f), new Vec2(1f, 0f), 0,
+                    TrackSectionKind.Straight, float.PositiveInfinity),
+                lateralOffset, false, 0f, 0, Condition(0f, 0f),
+                new RacerPitSnapshot(PitService.None, phase, 0f,
+                    0, false, phaseProgress));
 
         private static PitLanePresentationLayout Layout() => new PitLanePresentationLayout(
             new Vec2(5f, 5f), new Vec2(10f, 10f), new[]

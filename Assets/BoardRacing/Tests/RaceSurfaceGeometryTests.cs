@@ -254,20 +254,166 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void NonContiguousRosterAccentsOnlyItsOwnedPitBoxes()
+        public void ApprovedPitFieldIsContinuousFromSharedLaneThroughEveryStall()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track, layout,
+                    Color.red, Color.blue);
+                for (int stall = 0; stall < layout.Boxes.Count; stall++)
+                {
+                    Vector2 lane = ToVector(layout.LaneAnchors[stall]);
+                    Vector2 box = ToVector(layout.Boxes[stall]);
+                    Vector2 interior = (lane + box) * .5f;
+                    Assert.That(PitSurfaceCovers(mesh, interior), Is.True,
+                        $"{course.Name} opens a lane/service window at {interior}");
+                    Vec2[] service = PitLanePresentationMapper.ServiceCurveSamples(
+                        (PlayerId)(stall + 1), layout);
+                    for (int sample = 0; sample < service.Length; sample++)
+                    {
+                        Vector2 point = ToVector(service[sample]);
+                        Assert.That(PitSurfaceCovers(mesh, point), Is.True,
+                            $"{course.Name} opens a gap along stall {stall + 1} at {point}");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void PitRoadCenterlineIsContinuousThroughEntrySharedLaneAndMerge()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track, layout,
+                    Color.red, Color.blue);
+
+                for (int sample = 0; sample <= 40; sample++)
+                {
+                    float progress = sample / 40f;
+                    Vector2 entry = ToVector(PitLanePresentationMapper
+                        .SharedEntryPose(progress, layout).Position);
+                    Vector2 merge = ToVector(PitLanePresentationMapper
+                        .SharedMergePose(progress, layout).Position);
+                    Assert.That(PitSurfaceCovers(mesh, entry), Is.True,
+                        $"{course.Name} opens its entry road at {entry}");
+                    Assert.That(PitSurfaceCovers(mesh, merge), Is.True,
+                        $"{course.Name} opens its merge road at {merge}");
+                }
+                foreach (Vec2 waypoint in layout.LaneWaypoints)
+                {
+                    Vector2 lane = ToVector(waypoint);
+                    Assert.That(PitSurfaceCovers(mesh, lane), Is.True,
+                        $"{course.Name} opens its shared lane at {lane}");
+                }
+            }
+        }
+
+        [Test]
+        public void DetachedPitRoadsRemainDistinctBetweenAuthoredJunctions()
+        {
+            // Infinity deliberately pulls away from the track. Its old
+            // projection bridge filled the whole course-to-lane gap with
+            // asphalt. The spline surface joins at the authored entry and
+            // rejoin while leaving the middle separator to the shared tan
+            // shoulder treatment. Fishhook runs close enough to the road that
+            // its shoulder bands naturally meet, so it is covered by the route
+            // continuity assertion instead of requiring a fixed-width gap.
+            foreach (CourseDefinition course in new[] { CourseCatalog.Infinity() })
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track, layout,
+                    Color.red, Color.blue);
+                Vector2 pit = layout.LaneWaypoints
+                    .Select(ToVector)
+                    .OrderByDescending(point =>
+                        Vector2.Distance(point, NearestPointOnTrack(point, course.Track)))
+                    .First();
+                Vector2 track = NearestPointOnTrack(pit, course.Track);
+                Vector2 across = (pit - track).normalized;
+                Vector2 trackEdge = track + across *
+                    (RaceSurfaceGeometry.TrackWidth * .5f);
+                Vector2 pitEdge = pit - across *
+                    (RaceSurfaceGeometry.PitLaneWidth * .5f);
+                Assert.That(Vector2.Distance(trackEdge, pitEdge), Is.GreaterThan(2f),
+                    course.Name + " needs a visible separator for this assertion");
+                Vector2 separator = (trackEdge + pitEdge) * .5f;
+                Assert.That(RoadFamilyCovers(mesh, separator), Is.False,
+                    $"{course.Name} reintroduced a broad asphalt bridge at {separator}");
+            }
+        }
+
+        [Test]
+        public void ApprovedPitFieldUsesTheCourseShoulderTreatment()
+        {
+            RaceSurfaceStyle style = RaceSurfaceStyle.Default;
+            style.ShoulderOpacity = 1f;
+            style.ShoulderSolidWidth = 13f;
+            style.ShoulderFeatherWidth = 18f;
+            Color apron = style.ShoulderColor;
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track, layout,
+                    new[] { Color.red, Color.blue }, style);
+                float servicePadHalfWidth =
+                    RaceSurfaceGeometry.ServicePadHalfWidth(layout);
+                for (int stall = 0; stall < layout.Boxes.Count; stall++)
+                {
+                    Vector2 anchor = ToVector(layout.LaneAnchors[stall]);
+                    Vector2 box = ToVector(layout.Boxes[stall]);
+                    Vector2 outward = (box - anchor).normalized;
+                    Vector2 apronSample = box + outward *
+                        (servicePadHalfWidth + style.ShoulderSolidWidth * .5f);
+                    Assert.That(SurfaceColorCovers(mesh, apronSample, apron), Is.True,
+                        $"{course.Name} does not carry the course apron through stall {stall + 1}");
+                }
+            }
+        }
+
+        [Test]
+        public void ApprovedPitFieldHasNoDiscreteBayOverlayColors()
+        {
+            foreach (CourseDefinition course in CourseCatalog.All())
+            {
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track, layout,
+                    Color.red, Color.blue);
+                Color overlay = Color.Lerp(
+                    RaceSurfaceGeometry.PitLaneColor, Color.black, .18f);
+                Assert.That(mesh.Colors, Has.None.EqualTo(overlay),
+                    course.Name + " reintroduced a bounded per-bay surface");
+            }
+        }
+
+        [Test]
+        public void RosterAccentsDoNotPaintBackgroundsBehindTheAssetBasedPitKits()
         {
             PitLanePresentationLayout layout = PitLayout();
-            var accents = new Dictionary<PlayerId, Color>
+            var firstAccents = new Dictionary<PlayerId, Color>
             {
                 [PlayerId.Player2] = Color.blue,
                 [PlayerId.Player4] = Color.yellow
             };
-            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(Track, layout, accents);
+            var secondAccents = new Dictionary<PlayerId, Color>
+            {
+                [PlayerId.Player1] = Color.red,
+                [PlayerId.Player3] = Color.green
+            };
+            SurfaceMeshData first = RaceSurfaceGeometry.Build(Track, layout, firstAccents);
+            SurfaceMeshData second = RaceSurfaceGeometry.Build(Track, layout, secondAccents);
 
-            AssertAccentCenteredOn(mesh, Color.blue, layout.Box(PlayerId.Player2));
-            AssertAccentCenteredOn(mesh, Color.yellow, layout.Box(PlayerId.Player4));
-            Assert.That(mesh.Colors, Has.Some.EqualTo(RaceSurfaceGeometry.InactivePitBoxAccent),
-                "inactive P1/P3 boxes stay neutral");
+            Assert.That(first.Vertices, Is.EqualTo(second.Vertices));
+            Assert.That(first.Colors, Is.EqualTo(second.Colors),
+                "player identity belongs to the retained marker/car assets, not the mesh");
+            Assert.That(first.Colors, Has.None.EqualTo(Color.blue));
+            Assert.That(first.Colors, Has.None.EqualTo(Color.yellow));
         }
 
         [Test]
@@ -294,84 +440,28 @@ namespace BoardRacing.Tests
         // The floor is defined as the inverse of the clearance it buys, so the
         // two can never drift apart under a body-shape change.
 
-        // The Y-junction pins (issue #107 phase 2): the pit lane meets the track
-        // as clamped shared-edge gores instead of a full ribbon hidden by paint
-        // order — no lane geometry in the roadway, each mouth running along the
-        // track edge, and the merge climbing at a slip-road angle (the ~40°
-        // dive read as the lane vanishing under the track in three hardware
-        // reviews).
-        private const float LaneFloor =
-            RaceSurfaceGeometry.TrackWidth * .5f - RaceSurfaceGeometry.JunctionEdgeOverlap;
-
-        private static void AssertAccentCenteredOn(SurfaceMeshData mesh, Color accent,
-            Vec2 expected)
-        {
-            Vector3[] vertices = mesh.Vertices
-                .Where((vertex, index) => mesh.Colors[index] == accent).ToArray();
-            Assert.That(vertices, Is.Not.Empty);
-            Vector3 center = vertices.Aggregate(Vector3.zero, (sum, vertex) => sum + vertex) /
-                vertices.Length;
-            Assert.That(Vector2.Distance(center, new Vector2(expected.X, expected.Y)),
-                Is.LessThan(.01f));
-        }
-
         [Test]
-        public void PitLaneNeverEntersTheRoadway()
+        public void SharedPitStripeDoesNotCrossTheServiceBays()
         {
-            var track = Track;
-            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(track, PitLayout(),
-                Color.red, Color.blue);
-            bool sawPit = false;
-            for (int i = 0; i < mesh.Vertices.Count; i++)
+            foreach (CourseDefinition course in CourseCatalog.All())
             {
-                if (mesh.Colors[i] != RaceSurfaceGeometry.PitLaneColor &&
-                    mesh.Colors[i] != RaceSurfaceGeometry.PitStripeColor) continue;
-                sawPit = true;
-                // Half a pixel of slack: near a chord seam the clamp and this
-                // re-measurement can disagree about the nearest chord.
-                Assert.That(RaceSurfaceGeometry.InteriorOffset(mesh.Vertices[i], track),
-                    Is.GreaterThanOrEqualTo(LaneFloor - .5f),
-                    $"pit vertex at {mesh.Vertices[i]} crosses into the roadway");
+                PitLanePresentationLayout layout =
+                    PitLanePresentationLayout.ForCourse(course);
+                SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track, layout,
+                    Color.red, Color.blue);
+                for (int stall = 0; stall < layout.Boxes.Count; stall++)
+                {
+                    Vector2 box = new Vector2(layout.Boxes[stall].X, layout.Boxes[stall].Y);
+                    float nearestStripe = mesh.Vertices
+                        .Where((vertex, index) =>
+                            mesh.Colors[index] == RaceSurfaceGeometry.PitStripeColor)
+                        .Min(vertex => Vector2.Distance(vertex, box));
+                    Assert.That(nearestStripe, Is.GreaterThanOrEqualTo(
+                            RaceSurfaceGeometry.PitBoxHalfWidth -
+                            RaceSurfaceGeometry.JunctionEdgeOverlap - .1f),
+                        $"{course.Name} shared-lane marking enters stall {stall + 1}");
+                }
             }
-            Assert.That(sawPit, Is.True);
-        }
-
-        [Test]
-        public void MergeMouthRunsAlongTheTrackEdge()
-        {
-            AssertMouthHugsTheEdge(x => x > CourseCatalog.Wedge().Pit.Boxes[3].X,
-                minimumExtent: 80f, "merge");
-        }
-
-        [Test]
-        public void EntryMouthRunsAlongTheTrackEdge()
-        {
-            AssertMouthHugsTheEdge(x => x < CourseCatalog.Wedge().Pit.Entry.X,
-                minimumExtent: 50f, "entry");
-        }
-
-        // A junction mouth is a run of clamped boundary vertices riding exactly
-        // JunctionEdgeOverlap inside the track edge — the gore's shared seam.
-        // It must have real length: a point contact would be the old blunt end.
-        private static void AssertMouthHugsTheEdge(System.Func<float, bool> inRegion,
-            float minimumExtent, string junction)
-        {
-            var track = Track;
-            SurfaceMeshData mesh = RaceSurfaceGeometry.Build(track, PitLayout(),
-                Color.red, Color.blue);
-            float min = float.MaxValue, max = float.MinValue;
-            for (int i = 0; i < mesh.Vertices.Count; i++)
-            {
-                if (mesh.Colors[i] != RaceSurfaceGeometry.PitLaneColor) continue;
-                Vector2 vertex = mesh.Vertices[i];
-                if (!inRegion(vertex.x)) continue;
-                if (Mathf.Abs(RaceSurfaceGeometry.InteriorOffset(vertex, track) - LaneFloor) > .01f)
-                    continue;
-                min = Mathf.Min(min, vertex.x);
-                max = Mathf.Max(max, vertex.x);
-            }
-            Assert.That(max - min, Is.GreaterThanOrEqualTo(minimumExtent),
-                $"the {junction} mouth must run along the track edge, not touch it at a point");
         }
 
         [Test]
@@ -385,11 +475,11 @@ namespace BoardRacing.Tests
             Vector2 straightDirection = (new Vector2(track.Segments[0].End.X, track.Segments[0].End.Y)
                 - new Vector2(track.Segments[0].Start.X, track.Segments[0].Start.Y)).normalized;
             Vec2 priorPosition = PitLanePresentationMapper
-                .ExitPose(PlayerId.Player2, 0f, false, layout).Position;
+                .SharedMergePose(0f, layout).Position;
             for (float progress = .02f; progress <= 1.0001f; progress += .02f)
             {
                 Vec2 position = PitLanePresentationMapper
-                    .ExitPose(PlayerId.Player2, progress, false, layout).Position;
+                    .SharedMergePose(progress, layout).Position;
                 var prior = new Vector2(priorPosition.X, priorPosition.Y);
                 var current = new Vector2(position.X, position.Y);
                 priorPosition = position;
@@ -470,8 +560,8 @@ namespace BoardRacing.Tests
         public void InfinityBoxesFlankTheCrossingSoTheLanePassesUnderTheBridge()
         {
             // The owner's sketch: pit boxes on both sides of the X, the service
-            // row threading beneath the bridge. The compact inner boxes keep
-            // their painted quads outside the crossing ribbon while the lane
+            // row threading beneath the bridge. The compact functional
+            // footprints stay outside the crossing ribbon while the lane
             // itself remains free to pass under.
             CourseDefinition course = CourseCatalog.Infinity();
             Vector2 crossing = RaceSurfaceGeometry.FindCrossings(course.Track)[0].Point;
@@ -491,7 +581,7 @@ namespace BoardRacing.Tests
                 RaceSurfaceGeometry.PitBoxHalfWidth;
             Assert.That(paintedEdgeClearance,
                 Is.GreaterThanOrEqualTo(RaceSurfaceGeometry.TrackWidth * .5f),
-                "the compact pit-box paint must remain outside the bridge ribbon");
+                "the compact pit footprint must remain outside the bridge ribbon");
         }
 
         [Test]
@@ -501,68 +591,57 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void BoxQuadsAndStartLineFollowADiagonalPitStraight()
+        public void StartLineFollowsADiagonalTrackStraightWithoutPlayerColorPaint()
         {
-            // Horizontal pit straights were a Wedge special case: on the
-            // Infinity's diagonal, the box quads and the start line must
-            // rotate with the travel direction instead of staying axis-aligned.
+            // The retained pit-kit roots own the diagonal stall orientation.
+            // The surface mesh keeps only its own start line, which still must
+            // follow travel instead of staying axis-aligned.
             CourseDefinition course = CourseCatalog.Infinity();
             SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track,
                 PitLanePresentationLayout.ForCourse(course), Color.red, Color.blue);
-            Vector2 boxOne = new Vector2(course.Pit.Boxes[0].X, course.Pit.Boxes[0].Y);
-            Vector2 boxFour = new Vector2(course.Pit.Boxes[3].X, course.Pit.Boxes[3].Y);
-            Vector2 lane = (boxFour - boxOne).normalized;
-            Vector2 across = new Vector2(-lane.y, lane.x);
-            Vector2 boxCorner = boxOne + lane * RaceSurfaceGeometry.PitBoxHalfLength +
-                across * RaceSurfaceGeometry.PitBoxHalfWidth;
             Vec2 start = course.Track.Sample(0f).Position;
             TrackSegment first = course.Track.Segments[0];
             Vector2 travel = (new Vector2(first.End.X, first.End.Y) -
                 new Vector2(first.Start.X, first.Start.Y)).normalized;
             Vector2 lineCorner = new Vector2(start.X, start.Y) +
                 travel * 12f + new Vector2(-travel.y, travel.x) * 28f;
-            bool boxCornerFound = false, lineCornerFound = false;
+            bool lineCornerFound = false;
             foreach (Vector3 vertex in mesh.Vertices)
             {
-                if (Vector2.Distance(vertex, boxCorner) < .5f) boxCornerFound = true;
                 if (Vector2.Distance(vertex, lineCorner) < .5f) lineCornerFound = true;
             }
-            Assert.That(boxCornerFound, Is.True, $"no box vertex at rotated corner {boxCorner}");
             Assert.That(lineCornerFound, Is.True, $"no start-line vertex at rotated corner {lineCorner}");
+            Assert.That(mesh.Colors, Has.None.EqualTo(Color.red));
+            Assert.That(mesh.Colors, Has.None.EqualTo(Color.blue));
         }
 
         [Test]
-        public void EveryCatalogPitBoxRendersAtTheAuthoredCompactFootprint()
+        public void EveryCatalogPitFieldStaysNeutralWithoutPerPlayerBoxPaint()
         {
+            RaceSurfaceStyle style = RaceSurfaceStyle.Default;
+            style.ShoulderOpacity = 1f;
             foreach (CourseDefinition course in CourseCatalog.All())
             {
                 PitLanePresentationLayout layout = PitLanePresentationLayout.ForCourse(course);
                 SurfaceMeshData mesh = RaceSurfaceGeometry.Build(course.Track, layout,
-                    Color.red, Color.blue);
-                Vector2 first = new Vector2(layout.Boxes[0].X, layout.Boxes[0].Y);
-                Vec2 lastBox = layout.Boxes[layout.Boxes.Count - 1];
-                Vector2 along = (new Vector2(lastBox.X, lastBox.Y) - first).normalized;
-                Vector2 across = new Vector2(-along.y, along.x);
-                foreach (Vec2 box in layout.Boxes)
-                {
-                    Vector2 center = new Vector2(box.X, box.Y);
-                    Vector2 expectedCorner = center +
-                        along * RaceSurfaceGeometry.PitBoxHalfLength +
-                        across * RaceSurfaceGeometry.PitBoxHalfWidth;
-                    Assert.That(mesh.Vertices.Any(vertex =>
-                            Vector2.Distance(vertex, expectedCorner) < .02f),
-                        Is.True,
-                        $"{course.Name} is missing the compact quad for box {box}");
-                }
+                    new[] { Color.red, Color.blue }, style);
+                Assert.That(mesh.Colors, Has.None.EqualTo(Color.red), course.Name);
+                Assert.That(mesh.Colors, Has.None.EqualTo(Color.blue), course.Name);
+                Assert.That(mesh.Colors, Has.Some.EqualTo(
+                    RaceSurfaceGeometry.PitLaneColor),
+                    course.Name + " still needs one neutral continuous work field");
+                Assert.That(mesh.Colors, Has.Some.EqualTo(
+                    RaceSurfaceStyle.Default.ShoulderColor),
+                    course.Name + " still needs the neutral exterior apron");
             }
         }
 
         [Test]
         public void PitLaneRendersUnderTheTrackFill()
         {
-            // The clamped mouths tuck JunctionEdgeOverlap inside the edge; that
-            // sliver must draw before the fill so the fill covers it and the
-            // visible seam is exactly the track edge.
+            // The continuous roadbed tucks beneath the road at each hand-off;
+            // the opaque track fill must paint afterward so the visible seam
+            // remains exactly the authored road edge.
             SurfaceMeshData mesh = RaceSurfaceGeometry.Build(Track, PitLayout(),
                 Color.red, Color.blue);
             int firstTrackVertex = -1;
@@ -582,6 +661,48 @@ namespace BoardRacing.Tests
                 "the pit lane must render before (under) the track fill");
         }
 
+        private static bool PitSurfaceCovers(SurfaceMeshData mesh, Vector2 point) =>
+            SurfaceColorCovers(mesh, point, RaceSurfaceGeometry.PitLaneColor);
+
+        private static bool RoadFamilyCovers(SurfaceMeshData mesh, Vector2 point) =>
+            SurfaceColorCovers(mesh, point, RaceSurfaceGeometry.PitLaneColor) ||
+            SurfaceColorCovers(mesh, point, RaceSurfaceGeometry.StraightColor) ||
+            SurfaceColorCovers(mesh, point, RaceSurfaceGeometry.CornerColor);
+
+        private static bool SurfaceColorCovers(SurfaceMeshData mesh,
+            Vector2 point, Color color)
+        {
+            for (int triangle = 0; triangle < mesh.Triangles.Count; triangle += 3)
+            {
+                int ia = mesh.Triangles[triangle];
+                int ib = mesh.Triangles[triangle + 1];
+                int ic = mesh.Triangles[triangle + 2];
+                if (mesh.Colors[ia] != color ||
+                    mesh.Colors[ib] != color ||
+                    mesh.Colors[ic] != color)
+                    continue;
+                if (PointInTriangle(point, mesh.Vertices[ia],
+                    mesh.Vertices[ib], mesh.Vertices[ic]))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool PointInTriangle(Vector2 point, Vector2 a, Vector2 b, Vector2 c)
+        {
+            float ab = Cross(b - a, point - a);
+            float bc = Cross(c - b, point - b);
+            float ca = Cross(a - c, point - c);
+            const float tolerance = .01f;
+            bool negative = ab < -tolerance || bc < -tolerance || ca < -tolerance;
+            bool positive = ab > tolerance || bc > tolerance || ca > tolerance;
+            return !(negative && positive);
+        }
+
+        private static float Cross(Vector2 a, Vector2 b) => a.x * b.y - a.y * b.x;
+
+        private static Vector2 ToVector(Vec2 value) => new Vector2(value.X, value.Y);
+
         private static float DistanceToPolyline(Vector2 point, TrackDefinition track)
         {
             float best = float.MaxValue;
@@ -594,6 +715,26 @@ namespace BoardRacing.Tests
                 best = Mathf.Min(best, Vector2.Distance(point, start + direction * t));
             }
             return best;
+        }
+
+        private static Vector2 NearestPointOnTrack(Vector2 point, TrackDefinition track)
+        {
+            float best = float.MaxValue;
+            Vector2 nearest = default;
+            foreach (TrackSegment segment in track.Segments)
+            {
+                Vector2 start = ToVector(segment.Start);
+                Vector2 end = ToVector(segment.End);
+                Vector2 direction = end - start;
+                float t = Mathf.Clamp01(Vector2.Dot(point - start, direction) /
+                    direction.sqrMagnitude);
+                Vector2 candidate = start + direction * t;
+                float distance = Vector2.SqrMagnitude(point - candidate);
+                if (distance >= best) continue;
+                best = distance;
+                nearest = candidate;
+            }
+            return nearest;
         }
 
         private static IEnumerable<Vector3> VerticesWithColor(SurfaceMeshData mesh, Color color)
@@ -669,7 +810,7 @@ namespace BoardRacing.Tests
             }
 
             // Markings sit over textured surfaces and must not pick up their
-            // grain: stripes, the start line, and the pit boxes stay flat.
+            // grain: stripes and the start line stay flat.
             foreach (Color marking in new[]
                 { style.StripeColor, style.PitStripeColor, Color.white })
             {

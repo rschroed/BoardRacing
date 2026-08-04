@@ -11,6 +11,10 @@ namespace BoardRacing.Domain
     // drives the pit entry it is already sitting on and stops in its own box.
     // Appended so the existing ordinals do not move.
     public enum PitPhase { OnTrack, Requested, Entering, InService, Exiting, Parking, Parked }
+    // Concrete shared-lane state exposed for the later HUD (#182): callers can
+    // distinguish a car waiting in the entry queue or yielding in its stall
+    // from one physically moving through the pit complex.
+    public enum PitTrafficState { None, Queued, Moving, WaitingToRelease }
     public enum PitCallState { Unavailable, NeedsPlacement, Aligning, Holding, Requested }
 
     public static class RacerRosters
@@ -325,7 +329,10 @@ namespace BoardRacing.Domain
 
     public readonly struct PitRules
     {
+        public const float ProductionMinimumHeadway = 62f;
+
         private readonly float[] entryLengths, exitLengths;
+        private readonly float[] entrySharedLengths, exitBranchLengths, laneJoinPositions;
 
         public PitRules(float laneSpeed, float playerOneEntryLength, float playerOneExitLength,
             float playerTwoEntryLength, float playerTwoExitLength, float exitRejoinDistance = 0f)
@@ -338,20 +345,73 @@ namespace BoardRacing.Domain
 
         public PitRules(float laneSpeed, IReadOnlyList<float> entryLengths,
             IReadOnlyList<float> exitLengths, float exitRejoinDistance = 0f)
+            : this(laneSpeed, entryLengths, exitLengths,
+                entryLengths, Enumerable.Repeat(0f, entryLengths?.Count ?? 0).ToArray(),
+                Enumerable.Repeat(0f, entryLengths?.Count ?? 0).ToArray(),
+                exitLengths?.Count > 0 ? exitLengths.Max() : 0f,
+                0f, exitRejoinDistance)
+        {
+        }
+
+        public PitRules(float laneSpeed, IReadOnlyList<float> entrySharedLengths,
+            IReadOnlyList<float> entryBranchLengths, IReadOnlyList<float> exitBranchLengths,
+            IReadOnlyList<float> exitSharedLengths, IReadOnlyList<float> laneJoinPositions,
+            float minimumHeadway, float exitRejoinDistance = 0f)
+            : this(laneSpeed,
+                Sum(entrySharedLengths, entryBranchLengths),
+                Sum(exitBranchLengths, exitSharedLengths),
+                entrySharedLengths, exitBranchLengths, laneJoinPositions,
+                CommonLength(laneJoinPositions, exitSharedLengths),
+                minimumHeadway, exitRejoinDistance)
+        {
+        }
+
+        private PitRules(float laneSpeed, IReadOnlyList<float> entryLengths,
+            IReadOnlyList<float> exitLengths, IReadOnlyList<float> entrySharedLengths,
+            IReadOnlyList<float> exitBranchLengths, IReadOnlyList<float> laneJoinPositions,
+            float commonLaneLength, float minimumHeadway, float exitRejoinDistance)
         {
             if (entryLengths == null) throw new ArgumentNullException(nameof(entryLengths));
             if (exitLengths == null) throw new ArgumentNullException(nameof(exitLengths));
+            if (entrySharedLengths == null)
+                throw new ArgumentNullException(nameof(entrySharedLengths));
+            if (exitBranchLengths == null)
+                throw new ArgumentNullException(nameof(exitBranchLengths));
+            if (laneJoinPositions == null)
+                throw new ArgumentNullException(nameof(laneJoinPositions));
             if (entryLengths.Count < 2 || entryLengths.Count > 4 ||
-                exitLengths.Count != entryLengths.Count)
+                exitLengths.Count != entryLengths.Count ||
+                entrySharedLengths.Count != entryLengths.Count ||
+                exitBranchLengths.Count != entryLengths.Count ||
+                laneJoinPositions.Count != entryLengths.Count)
                 throw new ArgumentException("Pit rules require matching lengths for two to four racers.");
             float[] entries = entryLengths.ToArray(), exits = exitLengths.ToArray();
-            var values = entries.Concat(exits).Concat(new[] { laneSpeed, exitRejoinDistance });
+            float[] sharedEntries = entrySharedLengths.ToArray();
+            float[] branchExits = exitBranchLengths.ToArray();
+            float[] joins = laneJoinPositions.ToArray();
+            var values = entries.Concat(exits).Concat(sharedEntries).Concat(branchExits)
+                .Concat(joins).Concat(new[]
+                    { laneSpeed, commonLaneLength, minimumHeadway, exitRejoinDistance });
             if (values.Any(x => float.IsNaN(x) || float.IsInfinity(x)) || laneSpeed <= 0f ||
                 entries.Any(x => x <= 0f) || exits.Any(x => x <= 0f) || exitRejoinDistance < 0f)
                 throw new ArgumentException("Pit rules contain invalid values.");
+            for (int i = 0; i < entries.Length; i++)
+            {
+                if (sharedEntries[i] <= 0f || sharedEntries[i] > entries[i] ||
+                    branchExits[i] < 0f || branchExits[i] > exits[i] ||
+                    joins[i] < 0f || joins[i] > commonLaneLength)
+                    throw new ArgumentException("Pit shared-lane geometry contains invalid values.");
+            }
+            if (commonLaneLength <= 0f || minimumHeadway < 0f)
+                throw new ArgumentException("Pit traffic rules contain invalid values.");
             Enabled = true; LaneSpeed = laneSpeed;
             this.entryLengths = entries;
             this.exitLengths = exits;
+            this.entrySharedLengths = sharedEntries;
+            this.exitBranchLengths = branchExits;
+            this.laneJoinPositions = joins;
+            CommonLaneLength = commonLaneLength;
+            MinimumHeadway = minimumHeadway;
             ExitRejoinDistance = exitRejoinDistance;
         }
         public bool Enabled { get; }
@@ -362,6 +422,8 @@ namespace BoardRacing.Domain
         // track: the car resumes where the lane physically ends instead of doubling
         // back to the line.
         public float ExitRejoinDistance { get; }
+        public float CommonLaneLength { get; }
+        public float MinimumHeadway { get; }
 
         // Pit transit is paced by distance (issue #110): a leg's duration is its
         // lane length at the crawl, so the two players' different box positions
@@ -373,20 +435,72 @@ namespace BoardRacing.Domain
         public float ExitSeconds(PlayerId playerId) => ExitLength(playerId) / LaneSpeed;
         public float EntryLength(PlayerId playerId) => LengthFor(entryLengths, playerId);
         public float ExitLength(PlayerId playerId) => LengthFor(exitLengths, playerId);
+        public float EntrySharedLength(PlayerId playerId) =>
+            LengthFor(entrySharedLengths, playerId);
+        public float EntryBranchLength(PlayerId playerId) =>
+            EntryLength(playerId) - EntrySharedLength(playerId);
+        public float ExitBranchLength(PlayerId playerId) =>
+            LengthFor(exitBranchLengths, playerId);
+        public float ExitSharedLength(PlayerId playerId) =>
+            ExitLength(playerId) - ExitBranchLength(playerId);
+        public float LaneJoinPosition(PlayerId playerId) =>
+            LengthFor(laneJoinPositions, playerId);
 
-        // Leg lengths measured along the authored lane anchors — the same points
-        // the drawn splines run through (PitLanePresentationLayout.ForCourse):
-        // pit line → entry ramp → box, and box → merge approach → rejoin. The
-        // anchor polyline stands in for the spline's arc length; the spline hugs
-        // it within a few percent, against the 2-3× error of the fixed duration.
+        // Leg lengths measured along the authored lane and service joins — the
+        // same points the drawn splines run through
+        // (PitLanePresentationLayout.ForCourse): pit line → lane departure →
+        // service apex, then apex → lane return → merge. The polyline stands in
+        // for spline arc length; it stays within a few percent while keeping
+        // deterministic rules independent from Unity presentation code.
         public static PitRules ForCourse(CourseDefinition course, float laneSpeed)
         {
             Vec2 pitLine = course.Track.Sample(0f).Position;
             Vec2 rejoin = course.Track.Sample(course.Pit.ExitRejoinDistance).Position;
-            return new PitRules(laneSpeed,
-                course.Pit.Boxes.Select(box => Length(pitLine, course.Pit.Entry, box)).ToArray(),
-                course.Pit.Boxes.Select(box => Length(box, course.Pit.MergeApproach, rejoin)).ToArray(),
-                course.Pit.ExitRejoinDistance);
+            var common = new List<Vec2> { pitLine, course.Pit.Entry };
+            common.AddRange(OrderedLaneWaypoints(course.Pit.Stalls));
+            common.Add(course.Pit.MergeApproach);
+            common.Add(rejoin);
+
+            var prefix = new float[common.Count];
+            for (int i = 1; i < common.Count; i++)
+                prefix[i] = prefix[i - 1] + Distance(common[i - 1], common[i]);
+            float commonLength = prefix[prefix.Length - 1];
+            float[] entryJoins = course.Pit.Stalls
+                .Select(stall => prefix[PointIndex(common, stall.EntryAnchor)]).ToArray();
+            float[] exitJoins = course.Pit.Stalls
+                .Select(stall => prefix[PointIndex(common, stall.ExitAnchor)]).ToArray();
+            float[] entryBranches = course.Pit.Stalls
+                .Select(stall => Distance(stall.EntryAnchor, stall.ParkedPosition)).ToArray();
+            float[] exitBranches = course.Pit.Stalls
+                .Select(stall => Distance(stall.ParkedPosition, stall.ExitAnchor)).ToArray();
+            float[] exitShared = exitJoins.Select(join => commonLength - join).ToArray();
+            return new PitRules(laneSpeed, entryJoins, entryBranches,
+                exitBranches, exitShared, exitJoins,
+                ProductionMinimumHeadway, course.Pit.ExitRejoinDistance);
+        }
+
+        private static IReadOnlyList<Vec2> OrderedLaneWaypoints(
+            IReadOnlyList<PitStallDefinition> stalls)
+        {
+            Vec2 heading = stalls[0].ParkedHeading;
+            Vec2 origin = stalls[0].LaneAnchor;
+            var ordered = stalls
+                .SelectMany(stall => new[] { stall.EntryAnchor, stall.ExitAnchor })
+                .OrderBy(point =>
+                    (point.X - origin.X) * heading.X +
+                    (point.Y - origin.Y) * heading.Y);
+            var unique = new List<Vec2>();
+            foreach (Vec2 point in ordered)
+                if (unique.Count == 0 || Distance(unique[unique.Count - 1], point) > .0001f)
+                    unique.Add(point);
+            return unique;
+        }
+
+        private static int PointIndex(IReadOnlyList<Vec2> points, Vec2 target)
+        {
+            for (int i = 0; i < points.Count; i++)
+                if (Distance(points[i], target) <= .0001f) return i;
+            throw new ArgumentException("A pit join is missing from the common lane.");
         }
 
         private static float LengthFor(float[] lengths, PlayerId playerId)
@@ -398,10 +512,36 @@ namespace BoardRacing.Domain
             return lengths[index];
         }
 
+        private static float[] Sum(IReadOnlyList<float> left, IReadOnlyList<float> right)
+        {
+            if (left == null) throw new ArgumentNullException(nameof(left));
+            if (right == null) throw new ArgumentNullException(nameof(right));
+            if (left.Count != right.Count)
+                throw new ArgumentException("Pit route segment counts must match.");
+            return Enumerable.Range(0, left.Count).Select(i => left[i] + right[i]).ToArray();
+        }
+
+        private static float CommonLength(IReadOnlyList<float> joins,
+            IReadOnlyList<float> exitShared)
+        {
+            if (joins == null) throw new ArgumentNullException(nameof(joins));
+            if (exitShared == null) throw new ArgumentNullException(nameof(exitShared));
+            if (joins.Count != exitShared.Count)
+                throw new ArgumentException("Pit route segment counts must match.");
+            return Enumerable.Range(0, joins.Count)
+                .Select(i => joins[i] + exitShared[i]).Max();
+        }
+
         private static float Length(Vec2 a, Vec2 b, Vec2 c)
         {
             float abX = b.X - a.X, abY = b.Y - a.Y, bcX = c.X - b.X, bcY = c.Y - b.Y;
             return (float)(Math.Sqrt(abX * abX + abY * abY) + Math.Sqrt(bcX * bcX + bcY * bcY));
+        }
+
+        private static float Distance(Vec2 a, Vec2 b)
+        {
+            float x = b.X - a.X, y = b.Y - a.Y;
+            return (float)Math.Sqrt(x * x + y * y);
         }
 
         public static PitRules Disabled => default;
@@ -455,14 +595,19 @@ namespace BoardRacing.Domain
     public readonly struct RacerPitSnapshot
     {
         public RacerPitSnapshot(PitService selectedService, PitPhase phase, float serviceProgress,
-            int completedServices, bool finishEligible, float phaseProgress = 0f)
+            int completedServices, bool finishEligible, float phaseProgress = 0f,
+            PitTrafficState trafficState = PitTrafficState.None, float queueOffset = 0f)
         {
             if (!Enum.IsDefined(typeof(PitService), selectedService) || !Enum.IsDefined(typeof(PitPhase), phase) ||
+                !Enum.IsDefined(typeof(PitTrafficState), trafficState) ||
                 serviceProgress < 0f || serviceProgress > 1f || float.IsNaN(serviceProgress) ||
-                phaseProgress < 0f || phaseProgress > 1f || float.IsNaN(phaseProgress) || completedServices < 0)
+                phaseProgress < 0f || phaseProgress > 1f || float.IsNaN(phaseProgress) ||
+                queueOffset < 0f || float.IsNaN(queueOffset) || float.IsInfinity(queueOffset) ||
+                completedServices < 0)
                 throw new ArgumentException("Pit snapshot contains invalid values.");
             SelectedService = selectedService; Phase = phase; ServiceProgress = serviceProgress;
-            CompletedServices = completedServices; FinishEligible = finishEligible; PhaseProgress = phaseProgress;
+            CompletedServices = completedServices; FinishEligible = finishEligible;
+            PhaseProgress = phaseProgress; TrafficState = trafficState; QueueOffset = queueOffset;
         }
         public PitService SelectedService { get; }
         public PitPhase Phase { get; }
@@ -470,6 +615,8 @@ namespace BoardRacing.Domain
         public int CompletedServices { get; }
         public bool FinishEligible { get; }
         public float PhaseProgress { get; }
+        public PitTrafficState TrafficState { get; }
+        public float QueueOffset { get; }
     }
 
     public readonly struct RacerSnapshot
