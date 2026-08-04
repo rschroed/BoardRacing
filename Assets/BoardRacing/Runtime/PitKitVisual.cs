@@ -11,16 +11,15 @@ namespace BoardRacing.Runtime
     /// </summary>
     internal static class PitKitVisual
     {
-        public const int RetainedRenderersPerStall = 18;
+        public const int RetainedRenderersPerStall = 9;
 
         private const string Root = "Pits/";
 
         public static Texture2D LoadWheelStop() => LoadRequired(Root + "PitKit_WheelStop");
-        public static Texture2D LoadRail() => LoadRequired(Root + "PitKit_Rail");
-        public static Texture2D LoadArmPivot() => LoadRequired(Root + "PitKit_ArmPivot");
-        public static Texture2D LoadArmUpper() => LoadRequired(Root + "PitKit_ArmUpper");
-        public static Texture2D LoadArmForearm() => LoadRequired(Root + "PitKit_ArmForearm");
-        public static Texture2D LoadToolHead() => LoadRequired(Root + "PitKit_ToolHead");
+        public static Texture2D LoadServiceBench() =>
+            LoadRequired(Root + "PitKit_ServiceBenchB");
+        public static Texture2D LoadServiceTongue() =>
+            LoadRequired(Root + "PitKit_ServiceTongueB");
         public static Texture2D LoadToolArc() => LoadRequired(Root + "PitKit_FxToolArc");
         public static Texture2D LoadSparks() => LoadRequired(Root + "PitKit_FxSparks");
         public static Texture2D LoadLampHalo() => LoadRequired(Root + "PitKit_FxLampHalo");
@@ -44,15 +43,6 @@ namespace BoardRacing.Runtime
 
         public static Texture2D LoadMarker(PieceIdentity identity) =>
             LoadRequired(MarkerResourcePath(identity));
-
-        public static Texture2D LoadTirePile() =>
-            LoadRequired(Root + "PitKit_PropTirePile");
-
-        public static Texture2D LoadToolCart() =>
-            LoadRequired(Root + "PitKit_PropToolCart");
-
-        public static Texture2D LoadJackAndTire() =>
-            LoadRequired(Root + "PitKit_PropJackTire");
 
         private static Texture2D LoadRequired(string path)
         {

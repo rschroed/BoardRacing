@@ -75,41 +75,47 @@ namespace BoardRacing.Runtime
             var renderers = new List<SpriteRenderer>(
                 PitKitVisual.RetainedRenderersPerStall);
             SpriteRenderer wheelStop = AddPitSprite(root, "Wheel Stop",
-                PitKitVisual.LoadWheelStop(), 8.1f, 1);
-            wheelStop.transform.localPosition = new Vector3(34f, 0f, 0f);
+                PitKitVisual.LoadWheelStop(), 6.25f, 1);
+            wheelStop.transform.localPosition = new Vector3(-17f, 0f, 0f);
+            wheelStop.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+            // The authored stop sits beneath the rear axle. Stretch its long
+            // axis just beyond the 26 px car body while keeping the crossbar
+            // shallow enough to read as a stop rather than a second lane mark.
+            wheelStop.transform.localScale = new Vector3(1.25f, .55f, 1f);
             renderers.Add(wheelStop);
 
-            SpriteRenderer rail = AddPitSprite(root, "Service Rail",
-                PitKitVisual.LoadRail(), 13.79f, 1);
-            rail.transform.localPosition = new Vector3(0f, 31f, 0f);
-            renderers.Add(rail);
+            float side = placement.OutwardSign;
+            SpriteRenderer bench = AddPitSprite(root, "Full Length Service Bench",
+                PitKitVisual.LoadServiceBench(), 8f, 1);
+            bench.transform.localPosition = new Vector3(0f, 42f * side, 0f);
+            renderers.Add(bench);
 
-            ArmRig leftArm = CreatePitArm(root, -25f, false, renderers);
-            ArmRig rightArm = CreatePitArm(root, 25f, true, renderers);
+            SpriteRenderer tongue = AddPitSprite(root, "Service Connector",
+                PitKitVisual.LoadServiceTongue(), 15f, 2);
+            tongue.transform.localPosition = new Vector3(0f, 22f * side, 0f);
+            tongue.transform.localRotation = Quaternion.Euler(
+                0f, 0f, side < 0f ? 180f : 0f);
+            renderers.Add(tongue);
 
-            SpriteRenderer marker = AddPitSprite(root, "Detached Player Marker",
-                PitKitVisual.LoadMarker(identity), 12.95f, 2);
-            marker.transform.localPosition = new Vector3(
-                MarkerOffset(playerId), 57f, 0f);
+            SpriteRenderer marker = AddPitSprite(root, "Bench Player Marker",
+                PitKitVisual.LoadMarker(identity), 30.5f, 2);
+            marker.transform.localPosition = new Vector3(-22f, 42f * side, 0f);
             renderers.Add(marker);
-
-            CreateDecor(root, playerId, renderers,
-                out SpriteRenderer decorOne, out SpriteRenderer decorTwo);
 
             SpriteRenderer toolArc = AddPitSprite(root, "Tool Arc",
                 PitKitVisual.LoadToolArc(), 16.8f, 4);
-            toolArc.transform.localPosition = new Vector3(-13f, 3f, 0f);
-            toolArc.transform.localRotation = Quaternion.Euler(0f, 0f, 18f);
+            toolArc.transform.localPosition = new Vector3(-11f, 4f * side, 0f);
+            toolArc.transform.localRotation = Quaternion.Euler(0f, 0f, 18f * side);
             renderers.Add(toolArc);
 
             SpriteRenderer sparks = AddPitSprite(root, "Four Spark Burst",
                 PitKitVisual.LoadSparks(), 12.8f, 4);
-            sparks.transform.localPosition = new Vector3(15f, 2f, 0f);
+            sparks.transform.localPosition = new Vector3(13f, 3f * side, 0f);
             renderers.Add(sparks);
 
             SpriteRenderer lampHalo = AddPitSprite(root, "Activity Lamp Halo",
-                PitKitVisual.LoadLampHalo(), 12.5f, 4);
-            lampHalo.transform.localPosition = new Vector3(0f, 31f, 0f);
+                PitKitVisual.LoadLampHalo(), 16.5f, 3);
+            lampHalo.transform.localPosition = new Vector3(3f, 42f * side, 0f);
             renderers.Add(lampHalo);
 
             SpriteRenderer readyRings = AddPitSprite(root, "Ready Rings",
@@ -125,71 +131,9 @@ namespace BoardRacing.Runtime
                 throw new InvalidOperationException(
                     "The pit kit's retained renderer budget changed.");
 
-            return new PitKitRig(root, identity, renderers, wheelStop,
-                rail, marker, decorOne, decorTwo, leftArm, rightArm,
+            return new PitKitRig(root, identity, renderers, side, wheelStop,
+                bench, tongue, marker,
                 toolArc, sparks, lampHalo, readyRings, releaseStreak);
-        }
-
-        private ArmRig CreatePitArm(Transform root, float x, bool mirror,
-            ICollection<SpriteRenderer> renderers)
-        {
-            var mirrorObject = new GameObject(mirror ? "Right Arm Rig" : "Left Arm Rig");
-            Transform mirrorRoot = mirrorObject.transform;
-            mirrorRoot.SetParent(root, false);
-            mirrorRoot.localPosition = new Vector3(x, 29f, 0f);
-            mirrorRoot.localScale = new Vector3(mirror ? -1f : 1f, 1f, 1f);
-
-            SpriteRenderer pivot = AddPitSprite(mirrorRoot, "Pivot Housing",
-                PitKitVisual.LoadArmPivot(), 16.25f, 2);
-            renderers.Add(pivot);
-
-            SpriteRenderer upper = AddPitSprite(mirrorRoot, "Upper Arm",
-                PitKitVisual.LoadArmUpper(), 11.86f, 3,
-                new Vector2(.142f, .5f));
-            renderers.Add(upper);
-
-            SpriteRenderer forearm = AddPitSprite(upper.transform, "Forearm",
-                PitKitVisual.LoadArmForearm(), 12.08f, 3,
-                new Vector2(.145f, .5f));
-            forearm.transform.localPosition = new Vector3(24f, 0f, 0f);
-            renderers.Add(forearm);
-
-            SpriteRenderer tool = AddPitSprite(forearm.transform, "Tool Head",
-                PitKitVisual.LoadToolHead(), 13.2f, 3,
-                new Vector2(.18f, .5f));
-            tool.transform.localPosition = new Vector3(22f, 0f, 0f);
-            renderers.Add(tool);
-            return new ArmRig(upper.transform, forearm.transform, tool.transform);
-        }
-
-        private void CreateDecor(Transform root, PlayerId playerId,
-            ICollection<SpriteRenderer> renderers, out SpriteRenderer first,
-            out SpriteRenderer second)
-        {
-            int index = (int)playerId - 1;
-            Texture2D firstTexture = index % 2 == 0
-                ? PitKitVisual.LoadTirePile() : PitKitVisual.LoadToolCart();
-            Texture2D secondTexture = index < 2
-                ? PitKitVisual.LoadJackAndTire() : PitKitVisual.LoadToolCart();
-            float firstPpu = index % 2 == 0 ? 15.9f : 13.4f;
-            float secondPpu = index < 2 ? 14.8f : 13.4f;
-
-            first = AddPitSprite(root, "Pit Decoration A", firstTexture, firstPpu, 1);
-            first.transform.localPosition = new Vector3(
-                index % 2 == 0 ? 36f : -36f, 48f, 0f);
-            first.transform.localRotation = Quaternion.Euler(
-                0f, 0f, index % 2 == 0 ? 7f : -6f);
-            renderers.Add(first);
-
-            second = AddPitSprite(root, "Pit Decoration B", secondTexture, secondPpu, 1);
-            second.transform.localPosition = new Vector3(
-                index % 2 == 0 ? -37f : 37f, 49f, 0f);
-            second.transform.localRotation = Quaternion.Euler(
-                0f, 0f, index % 2 == 0 ? -5f : 8f);
-            // Alternating one- and two-prop bays keep the complex from reading
-            // as a repeated stamp while the retained object budget stays fixed.
-            second.gameObject.SetActive(index % 2 == 0);
-            renderers.Add(second);
         }
 
         private SpriteRenderer AddPitSprite(Transform parent, string layerName,
@@ -226,60 +170,22 @@ namespace BoardRacing.Runtime
             return false;
         }
 
-        private static float MarkerOffset(PlayerId playerId)
-        {
-            switch (playerId)
-            {
-                case PlayerId.Player1: return -15f;
-                case PlayerId.Player2: return 18f;
-                case PlayerId.Player3: return -10f;
-                default: return 14f;
-            }
-        }
-
-        private sealed class ArmRig
-        {
-            public ArmRig(Transform upper, Transform forearm, Transform tool)
-            {
-                Upper = upper;
-                Forearm = forearm;
-                Tool = tool;
-            }
-
-            public Transform Upper { get; }
-            public Transform Forearm { get; }
-            public Transform Tool { get; }
-
-            public void Apply(float reach, float beat)
-            {
-                Upper.localRotation = Quaternion.Euler(0f, 0f,
-                    Mathf.Lerp(5f, -54f + beat * 6f, reach));
-                Forearm.localRotation = Quaternion.Euler(0f, 0f,
-                    Mathf.Lerp(166f, 72f - beat * 9f, reach));
-                Tool.localRotation = Quaternion.Euler(0f, 0f,
-                    Mathf.Lerp(-160f, -22f + beat * 5f, reach));
-            }
-        }
-
         private sealed class PitKitRig
         {
             private readonly PieceIdentity identity;
             private readonly IReadOnlyList<SpriteRenderer> renderers;
-            private readonly SpriteRenderer wheelStop, rail, marker;
-            private readonly SpriteRenderer decorOne, decorTwo;
-            private readonly ArmRig leftArm, rightArm;
+            private readonly float outwardSign;
+            private readonly SpriteRenderer wheelStop, bench, tongue, marker;
             private readonly SpriteRenderer toolArc, sparks, lampHalo;
             private readonly SpriteRenderer readyRings, releaseStreak;
             private int completedServices;
             private float readyRemaining;
-            private float armReach;
+            private float serviceReach;
 
             public PitKitRig(Transform root, PieceIdentity identity,
                 IReadOnlyList<SpriteRenderer> renderers,
-                SpriteRenderer wheelStop, SpriteRenderer rail,
-                SpriteRenderer marker,
-                SpriteRenderer decorOne, SpriteRenderer decorTwo,
-                ArmRig leftArm, ArmRig rightArm,
+                float outwardSign, SpriteRenderer wheelStop,
+                SpriteRenderer bench, SpriteRenderer tongue, SpriteRenderer marker,
                 SpriteRenderer toolArc, SpriteRenderer sparks,
                 SpriteRenderer lampHalo, SpriteRenderer readyRings,
                 SpriteRenderer releaseStreak)
@@ -287,13 +193,11 @@ namespace BoardRacing.Runtime
                 Root = root;
                 this.identity = identity;
                 this.renderers = renderers;
+                this.outwardSign = outwardSign;
                 this.wheelStop = wheelStop;
-                this.rail = rail;
+                this.bench = bench;
+                this.tongue = tongue;
                 this.marker = marker;
-                this.decorOne = decorOne;
-                this.decorTwo = decorTwo;
-                this.leftArm = leftArm;
-                this.rightArm = rightArm;
                 this.toolArc = toolArc;
                 this.sparks = sparks;
                 this.lampHalo = lampHalo;
@@ -323,37 +227,25 @@ namespace BoardRacing.Runtime
                 float pulse = .5f + .5f * Mathf.Sin(phase);
                 float targetReach = State == PitPresentationState.Servicing ? 1f :
                     State == PitPresentationState.Ready ? .32f : 0f;
-                armReach = Mathf.MoveTowards(armReach, targetReach,
-                    deltaSeconds * (targetReach > armReach ? 4.5f : 5.5f));
-                float beat = Mathf.Sin(phase * 1.18f);
-                leftArm.Apply(armReach, beat);
-                rightArm.Apply(armReach, -beat);
+                serviceReach = Mathf.MoveTowards(serviceReach, targetReach,
+                    deltaSeconds * (targetReach > serviceReach ? 4.5f : 5.5f));
+                tongue.transform.localPosition = new Vector3(0f,
+                    Mathf.Lerp(22f, 17f, serviceReach) * outwardSign, 0f);
+                float tonguePulse = State == PitPresentationState.Servicing
+                    ? 1f + .035f * pulse : 1f;
+                tongue.transform.localScale = new Vector3(
+                    1f, tonguePulse, 1f);
 
                 float activeAlpha = State == PitPresentationState.Inactive ? .34f : 1f;
                 SetNormal(wheelStop, .78f * activeAlpha);
-                SetNormal(rail, .84f * activeAlpha);
+                wheelStop.color = new Color(1f, .9f, .58f, wheelStop.color.a);
+                SetNormal(bench, .94f * activeAlpha);
+                SetNormal(tongue, (.76f + .24f * serviceReach) * activeAlpha);
                 SetNormal(marker, State == PitPresentationState.Inactive ? .28f :
                     State == PitPresentationState.Approaching ? .84f + .16f * pulse : 1f);
                 marker.transform.localScale = Vector3.one *
                     (State == PitPresentationState.Ready ? 1.06f + .03f * pulse :
                      State == PitPresentationState.Approaching ? 1f + .025f * pulse : 1f);
-                SetNormal(decorOne, .82f * activeAlpha);
-                if (decorTwo.gameObject.activeSelf)
-                    SetNormal(decorTwo, .78f * activeAlpha);
-
-                for (int i = 0; i < renderers.Count; i++)
-                {
-                    SpriteRenderer renderer = renderers[i];
-                    if (renderer == wheelStop ||
-                        renderer == rail || renderer == marker ||
-                        renderer == decorOne || renderer == decorTwo ||
-                        renderer == toolArc || renderer == sparks ||
-                        renderer == lampHalo || renderer == readyRings ||
-                        renderer == releaseStreak)
-                        continue;
-                    SetNormal(renderer, (.78f + .22f * armReach) * activeAlpha);
-                }
-
                 float service = State == PitPresentationState.Servicing ? 1f : 0f;
                 SetEffect(toolArc, service * (.48f + .32f * pulse),
                     .88f + .12f * pulse, Color.white);
@@ -361,9 +253,11 @@ namespace BoardRacing.Runtime
                     .82f + .24f * pulse, Color.white);
 
                 float lamp = State == PitPresentationState.Servicing
-                    ? .5f + .3f * pulse
+                    ? .56f + .36f * pulse
                     : State == PitPresentationState.Ready ? .95f
+                    : State == PitPresentationState.Occupied ? .18f
                     : State == PitPresentationState.Approaching ? .16f + .12f * pulse
+                    : State == PitPresentationState.Releasing ? .24f + .12f * pulse
                     : 0f;
                 SetEffect(lampHalo, lamp, .9f + .12f * pulse, Color.white);
 
