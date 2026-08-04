@@ -45,10 +45,10 @@ instead be scaled to the existing centers.
 
 ## Generation notes
 
-Created with built-in ImageGen in edit/reference mode. The prompt set held the
-approved top-down Blended Deck composition and production car scale constant,
-then varied one structural idea at a time: a corrected transverse stop marker,
-a full-length side service bench, and a shared end-of-row lap counter.
+The concept study held the approved top-down Blended Deck composition and
+production car scale constant, then varied one structural idea at a time: a
+corrected transverse stop marker, a full-length side service bench, and a
+shared end-of-row lap counter.
 
 The production assets use the approved option B image as their style and
 proportion reference:
@@ -60,6 +60,6 @@ proportion reference:
 - `PitKit_ServiceTongueB` asks for one isolated charcoal connector with three
   mustard contact bars, sized to bridge the console and parked car.
 
-Both were generated on a flat magenta chroma field with built-in ImageGen,
-keyed locally to alpha, trimmed, downscaled for the production sprite budget,
-and saved under `Assets/BoardRacing/Presentation/Resources/Pits`.
+Both were authored on a flat magenta chroma field, keyed locally to alpha,
+trimmed, downscaled for the production sprite budget, and saved under
+`Assets/BoardRacing/Presentation/Resources/Pits`.
