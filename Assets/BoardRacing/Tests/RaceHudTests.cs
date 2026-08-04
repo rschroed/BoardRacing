@@ -242,15 +242,13 @@ namespace BoardRacing.Tests
             RaceUiModel countdown = new RaceUiModel(RacePhase.Countdown,
                 new[] { Player(PlayerId.Player1), Player(PlayerId.Player2) },
                 CenterMessageKind.Countdown, "2");
-            hud.ApplyRace(countdown, false, new CarAnnotationUiModel[0],
-                new PitAnnotationUiModel[0]);
+            hud.ApplyRace(countdown, false);
             Assert.That(hud.Setup.Container.activeSelf, Is.False);
             Assert.That(hud.Shared.Center.gameObject.activeSelf, Is.True);
             Assert.That(hud.Shared.Center.text, Is.EqualTo("2"));
             Assert.That(hud.Shared.Exit.text, Is.EqualTo("EXIT TO SETUP"));
 
-            hud.ApplyRace(countdown, true, new CarAnnotationUiModel[0],
-                new PitAnnotationUiModel[0]);
+            hud.ApplyRace(countdown, true);
             Assert.That(hud.Shared.Overlay.activeSelf, Is.True);
             Assert.That(hud.Shared.Heading.text, Is.EqualTo("RETURN TO SETUP?"));
             Assert.That(hud.Shared.Primary.text, Is.EqualTo("RETURN TO PLAYER SETUP"));
@@ -259,8 +257,7 @@ namespace BoardRacing.Tests
             RaceUiModel results = new RaceUiModel(RacePhase.Finished,
                 new[] { Player(PlayerId.Player1), Player(PlayerId.Player2) },
                 CenterMessageKind.Winner, "▲ ELLIS WINS");
-            hud.ApplyRace(results, false, new CarAnnotationUiModel[0],
-                new PitAnnotationUiModel[0]);
+            hud.ApplyRace(results, false);
             Assert.That(hud.Shared.Heading.text, Is.EqualTo("RACE FINISHED"));
             Assert.That(hud.Shared.Primary.text, Is.EqualTo("REMATCH"));
             Assert.That(hud.Shared.Secondary.text, Is.EqualTo("PLAYER / COURSE SETUP"));
@@ -268,38 +265,26 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void CanvasAnnotationsShowOnlyApprovedCarAndPitInformation()
+        public void RaceCanvasHasNoFloatingCarOrPitAnnotations()
         {
             RaceHud hud = CreateFourHud();
-            var cars = new[]
-            {
-                new CarAnnotationUiModel(PlayerId.Player1, new Vector2(500f, 400f),
-                    "SLOWDOWN!", true),
-                new CarAnnotationUiModel(PlayerId.Player3, new Vector2(700f, 600f),
-                    "PIT ENTRY", false)
-            };
-            var pits = new[]
-            {
-                new PitAnnotationUiModel(PlayerId.Player1, new Vector2(900f, 430f), "▲"),
-                new PitAnnotationUiModel(PlayerId.Player3, new Vector2(1040f, 430f), "◆")
-            };
             hud.ApplyRace(new RaceUiModel(RacePhase.Racing,
                     new[] { Player(PlayerId.Player1), Player(PlayerId.Player3) },
                     CenterMessageKind.None, null),
-                false, cars, pits);
+                false);
 
-            Assert.That(hud.CarAnnotations[PlayerId.Player1].Container.transform.Find("Symbol"),
-                Is.Null, "the authored car body owns moving-car identity");
-            Assert.That(hud.CarAnnotations[PlayerId.Player1].Status.text,
-                Is.EqualTo("SLOWDOWN!"));
-            Assert.That(hud.CarAnnotations[PlayerId.Player3].Status.text,
-                Is.EqualTo("PIT ENTRY"));
-            Assert.That(hud.PitAnnotations[PlayerId.Player1].text, Is.EqualTo("▲"));
-            Assert.That(hud.PitAnnotations[PlayerId.Player3].text, Is.EqualTo("◆"));
-            Assert.That(hud.PitAnnotations[PlayerId.Player2].gameObject.activeSelf, Is.False);
+            Transform[] nodes = hud.gameObject.GetComponentsInChildren<Transform>(true);
+            Assert.That(nodes, Has.None.Matches<Transform>(x =>
+                x.name.StartsWith("Car Annotation") || x.name.StartsWith("Pit Annotation")));
             Assert.That(hud.gameObject.GetComponentsInChildren<Text>(true),
                 Has.None.Matches<Text>(x => x.text == "PIT LANE" ||
                     x.text == "F" || x.text == "T" || x.text.Contains("P1 BOX")));
+
+            BindingFlags methods = BindingFlags.Instance |
+                BindingFlags.Public | BindingFlags.NonPublic;
+            Assert.That(typeof(RacePrototype).GetMethod("BuildCarAnnotations", methods), Is.Null);
+            Assert.That(typeof(RacePrototype).GetMethod("BuildPitAnnotations", methods), Is.Null);
+            Assert.That(typeof(RacePrototype).GetMethod("CarPitLabel", methods), Is.Null);
         }
 
         [Test]

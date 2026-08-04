@@ -443,8 +443,7 @@ namespace BoardRacing.Runtime
                 return;
             }
             if (presentedUi.Players != null)
-                hud.ApplyRace(presentedUi, exitConfirmationOpen,
-                    BuildCarAnnotations(), BuildPitAnnotations());
+                hud.ApplyRace(presentedUi, exitConfirmationOpen);
         }
 
         private RaceUiModel BuildLobbyCockpitUi()
@@ -557,14 +556,6 @@ namespace BoardRacing.Runtime
 
         private static bool OnRacingLine(RacerSnapshot racer) =>
             racer.Pit.Phase == PitPhase.OnTrack || racer.Pit.Phase == PitPhase.Requested;
-
-        // The drawn car center: the smoothed pose plus the racing-line lateral
-        // offset (suppressed once the car is physically in the pit complex).
-        private Vector2 CarCenter(RacerSnapshot racer)
-        {
-            CarPose(racer, out Vector2 center, out Vector2 tangent);
-            return OffsetCenter(racer, center, tangent);
-        }
 
         private Vector2 OffsetCenter(RacerSnapshot racer, Vector2 center, Vector2 tangent)
         {
@@ -766,38 +757,6 @@ namespace BoardRacing.Runtime
             id == PlayerId.Player2 ? PlayerTwoAccent :
             id == PlayerId.Player3 ? PlayerThreeAccent : PlayerFourAccent;
 
-        private IReadOnlyList<PitAnnotationUiModel> BuildPitAnnotations()
-        {
-            var result = new List<PitAnnotationUiModel>();
-            foreach (PlayerSeat seat in raceSeats)
-            {
-                Vec2 box = course.Pit.Boxes[(int)seat.PlayerId - 1];
-                result.Add(new PitAnnotationUiModel(seat.PlayerId,
-                    new Vector2(box.X, box.Y), seat.PieceIdentity.Value.Symbol));
-            }
-            return result;
-        }
-
-        private IReadOnlyList<CarAnnotationUiModel> BuildCarAnnotations()
-        {
-            return presentedRace.Racers.Select(racer =>
-            {
-                string status = null;
-                bool statusAbove = false;
-                if (racer.RecoveryRemaining > 0f)
-                {
-                    status = "SLOWDOWN!";
-                    statusAbove = true;
-                }
-                else if (racer.Finished)
-                    status = "FINISHED · " + Ordinal(racer.Place);
-                else if (racer.Pit.Phase != PitPhase.OnTrack)
-                    status = CarPitLabel(racer.Pit);
-                return new CarAnnotationUiModel(racer.PlayerId, CarCenter(racer),
-                    status, statusAbove);
-            }).ToArray();
-        }
-
         private PitLanePresentationLayout PitLayout() =>
             PitLanePresentationLayout.ForCourse(course);
 
@@ -813,22 +772,5 @@ namespace BoardRacing.Runtime
             tangent = new Vector2(pose.Tangent.X, pose.Tangent.Y);
         }
 
-        private static string CarPitLabel(RacerPitSnapshot pit)
-        {
-            if (pit.Phase == PitPhase.Requested) return "PIT @ LINE";
-            if (pit.TrafficState == PitTrafficState.Queued) return "PIT QUEUE";
-            if (pit.TrafficState == PitTrafficState.WaitingToRelease)
-                return "WAITING FOR PIT LANE";
-            if (pit.Phase == PitPhase.Entering) return "PIT ENTRY";
-            if (pit.Phase == PitPhase.InService) return pit.SelectedService == PitService.None
-                ? "CAR PARKED · REPAIR OR LEAVE" : "IN BOX · " + ServiceName(pit.SelectedService);
-            if (pit.Phase == PitPhase.Exiting) return "PIT EXIT";
-            return string.Empty;
-        }
-
-        private static string ServiceName(PitService service) =>
-            service == PitService.Tires ? "TIRES" : service == PitService.Fuel ? "FUEL" : "NO SERVICE";
-
-        private static string Ordinal(int place) => RaceUiModelBuilder.Ordinal(place);
     }
 }

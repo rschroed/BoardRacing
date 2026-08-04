@@ -369,65 +369,6 @@ namespace BoardRacing.Runtime
         }
     }
 
-    internal readonly struct CarAnnotationUiModel
-    {
-        public CarAnnotationUiModel(PlayerId playerId, Vector2 center, string status,
-            bool statusAbove)
-        {
-            PlayerId = playerId;
-            Center = center;
-            Status = status;
-            StatusAbove = statusAbove;
-        }
-
-        public PlayerId PlayerId { get; }
-        public Vector2 Center { get; }
-        public string Status { get; }
-        public bool StatusAbove { get; }
-    }
-
-    internal readonly struct PitAnnotationUiModel
-    {
-        public PitAnnotationUiModel(PlayerId playerId, Vector2 center, string symbol)
-        {
-            PlayerId = playerId;
-            Center = center;
-            Symbol = symbol;
-        }
-
-        public PlayerId PlayerId { get; }
-        public Vector2 Center { get; }
-        public string Symbol { get; }
-    }
-
-    internal sealed class CarAnnotationHud
-    {
-        internal GameObject Container;
-        internal Text Status;
-
-        internal static CarAnnotationHud Create(Transform parent, PlayerId id, Font font)
-        {
-            var root = RaceHud.CreateFullScreenNode(parent, "Car Annotation " + id);
-            return new CarAnnotationHud
-            {
-                Container = root.gameObject,
-                Status = RaceHud.CreateLabel(root, "Status", new Rect(0f, 0f, 220f, 34f),
-                    24, new Color(1f, .75f, .2f), font)
-            };
-        }
-
-        internal void Apply(CarAnnotationUiModel model)
-        {
-            Container.SetActive(true);
-            Status.text = model.Status ?? string.Empty;
-            Status.gameObject.SetActive(!string.IsNullOrEmpty(model.Status));
-            if (!string.IsNullOrEmpty(model.Status))
-                RaceHud.Place(Status.rectTransform, model.StatusAbove
-                    ? new Rect(model.Center.x - 110f, model.Center.y - 74f, 220f, 36f)
-                    : new Rect(model.Center.x - 110f, model.Center.y + 32f, 220f, 34f));
-        }
-    }
-
     internal sealed class SetupSeatHud
     {
         internal GameObject Container;
@@ -630,11 +571,6 @@ namespace BoardRacing.Runtime
         internal SeatHud PlayerOne, PlayerTwo, PlayerThree, PlayerFour;
         internal SetupHud Setup;
         internal SharedRaceHud Shared;
-        internal readonly Dictionary<PlayerId, CarAnnotationHud> CarAnnotations =
-            new Dictionary<PlayerId, CarAnnotationHud>();
-        internal readonly Dictionary<PlayerId, Text> PitAnnotations =
-            new Dictionary<PlayerId, Text>();
-
         public static RaceHud Create(RaceLayout layout, Color playerOneAccent,
             Color playerTwoAccent)
         {
@@ -663,16 +599,6 @@ namespace BoardRacing.Runtime
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             hud.PlayerFour = SeatHud.Create(hud.transform, layout.PlayerFour, playerFourAccent, font);
             hud.PlayerThree = SeatHud.Create(hud.transform, layout.PlayerThree, playerThreeAccent, font);
-            foreach (PlayerId id in new[]
-                { PlayerId.Player1, PlayerId.Player2, PlayerId.Player3, PlayerId.Player4 })
-            {
-                hud.CarAnnotations[id] = CarAnnotationHud.Create(hud.transform, id, font);
-                hud.CarAnnotations[id].Container.SetActive(false);
-                Text pit = CreateLabel(hud.transform, "Pit Annotation " + id,
-                    new Rect(0f, 0f, 94f, 54f), 22, Color.white, font);
-                pit.gameObject.SetActive(false);
-                hud.PitAnnotations[id] = pit;
-            }
             hud.Shared = SharedRaceHud.Create(hud.transform, font);
             hud.Setup = SetupHud.Create(hud.transform, layout, font);
             hud.Shared.Container.SetActive(false);
@@ -690,31 +616,13 @@ namespace BoardRacing.Runtime
             ApplySeats(cockpitUi);
             Setup.Apply(lobbyUi);
             Shared.Container.SetActive(false);
-            HideAnnotations();
         }
 
-        public void ApplyRace(RaceUiModel ui, bool exitConfirmationOpen,
-            IReadOnlyList<CarAnnotationUiModel> cars,
-            IReadOnlyList<PitAnnotationUiModel> pits)
+        public void ApplyRace(RaceUiModel ui, bool exitConfirmationOpen)
         {
             ApplySeats(ui);
             Setup.Container.SetActive(false);
             Shared.Apply(ui, exitConfirmationOpen);
-            foreach (CarAnnotationHud annotation in CarAnnotations.Values)
-                annotation.Container.SetActive(false);
-            foreach (CarAnnotationUiModel car in cars)
-                CarAnnotations[car.PlayerId].Apply(car);
-            foreach (Text pit in PitAnnotations.Values)
-                pit.gameObject.SetActive(false);
-            foreach (PitAnnotationUiModel model in pits)
-            {
-                Text pit = PitAnnotations[model.PlayerId];
-                pit.text = model.Symbol ?? string.Empty;
-                pit.gameObject.SetActive(!string.IsNullOrEmpty(model.Symbol));
-                if (pit.gameObject.activeSelf)
-                    Place(pit.rectTransform, new Rect(model.Center.x - 47f,
-                        model.Center.y - 27f, 94f, 54f));
-            }
         }
 
         private void ApplySeats(RaceUiModel ui)
@@ -729,14 +637,6 @@ namespace BoardRacing.Runtime
                 seat.SetVisible(model.HasValue);
                 if (model.HasValue) seat.Apply(model.Value, ui.Phase);
             }
-        }
-
-        private void HideAnnotations()
-        {
-            foreach (CarAnnotationHud annotation in CarAnnotations.Values)
-                annotation.Container.SetActive(false);
-            foreach (Text pit in PitAnnotations.Values)
-                pit.gameObject.SetActive(false);
         }
 
         public void SetAccents(Color playerOne, Color playerTwo)
