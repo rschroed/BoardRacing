@@ -76,9 +76,9 @@ namespace BoardRacing.Runtime
                 PitKitVisual.RetainedRenderersPerStall);
             SpriteRenderer wheelStop = AddPitSprite(root, "Wheel Stop",
                 PitKitVisual.LoadWheelStop(), 6.25f, 1);
-            wheelStop.transform.localPosition = new Vector3(-17f, 0f, 0f);
+            wheelStop.transform.localPosition = new Vector3(17f, 0f, 0f);
             wheelStop.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
-            // The authored stop sits beneath the rear axle. Stretch its long
+            // The authored stop sits beneath the front axle. Stretch its long
             // axis just beyond the 26 px car body while keeping the crossbar
             // shallow enough to read as a stop rather than a second lane mark.
             wheelStop.transform.localScale = new Vector3(1.25f, .55f, 1f);
@@ -236,13 +236,14 @@ namespace BoardRacing.Runtime
                 tongue.transform.localScale = new Vector3(
                     1f, tonguePulse, 1f);
 
-                float activeAlpha = State == PitPresentationState.Inactive ? .34f : 1f;
-                SetNormal(wheelStop, .78f * activeAlpha);
+                // These are physical course pieces, so semantic inactivity
+                // quiets only their lights and effects. It never fades the
+                // bench, connector, stop, or identity marker out of existence.
+                SetNormal(wheelStop, 1f);
                 wheelStop.color = new Color(1f, .9f, .58f, wheelStop.color.a);
-                SetNormal(bench, .94f * activeAlpha);
-                SetNormal(tongue, (.76f + .24f * serviceReach) * activeAlpha);
-                SetNormal(marker, State == PitPresentationState.Inactive ? .28f :
-                    State == PitPresentationState.Approaching ? .84f + .16f * pulse : 1f);
+                SetNormal(bench, 1f);
+                SetNormal(tongue, 1f);
+                SetNormal(marker, 1f);
                 marker.transform.localScale = Vector3.one *
                     (State == PitPresentationState.Ready ? 1.06f + .03f * pulse :
                      State == PitPresentationState.Approaching ? 1f + .025f * pulse : 1f);

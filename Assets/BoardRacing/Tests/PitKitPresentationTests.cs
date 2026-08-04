@@ -139,6 +139,9 @@ namespace BoardRacing.Tests
                         wheelStop.localEulerAngles.z, 90f)),
                     Is.LessThan(.01f),
                     "the stop bar must be transverse to the parked car");
+                Assert.That(wheelStop.localPosition.x,
+                    Is.GreaterThan(0f),
+                    "the stop bar must sit beneath the front axle");
                 Assert.That(wheelStop.GetComponent<SpriteRenderer>()
                         .sprite.bounds.size.x * wheelStop.localScale.x,
                     Is.GreaterThanOrEqualTo(32f),
@@ -147,6 +150,12 @@ namespace BoardRacing.Tests
                         .Any(x => x.name.Contains("Arm")),
                     Is.False,
                     "the approved slot-car bench replaces the robotic arm treatment");
+                Assert.That(new[] { bench, connector, wheelStop,
+                            root.Find("Bench Player Marker") }
+                        .Select(x => x.GetComponent<SpriteRenderer>())
+                        .All(x => x.enabled && x.color.a >= .999f),
+                    Is.True,
+                    "physical pit hardware must remain opaque while inactive");
                 Assert.That(surface.PitKitState(id),
                     Is.EqualTo(PitPresentationState.Inactive));
             }

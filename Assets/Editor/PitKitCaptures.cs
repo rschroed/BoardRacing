@@ -24,8 +24,26 @@ public static class PitKitCaptures
         Directory.CreateDirectory(OutputDirectory);
         foreach (CourseDefinition course in CourseCatalog.All())
             CaptureQuietComplex(course);
+        CaptureInactiveComplex(CourseCatalog.Wedge());
         CaptureActiveStates(CourseCatalog.Wedge());
         EditorApplication.Exit(0);
+    }
+
+    private static void CaptureInactiveComplex(CourseDefinition course)
+    {
+        RaceSurfaceRenderer surface = CreateSurface(course,
+            out PitLanePresentationLayout pits);
+        try
+        {
+            PlaceAllCars(surface, pits);
+            surface.SetPitPresentation(null, 0f, 0f);
+            Render(surface, Path.Combine(OutputDirectory,
+                "wedge-inactive.png"));
+        }
+        finally
+        {
+            Object.DestroyImmediate(surface.gameObject);
+        }
     }
 
     private static void CaptureQuietComplex(CourseDefinition course)

@@ -6,6 +6,8 @@ issue #182 pit geometry.
 
 - `wedge-quiet.png`, `fishhook-quiet.png`, `hourglass-quiet.png`, and
   `infinity-quiet.png` show four occupied stalls at their authored parked poses.
+- `wedge-inactive.png` confirms that the physical benches, connectors, stops,
+  and identity markers remain fully opaque before any racer becomes active.
 - `wedge-active-states.png` shows, from left to right, occupied, servicing,
   ready, and releasing treatments.
 
