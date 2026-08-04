@@ -23,12 +23,15 @@ namespace BoardRacing.Runtime
             Heading = heading;
             Outward = outward;
             RotationDegrees = Mathf.Atan2(heading.y, heading.x) * Mathf.Rad2Deg;
+            var left = new Vector2(-heading.y, heading.x);
+            OutwardSign = Vector2.Dot(left, outward) < 0f ? -1f : 1f;
         }
 
         public Vector2 Center { get; }
         public Vector2 Heading { get; }
         public Vector2 Outward { get; }
         public float RotationDegrees { get; }
+        public float OutwardSign { get; }
     }
 
     internal static class PitKitPresentation

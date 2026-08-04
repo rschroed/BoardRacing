@@ -21,8 +21,10 @@ namespace BoardRacing.Tests
         }
 
         [Test]
-        public void ApprovedKitUsesCourseSurfaceAndMarkersStayDistinct()
+        public void ApprovedKitUsesAuthoredBenchLayersAndDistinctMarkers()
         {
+            Assert.That(PitKitVisual.LoadServiceBench(), Is.Not.Null);
+            Assert.That(PitKitVisual.LoadServiceTongue(), Is.Not.Null);
             string[] markerPaths = PhysicalPieceCatalog.All
                 .Select(PitKitVisual.MarkerResourcePath).ToArray();
             Assert.That(markerPaths.Distinct().Count(), Is.EqualTo(4));
@@ -52,6 +54,8 @@ namespace BoardRacing.Tests
                         Is.EqualTo(1f).Within(.001f), course.Name);
                     Assert.That(Vector2.Dot(placement.Heading, placement.Outward),
                         Is.EqualTo(0f).Within(.001f), course.Name);
+                    Assert.That(Mathf.Abs(placement.OutwardSign),
+                        Is.EqualTo(1f).Within(.001f), course.Name);
                     Assert.That(Vector2.Dot(placement.Outward, away),
                         Is.GreaterThanOrEqualTo(0f),
                         course.Name + " " + playerId + " decor faces the lane");
@@ -116,7 +120,42 @@ namespace BoardRacing.Tests
                     Is.EqualTo(placement.Center.y).Within(.001f));
                 Assert.That(root.Find("Static Surface"), Is.Null,
                     "the course mesh owns the pit floor; a retained bay decal would " +
-                    "reintroduce a discrete rectangular background");
+                        "reintroduce a discrete rectangular background");
+                Transform bench = root.Find("Full Length Service Bench");
+                Transform connector = root.Find("Service Connector");
+                Transform wheelStop = root.Find("Wheel Stop");
+                Assert.That(bench, Is.Not.Null);
+                Assert.That(connector, Is.Not.Null);
+                Assert.That(wheelStop, Is.Not.Null);
+                Assert.That(bench.GetComponent<SpriteRenderer>().sprite.bounds.size.x,
+                    Is.GreaterThanOrEqualTo(54f),
+                    "the approved bench must be at least as substantial as the car");
+                Assert.That(Vector2.Dot(
+                        new Vector2(bench.localPosition.x, bench.localPosition.y),
+                        Vector2.up * placement.OutwardSign),
+                    Is.GreaterThan(0f),
+                    "the bench must sit on the side away from the shared lane");
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(
+                        wheelStop.localEulerAngles.z, 90f)),
+                    Is.LessThan(.01f),
+                    "the stop bar must be transverse to the parked car");
+                Assert.That(wheelStop.localPosition.x,
+                    Is.GreaterThan(0f),
+                    "the stop bar must sit beneath the front axle");
+                Assert.That(wheelStop.GetComponent<SpriteRenderer>()
+                        .sprite.bounds.size.x * wheelStop.localScale.x,
+                    Is.GreaterThanOrEqualTo(32f),
+                    "the transverse stop must remain visible beyond both car sides");
+                Assert.That(root.GetComponentsInChildren<Transform>(true)
+                        .Any(x => x.name.Contains("Arm")),
+                    Is.False,
+                    "the approved slot-car bench replaces the robotic arm treatment");
+                Assert.That(new[] { bench, connector, wheelStop,
+                            root.Find("Bench Player Marker") }
+                        .Select(x => x.GetComponent<SpriteRenderer>())
+                        .All(x => x.enabled && x.color.a >= .999f),
+                    Is.True,
+                    "physical pit hardware must remain opaque while inactive");
                 Assert.That(surface.PitKitState(id),
                     Is.EqualTo(PitPresentationState.Inactive));
             }
